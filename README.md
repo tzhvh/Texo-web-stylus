@@ -103,7 +103,7 @@ See [LICENSE](LICENSE) file for details.
 
 ## Credits
 
-© 2025 Sicheng Mao • Powered by React & Transformers.js
+ Texo under AGPL from Sicheng Mao (thx) • Powered by React & Transformers.js
 
 ## Contributing
 
