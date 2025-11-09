@@ -1,0 +1,288 @@
+import React, { useState, useEffect, useRef } from 'react'
+import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw'
+import { BlockMath } from 'react-katex'
+import 'katex/dist/katex.min.css'
+
+// Web Worker
+import OCRWorker from '../workers/ocrWorker?worker'
+
+// Constants
+const RemoteSource = {
+  global: {
+    modelName: 'alephpi/FormulaNet',
+    env_config: {
+      remoteHost: 'https://huggingface.co/',
+      remotePathTemplate: '{model}/resolve/{revision}'
+    }
+  },
+  cn: {
+    modelName: 'alephpi/FormulaNet',
+    env_config: {
+      remoteHost: 'https://gh.llkk.cc/https://raw.githubusercontent.com/',
+      remotePathTemplate: 'alephpi/Texo-web/refs/heads/master/models/model/'
+    }
+  }
+}
+
+export default function SketchPage() {
+  const [latex, setLatex] = useState('')
+  const [isReady, setIsReady] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [progress, setProgress] = useState({})
+  const [loadingMessage, setLoadingMessage] = useState('Initializing model...')
+  const [excalidrawAPI, setExcalidrawAPI] = useState(null)
+  const workerRef = useRef(null)
+
+  // Initialize worker
+  useEffect(() => {
+    const worker = new OCRWorker()
+    workerRef.current = worker
+
+    worker.onmessage = (e) => {
+      const { type, ...data } = e.data
+      if (type === 'ready') {
+        setIsReady(true)
+        setIsLoading(false)
+        setLoadingMessage('Model loaded successfully!')
+        console.log('Model loaded and ready')
+      } else if (type === 'progress') {
+        const percent = data.total ? Math.round((data.loaded / data.total) * 100) : 0
+        setProgress(prev => ({
+          ...prev,
+          [data.file]: { loaded: data.loaded, total: data.total, percent }
+        }))
+        setLoadingMessage(`Loading ${data.file}: ${percent}%`)
+      } else if (type === 'result') {
+        setLatex(data.output)
+        setIsLoading(false)
+        console.log(`Recognition completed in ${data.time}s`)
+      } else if (type === 'error') {
+        console.error('Worker error:', data.error)
+        alert('Error: ' + data.error)
+        setIsLoading(false)
+      }
+    }
+
+    worker.onerror = (error) => {
+      console.error('Worker error:', error)
+      alert('Worker error: ' + error.message)
+      setIsLoading(false)
+    }
+
+    // Try loading model
+    const loadModel = async () => {
+      setIsLoading(true)
+      let source = RemoteSource.global
+      try {
+        const res = await fetch('https://huggingface.co/alephpi/FormulaNet/resolve/main/config.json', {
+          method: 'HEAD'
+        })
+        if (!res.ok) throw new Error('Cannot reach Hugging Face')
+      } catch {
+        console.log('Using CN mirror')
+        source = RemoteSource.cn
+      }
+      worker.postMessage({ action: 'init', modelConfig: source })
+    }
+
+    loadModel()
+
+    return () => {
+      worker.terminate()
+    }
+  }, [])
+
+  const convertToLatex = async () => {
+    if (!excalidrawAPI) {
+      alert('Canvas not ready')
+      return
+    }
+
+    if (!isReady) {
+      alert('Model is still loading, please wait...')
+      return
+    }
+
+    const elements = excalidrawAPI.getSceneElements()
+    if (elements.length === 0) {
+      alert('Please draw something first!')
+      return
+    }
+
+    try {
+      setIsLoading(true)
+
+      // Export canvas to blob with white background
+      const blob = await exportToBlob({
+        elements: excalidrawAPI.getSceneElements(),
+        appState: {
+          ...excalidrawAPI.getAppState(),
+          exportBackground: true,
+          viewBackgroundColor: '#ffffff'
+        },
+        files: excalidrawAPI.getFiles(),
+        getDimensions: () => ({ width: 800, height: 400 })
+      })
+
+      // Convert blob to file
+      const file = new File([blob], 'sketch.png', { type: 'image/png' })
+
+      // Send to worker for OCR processing
+      workerRef.current.postMessage({
+        action: 'predict',
+        image: file,
+        key: 'predict'
+      })
+    } catch (error) {
+      console.error('Error converting sketch:', error)
+      alert('Failed to convert sketch: ' + error.message)
+      setIsLoading(false)
+    }
+  }
+
+  const clearCanvas = () => {
+    if (excalidrawAPI) {
+      excalidrawAPI.resetScene()
+      setLatex('')
+    }
+  }
+
+  const copyToClipboard = () => {
+    navigator.clipboard.writeText(latex)
+      .then(() => alert('LaTeX copied to clipboard!'))
+      .catch(err => alert('Failed to copy: ' + err.message))
+  }
+
+  // Keyboard shortcut handler
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault()
+        convertToLatex()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyPress)
+    return () => window.removeEventListener('keydown', handleKeyPress)
+  }, [excalidrawAPI, isReady])
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Sketch to LaTeX</h1>
+        <p className="text-gray-600 mt-2">
+          Draw mathematical formulas and convert them to LaTeX code
+        </p>
+      </div>
+
+      {!isReady && (
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+            <span className="text-blue-700">{loadingMessage}</span>
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        {/* Drawing Canvas Section */}
+        <div className="border rounded-lg p-6 bg-white shadow-sm">
+          <h2 className="text-xl font-semibold mb-4 text-gray-700">Draw Formula</h2>
+          <div
+            className="border rounded-lg overflow-hidden bg-white"
+            style={{ height: '500px' }}
+          >
+            <Excalidraw
+              excalidrawAPI={(api) => setExcalidrawAPI(api)}
+              initialData={{
+                appState: {
+                  viewBackgroundColor: '#ffffff',
+                  currentItemStrokeColor: '#000000',
+                  currentItemBackgroundColor: 'transparent',
+                  currentItemFillStyle: 'solid',
+                  currentItemStrokeWidth: 2,
+                  currentItemRoughness: 0,
+                  currentItemOpacity: 100
+                },
+                elements: []
+              }}
+              UIOptions={{
+                canvasActions: {
+                  loadScene: false,
+                  export: false,
+                  saveAsImage: false
+                }
+              }}
+            />
+          </div>
+          <div className="mt-4 flex gap-2">
+            <button
+              onClick={convertToLatex}
+              disabled={!isReady || isLoading}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded transition disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+            >
+              {isLoading ? 'Converting...' : 'Convert to LaTeX'}
+            </button>
+            <button
+              onClick={clearCanvas}
+              className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition"
+            >
+              Clear Canvas
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-gray-500">
+            Tip: Press Ctrl/Cmd+Enter to quickly convert
+          </p>
+          {isLoading && (
+            <div className="mt-4 flex items-center text-sm text-blue-600">
+              <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full mr-2"></div>
+              Processing sketch...
+            </div>
+          )}
+        </div>
+
+        {/* Output Section */}
+        <div className="space-y-6">
+          <div className="border rounded-lg p-6 bg-white shadow-sm">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">Preview</h2>
+            <div className="min-h-[100px] p-4 bg-gray-50 rounded border">
+              {latex ? (
+                <div className="overflow-x-auto">
+                  <BlockMath math={latex} />
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center">LaTeX preview will appear here</p>
+              )}
+            </div>
+          </div>
+
+          <div className="border rounded-lg p-6 bg-white shadow-sm">
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">LaTeX Code</h2>
+            <textarea
+              value={latex}
+              onChange={(e) => setLatex(e.target.value)}
+              rows={8}
+              placeholder="LaTeX code will appear here..."
+              className="w-full font-mono text-sm p-3 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+            />
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={copyToClipboard}
+                disabled={!latex}
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Copy to Clipboard
+              </button>
+              <button
+                onClick={() => setLatex('')}
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

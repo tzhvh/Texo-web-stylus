@@ -1,6 +1,7 @@
 import React from 'react'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
 import OCRPage from './pages/OCRPage'
+import SketchPage from './pages/SketchPage'
 import ComposePage from './pages/ComposePage'
 import HomePage from './pages/HomePage'
 
@@ -20,6 +21,12 @@ export default function App() {
               Recognize
             </Link>
             <Link
+              to="/sketch"
+              className="text-gray-700 hover:text-blue-600 font-medium transition"
+            >
+              Sketch
+            </Link>
+            <Link
               to="/compose"
               className="text-gray-700 hover:text-blue-600 font-medium transition"
             >
@@ -31,6 +38,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/ocr" element={<OCRPage />} />
+            <Route path="/sketch" element={<SketchPage />} />
             <Route path="/compose" element={<ComposePage />} />
           </Routes>
         </main>

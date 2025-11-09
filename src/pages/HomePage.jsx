@@ -10,20 +10,27 @@ export default function HomePage() {
           Welcome to <span className="text-blue-600">Texo</span>
         </h1>
         <p className="text-xl text-gray-600 mb-8">
-          Convert mathematical formulas from images to LaTeX instantly
+          Convert mathematical formulas from images or sketches to LaTeX instantly
         </p>
         <p className="text-lg text-gray-500 mb-12 max-w-2xl mx-auto">
           Powered by state-of-the-art machine learning models, Texo helps you recognize
           and convert handwritten or printed mathematical formulas into editable LaTeX code.
+          Draw formulas from scratch or upload existing images.
         </p>
 
         {/* CTA Buttons */}
-        <div className="flex gap-4 justify-center mb-16">
+        <div className="flex flex-wrap gap-4 justify-center mb-16">
           <Link
             to="/ocr"
             className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition transform hover:scale-105"
           >
-            Try OCR Now
+            Try OCR
+          </Link>
+          <Link
+            to="/sketch"
+            className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition transform hover:scale-105"
+          >
+            Try Sketch
           </Link>
           <a
             href="https://github.com/alephpi/Texo-web"
@@ -36,12 +43,19 @@ export default function HomePage() {
         </div>
 
         {/* Features */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mt-16">
           <div className="p-6 bg-white rounded-lg shadow-sm border">
             <div className="text-blue-600 text-4xl mb-4">🚀</div>
             <h3 className="text-xl font-semibold mb-2">Fast & Accurate</h3>
             <p className="text-gray-600">
               State-of-the-art OCR model for precise formula recognition
+            </p>
+          </div>
+          <div className="p-6 bg-white rounded-lg shadow-sm border">
+            <div className="text-blue-600 text-4xl mb-4">✏️</div>
+            <h3 className="text-xl font-semibold mb-2">Draw Formulas</h3>
+            <p className="text-gray-600">
+              Create formulas from scratch using our intuitive drawing canvas
             </p>
           </div>
           <div className="p-6 bg-white rounded-lg shadow-sm border">
@@ -55,7 +69,7 @@ export default function HomePage() {
             <div className="text-blue-600 text-4xl mb-4">✨</div>
             <h3 className="text-xl font-semibold mb-2">Easy to Use</h3>
             <p className="text-gray-600">
-              Simply upload, paste, or drag & drop your formula images
+              Upload images, draw sketches, or compose complete LaTeX documents
             </p>
           </div>
         </div>
