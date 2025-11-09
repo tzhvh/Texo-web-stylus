@@ -2,13 +2,13 @@ import React, { useState } from 'react'
 import { BlockMath, InlineMath } from 'react-katex'
 import 'katex/dist/katex.min.css'
 
-export default function CommentPage() {
-  const [comment, setComment] = useState('')
+export default function ComposePage() {
+  const [compose, setCompose] = useState('')
   const [preview, setPreview] = useState('')
 
-  const handleCommentChange = (e) => {
+  const handleComposeChange = (e) => {
     const value = e.target.value
-    setComment(value)
+    setCompose(value)
     // Update preview with a small delay
     clearTimeout(window.previewTimeout)
     window.previewTimeout = setTimeout(() => {
@@ -45,13 +45,13 @@ export default function CommentPage() {
     })
   }
 
-  const clearComment = () => {
-    setComment('')
+  const clearCompose = () => {
+    setCompose('')
     setPreview('')
   }
 
   const insertSample = () => {
-    const sample = `This is a sample comment with LaTeX formulas.
+    const sample = `This is a sample compose with LaTeX formulas.
 
 Inline formula: The quadratic formula is $x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$
 
@@ -66,16 +66,16 @@ More complex formula:
 $$
 \\sum_{n=1}^{\\infty} \\frac{1}{n^2} = \\frac{\\pi^2}{6}
 $$`
-    setComment(sample)
+    setCompose(sample)
     setPreview(sample)
   }
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Comment with LaTeX</h1>
+        <h1 className="text-3xl font-bold text-gray-800">Compose with LaTeX</h1>
         <p className="text-gray-600 mt-2">
-          Write comments with inline ($formula$) or block ($$formula$$) LaTeX formulas
+          Write composes with inline ($formula$) or block ($$formula$$) LaTeX formulas
         </p>
       </div>
 
@@ -92,7 +92,7 @@ $$`
                 Insert Sample
               </button>
               <button
-                onClick={clearComment}
+                onClick={clearCompose}
                 className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded transition"
               >
                 Clear
@@ -101,9 +101,9 @@ $$`
           </div>
 
           <textarea
-            value={comment}
-            onChange={handleCommentChange}
-            placeholder="Type your comment here...&#10;&#10;Use $formula$ for inline LaTeX&#10;Use $$formula$$ for block LaTeX&#10;&#10;Example: The area of a circle is $A = \\pi r^2$"
+            value={compose}
+            onChange={handleComposeChange}
+            placeholder="Type your compose here...&#10;&#10;Use $formula$ for inline LaTeX&#10;Use $$formula$$ for block LaTeX&#10;&#10;Example: The area of a circle is $A = \\pi r^2$"
             rows={20}
             className="w-full p-4 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none font-mono text-sm"
           />
@@ -142,7 +142,7 @@ $$`
       <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
         <h3 className="font-semibold text-blue-900 mb-2">ℹ️ About This Feature</h3>
         <p className="text-blue-800 text-sm">
-          This page allows you to write comments or notes that include mathematical formulas
+          This page allows you to write composes or notes that include mathematical formulas
           using LaTeX syntax. The preview updates in real-time as you type. You can use the
           recognized LaTeX from the OCR page and paste it here to create formatted documents.
         </p>

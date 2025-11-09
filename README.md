@@ -7,7 +7,7 @@ A minimal React SPA for converting mathematical formulas from images to LaTeX us
 - 🚀 **Fast & Accurate** - State-of-the-art OCR model for precise formula recognition
 - 🔒 **Privacy First** - All processing happens in your browser, no data sent to servers
 - ✨ **Easy to Use** - Simply upload, paste, or drag & drop your formula images
-- 📝 **Comment with LaTeX** - Write comments with inline and block LaTeX formulas
+- 📝 **Compose with LaTeX** - Write composes with inline and block LaTeX formulas
 
 ## Tech Stack
 
@@ -51,7 +51,7 @@ Texo-web-stylus/
 │   ├── pages/
 │   │   ├── HomePage.jsx   # Landing page
 │   │   ├── OCRPage.jsx    # OCR recognition page
-│   │   └── CommentPage.jsx # LaTeX comment editor
+│   │   └── ComposePage.jsx # LaTeX compose editor
 │   ├── workers/
 │   │   ├── ocrWorker.js   # Web Worker for OCR processing
 │   │   └── imageProcessor.js # Image preprocessing utilities
@@ -74,9 +74,9 @@ Texo-web-stylus/
 4. View the recognized LaTeX code and preview
 5. Copy the LaTeX to your clipboard
 
-### Comment with LaTeX
+### Compose with LaTeX
 
-1. Navigate to the "Comment" page
+1. Navigate to the "Compose" page
 2. Write text with inline (`$formula$`) or block (`$$formula$$`) LaTeX
 3. See real-time preview of your formatted text
 
