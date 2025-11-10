@@ -1,10 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { EditorState } from 'prosemirror-state';
-import { EditorView } from 'prosemirror-view';
-import { Schema } from 'prosemirror-model';
-import { keymap } from 'prosemirror-keymap';
-import { inputRules } from 'prosemirror-inputrules';
-import { chainCommands, deleteSelection, selectNodeBackward, joinBackward } from 'prosemirror-commands';
+import React, { useState, useEffect, useRef } from "react";
+import { EditorState } from "prosemirror-state";
+import { EditorView } from "prosemirror-view";
+import { Schema } from "prosemirror-model";
+import { keymap } from "prosemirror-keymap";
+import { inputRules } from "prosemirror-inputrules";
+import {
+  chainCommands,
+  deleteSelection,
+  selectNodeBackward,
+  joinBackward,
+  baseKeymap,
+} from "prosemirror-commands";
+import { history, redo, undo } from "prosemirror-history";
 import {
   mathPlugin,
   mathBackspaceCmd,
@@ -13,47 +20,60 @@ import {
   makeInlineMathInputRule,
   makeBlockMathInputRule,
   REGEX_INLINE_MATH_DOLLARS,
-  REGEX_BLOCK_MATH_DOLLARS
-} from '@benrbray/prosemirror-math';
-import '@benrbray/prosemirror-math/dist/prosemirror-math.css';
-import 'katex/dist/katex.min.css';
-import { BlockMath } from 'react-katex';
-import { checkEquivalence, checkMultipleLines } from '../cas/equivalenceChecker.js';
-import { createSpatialMapping, findErrorSubExpression, highlightRanges } from '../utils/spatialMapping.js';
-import { getCachedCanonicalForm, cacheCanonicalForm, getCacheStats } from '../utils/indexedDBCache.js';
+  REGEX_BLOCK_MATH_DOLLARS,
+} from "@benrbray/prosemirror-math";
+import "@benrbray/prosemirror-math/dist/prosemirror-math.css";
+import "katex/dist/katex.min.css";
+import { BlockMath } from "react-katex";
+import {
+  checkEquivalence,
+  checkMultipleLines,
+} from "../cas/equivalenceChecker.js";
+import {
+  createSpatialMapping,
+  findErrorSubExpression,
+  highlightRanges,
+} from "../utils/spatialMapping.js";
+import {
+  getCachedCanonicalForm,
+  cacheCanonicalForm,
+  getCacheStats,
+} from "../utils/indexedDBCache.js";
 
 // ProseMirror Schema with math nodes
 const mathSchema = new Schema({
   nodes: {
     doc: {
-      content: 'block+'
+      content: "block+",
     },
     paragraph: {
-      content: 'inline*',
-      group: 'block',
-      parseDOM: [{ tag: 'p' }],
-      toDOM() { return ['p', 0]; }
+      content: "inline*",
+      group: "block",
+      parseDOM: [{ tag: "p" }],
+      toDOM() {
+        return ["p", 0];
+      },
     },
     math_inline: {
-      group: 'inline math',
-      content: 'text*',
+      group: "inline math",
+      content: "text*",
       inline: true,
       atom: true,
-      toDOM: () => ['math-inline', { class: 'math-node' }, 0],
-      parseDOM: [{ tag: 'math-inline' }]
+      toDOM: () => ["math-inline", { class: "math-node" }, 0],
+      parseDOM: [{ tag: "math-inline" }],
     },
     math_display: {
-      group: 'block math',
-      content: 'text*',
+      group: "block math",
+      content: "text*",
       atom: true,
       code: true,
-      toDOM: () => ['math-display', { class: 'math-node' }, 0],
-      parseDOM: [{ tag: 'math-display' }]
+      toDOM: () => ["math-display", { class: "math-node" }, 0],
+      parseDOM: [{ tag: "math-display" }],
     },
     text: {
-      group: 'inline'
-    }
-  }
+      group: "inline",
+    },
+  },
 });
 
 export default function ComposePage() {
@@ -73,27 +93,37 @@ export default function ComposePage() {
     // Create input rules
     const inlineMathInputRule = makeInlineMathInputRule(
       REGEX_INLINE_MATH_DOLLARS,
-      mathSchema.nodes.math_inline
+      mathSchema.nodes.math_inline,
     );
     const blockMathInputRule = makeBlockMathInputRule(
       REGEX_BLOCK_MATH_DOLLARS,
-      mathSchema.nodes.math_display
+      mathSchema.nodes.math_display,
     );
 
     // Create plugins
     const plugins = [
+      history(),
       mathPlugin,
       keymap({
-        'Mod-Space': insertMathCmd(mathSchema.nodes.math_inline),
-        'Backspace': chainCommands(deleteSelection, mathBackspaceCmd, joinBackward, selectNodeBackward)
+        "Mod-Space": insertMathCmd(mathSchema.nodes.math_inline),
+        Backspace: chainCommands(
+          deleteSelection,
+          mathBackspaceCmd,
+          joinBackward,
+          selectNodeBackward,
+        ),
+        "Mod-z": undo,
+        "Mod-y": redo,
+        "Mod-Shift-z": redo,
       }),
-      inputRules({ rules: [inlineMathInputRule, blockMathInputRule] })
+      keymap(baseKeymap),
+      inputRules({ rules: [inlineMathInputRule, blockMathInputRule] }),
     ];
 
     // Create editor state
     const state = EditorState.create({
       schema: mathSchema,
-      plugins: plugins
+      plugins: plugins,
     });
 
     // Create editor view
@@ -108,7 +138,7 @@ export default function ComposePage() {
         if (transaction.docChanged) {
           extractAndValidate(newState);
         }
-      }
+      },
     });
 
     viewRef.current = view;
@@ -128,22 +158,22 @@ export default function ComposePage() {
     const doc = state.doc;
 
     doc.descendants((node, pos) => {
-      if (node.type.name === 'math_display') {
+      if (node.type.name === "math_display") {
         const content = node.textContent;
         if (content.trim()) {
           lines.push({
             latex: content,
             pos: pos,
-            type: 'display'
+            type: "display",
           });
         }
-      } else if (node.type.name === 'math_inline') {
+      } else if (node.type.name === "math_inline") {
         const content = node.textContent;
         if (content.trim()) {
           lines.push({
             latex: content,
             pos: pos,
-            type: 'inline'
+            type: "inline",
           });
         }
       }
@@ -173,8 +203,8 @@ export default function ComposePage() {
     try {
       // Extract just the display math lines (one equation per line)
       const displayLines = lines
-        .filter(line => line.type === 'display')
-        .map(line => line.latex);
+        .filter((line) => line.type === "display")
+        .map((line) => line.latex);
 
       if (displayLines.length < 2) {
         setValidationResults([]);
@@ -202,10 +232,10 @@ export default function ComposePage() {
           result = checkEquivalence(prevLatex, currLatex);
 
           // Cache the result
-          await cacheCanonicalForm(cacheKey, result.canonical1 || '', {
+          await cacheCanonicalForm(cacheKey, result.canonical1 || "", {
             result: result,
             prevLatex,
-            currLatex
+            currLatex,
           });
         }
 
@@ -223,14 +253,14 @@ export default function ComposePage() {
           time: result.time,
           error: result.error,
           mapping,
-          cached: result.cached || false
+          cached: result.cached || false,
         });
       }
 
       setValidationResults(results);
       updateCacheStats();
     } catch (error) {
-      console.error('Validation error:', error);
+      console.error("Validation error:", error);
     } finally {
       setIsValidating(false);
     }
@@ -242,44 +272,74 @@ export default function ComposePage() {
       const stats = await getCacheStats();
       setCacheStats(stats);
     } catch (error) {
-      console.error('Error fetching cache stats:', error);
+      console.error("Error fetching cache stats:", error);
     }
   };
 
-  // Insert sample equations
+  // Insert sample equations with direct node creation
   const insertSample = () => {
     if (!viewRef.current) return;
 
-    const sampleText = `Sample mathematical proof:
+    const view = viewRef.current;
+    const { state, dispatch } = view;
+    const { schema } = state;
 
-Start with the equation:
-$$x^2 + 4x + 4$$
+    // Clear existing content first
+    const clearTransaction = state.tr.delete(0, state.doc.content.size);
+    dispatch(clearTransaction);
 
-Factor the quadratic:
-$$(x + 2)^2$$
+    // Define the sample content as structured nodes
+    const sampleContent = [
+      { type: "paragraph", content: "Sample mathematical proof:" },
+      { type: "paragraph", content: "Start with the equation:" },
+      { type: "math_display", content: "x^2 + 4x + 4" },
+      { type: "paragraph", content: "Factor the quadratic:" },
+      { type: "math_display", content: "(x + 2)^2" },
+      { type: "paragraph", content: "Expand to verify:" },
+      { type: "math_display", content: "x^2 + 2 \\cdot 2x + 2^2" },
+      { type: "paragraph", content: "Simplify:" },
+      { type: "math_display", content: "x^2 + 4x + 4" },
+      {
+        type: "paragraph",
+        content: "This demonstrates equivalence checking with the CAS system!",
+      },
+    ];
 
-Expand to verify:
-$$x^2 + 2 \\cdot 2x + 2^2$$
+    // Insert content with proper node creation
+    const tr = view.state.tr;
+    const nodes = [];
 
-Simplify:
-$$x^2 + 4x + 4$$
-
-This demonstrates equivalence checking with the CAS system!`;
-
-    const state = EditorState.create({
-      schema: mathSchema,
-      plugins: viewRef.current.state.plugins,
-      doc: mathSchema.nodeFromJSON({
-        type: 'doc',
-        content: sampleText.split('\n').map(line => ({
-          type: 'paragraph',
-          content: line ? [{ type: 'text', text: line }] : undefined
-        }))
-      })
+    // Create all nodes first
+    sampleContent.forEach((item) => {
+      if (item.type === "paragraph") {
+        if (item.content.trim()) {
+          const paragraph = schema.nodes.paragraph.createAndFill(
+            null,
+            schema.text(item.content),
+          );
+          if (paragraph) {
+            nodes.push(paragraph);
+          }
+        }
+      } else if (item.type === "math_display") {
+        // Create math display node
+        const mathNode = schema.nodes.math_display.createAndFill(
+          null,
+          schema.text(item.content),
+        );
+        if (mathNode) {
+          nodes.push(mathNode);
+        }
+      }
     });
 
-    viewRef.current.updateState(state);
-    extractAndValidate(state);
+    // Insert all nodes at position 0
+    if (nodes.length > 0) {
+      tr.insert(0, nodes);
+    }
+
+    // Dispatch the transaction to update the editor
+    dispatch(tr);
   };
 
   // Clear editor
@@ -288,7 +348,7 @@ This demonstrates equivalence checking with the CAS system!`;
 
     const state = EditorState.create({
       schema: mathSchema,
-      plugins: viewRef.current.state.plugins
+      plugins: viewRef.current.state.plugins,
     });
 
     viewRef.current.updateState(state);
@@ -308,9 +368,9 @@ This demonstrates equivalence checking with the CAS system!`;
   // Get status color class
   const getStatusColorClass = (result) => {
     if (result.equivalent) {
-      return 'bg-green-50 border-green-300';
+      return "bg-green-50 border-green-300";
     } else {
-      return 'bg-red-50 border-red-300';
+      return "bg-red-50 border-red-300";
     }
   };
 
@@ -319,7 +379,8 @@ This demonstrates equivalence checking with the CAS system!`;
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Math CAS Checker</h1>
         <p className="text-gray-600 mt-2">
-          Write mathematical equations line-by-line. Each line is automatically checked for equivalence with the previous line.
+          Write mathematical equations line-by-line. Each line is automatically
+          checked for equivalence with the previous line.
         </p>
       </div>
 
@@ -333,7 +394,7 @@ This demonstrates equivalence checking with the CAS system!`;
                 onClick={() => setShowHelp(!showHelp)}
                 className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded transition"
               >
-                {showHelp ? 'Hide' : 'Show'} Help
+                {showHelp ? "Hide" : "Show"} Help
               </button>
               <button
                 onClick={insertSample}
@@ -354,10 +415,26 @@ This demonstrates equivalence checking with the CAS system!`;
             <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded text-sm">
               <h3 className="font-semibold mb-2">Quick Guide:</h3>
               <ul className="space-y-1 text-gray-700">
-                <li>• Type <code className="bg-blue-100 px-1 rounded">$$</code> followed by space for block math</li>
-                <li>• Type <code className="bg-blue-100 px-1 rounded">$formula$</code> for inline math</li>
-                <li>• Press <code className="bg-blue-100 px-1 rounded">Ctrl/Cmd+Space</code> to insert inline math</li>
-                <li>• Each display equation ($$...$$) on a new line is checked against the previous one</li>
+                <li>
+                  • Type <code className="bg-blue-100 px-1 rounded">$$</code>{" "}
+                  followed by space for block math
+                </li>
+                <li>
+                  • Type{" "}
+                  <code className="bg-blue-100 px-1 rounded">$formula$</code>{" "}
+                  for inline math
+                </li>
+                <li>
+                  • Press{" "}
+                  <code className="bg-blue-100 px-1 rounded">
+                    Ctrl/Cmd+Space
+                  </code>{" "}
+                  to insert inline math
+                </li>
+                <li>
+                  • Each display equation ($$...$$) on a new line is checked
+                  against the previous one
+                </li>
                 <li>• Green ✓ means equivalent, Red ✗ means not equivalent</li>
               </ul>
             </div>
@@ -368,8 +445,8 @@ This demonstrates equivalence checking with the CAS system!`;
             ref={editorRef}
             className="border rounded-lg p-4 min-h-[400px] focus-within:ring-2 focus-within:ring-blue-500 prose max-w-none"
             style={{
-              background: '#fafafa',
-              fontFamily: 'ui-monospace, monospace'
+              background: "#fafafa",
+              fontFamily: "ui-monospace, monospace",
             }}
           />
 
@@ -391,11 +468,14 @@ This demonstrates equivalence checking with the CAS system!`;
 
         {/* Validation Results Sidebar */}
         <div className="border rounded-lg p-6 bg-white shadow-sm">
-          <h2 className="text-xl font-semibold mb-4 text-gray-700">Validation Results</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-700">
+            Validation Results
+          </h2>
 
-          {mathLines.filter(l => l.type === 'display').length < 2 ? (
+          {mathLines.filter((l) => l.type === "display").length < 2 ? (
             <p className="text-gray-500 text-sm">
-              Enter at least two display equations ($$...$$) to see validation results.
+              Enter at least two display equations ($$...$$) to see validation
+              results.
             </p>
           ) : (
             <div className="space-y-3">
@@ -412,8 +492,15 @@ This demonstrates equivalence checking with the CAS system!`;
                   </div>
 
                   <div className="text-xs text-gray-600 space-y-1">
-                    <div>Method: <span className="font-mono">{result.method}</span></div>
-                    <div>Time: <span className="font-mono">{result.time.toFixed(2)}ms</span></div>
+                    <div>
+                      Method: <span className="font-mono">{result.method}</span>
+                    </div>
+                    <div>
+                      Time:{" "}
+                      <span className="font-mono">
+                        {result.time.toFixed(2)}ms
+                      </span>
+                    </div>
                     {result.cached && (
                       <div className="text-green-600">✓ From cache</div>
                     )}
@@ -441,22 +528,6 @@ This demonstrates equivalence checking with the CAS system!`;
               ))}
             </div>
           )}
-        </div>
-      </div>
-
-      {/* Info Section */}
-      <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-        <h3 className="font-semibold text-blue-900 mb-2">About CAS Checker</h3>
-        <p className="text-blue-800 text-sm mb-2">
-          This page uses a Computer Algebra System (CAS) to automatically verify that each mathematical
-          equation is equivalent to the previous one. Perfect for checking your work step-by-step!
-        </p>
-        <div className="text-blue-700 text-xs space-y-1">
-          <div>✓ Fast canonicalization for high-school algebra and calculus</div>
-          <div>✓ Fallback to Algebrite for complex operations</div>
-          <div>✓ Supports trig identities, logarithms, and more</div>
-          <div>✓ IndexedDB caching for instant repeated checks</div>
-          <div>✓ Sub-expression error highlighting (coming soon)</div>
         </div>
       </div>
     </div>
