@@ -240,14 +240,17 @@ export default function SketchPage() {
         </p>
       </div>
 
-      {!isReady && (
-        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <div className="flex items-center space-x-3">
-            <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-            <span className="text-blue-700">{loadingMessage}</span>
+      {/* Fixed height container to prevent layout shift */}
+      <div className="mb-4" style={{ minHeight: '60px' }}>
+        {!isReady && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+              <span className="text-blue-700">{loadingMessage}</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Drawing Canvas Section */}
