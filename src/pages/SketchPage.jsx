@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw'
 import { BlockMath } from 'react-katex'
 import 'katex/dist/katex.min.css'
+import '@excalidraw/excalidraw/index.css'
 
 // Web Worker
 import OCRWorker from '../workers/ocrWorker?worker'
