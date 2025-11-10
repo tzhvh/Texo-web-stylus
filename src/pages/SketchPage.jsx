@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw'
+import { Excalidraw, exportToBlob, convertToExcalidrawElements } from '@excalidraw/excalidraw'
 import { BlockMath } from 'react-katex'
 import 'katex/dist/katex.min.css'
 import '@excalidraw/excalidraw/index.css'
@@ -30,11 +30,38 @@ const excalidrawStyles = `
   .excalidraw {
     position: relative !important;
   }
-  
+
   .excalidraw__canvas {
     position: relative !important;
   }
 `;
+
+// OCR bounding box configuration (384x384 pixels)
+const OCR_BOX_X = 50
+const OCR_BOX_Y = 50
+const OCR_BOX_SIZE = 384
+
+// Create the bounding box element
+const createBoundingBox = () => {
+  const elements = convertToExcalidrawElements([
+    {
+      type: "rectangle",
+      x: OCR_BOX_X,
+      y: OCR_BOX_Y,
+      width: OCR_BOX_SIZE,
+      height: OCR_BOX_SIZE,
+      strokeColor: "#2563eb",
+      backgroundColor: "transparent",
+      fillStyle: "solid",
+      strokeWidth: 2,
+      strokeStyle: "dashed",
+      roughness: 0,
+      opacity: 60,
+      locked: true,
+    }
+  ])
+  return elements[0]
+}
 
 export default function SketchPage() {
   const [latex, setLatex] = useState('')
@@ -44,6 +71,7 @@ export default function SketchPage() {
   const [loadingMessage, setLoadingMessage] = useState('Initializing model...')
   const [excalidrawAPI, setExcalidrawAPI] = useState(null)
   const workerRef = useRef(null)
+  const boundingBoxRef = useRef(createBoundingBox())
 
   // Initialize worker
   useEffect(() => {
@@ -115,25 +143,47 @@ export default function SketchPage() {
       return
     }
 
-    const elements = excalidrawAPI.getSceneElements()
-    if (elements.length === 0) {
-      alert('Please draw something first!')
+    const allElements = excalidrawAPI.getSceneElements()
+
+    // Filter elements within the OCR bounding box (exclude the box itself)
+    const elementsInBox = allElements.filter(el => {
+      if (el.id === boundingBoxRef.current.id) return false // Skip the bounding box itself
+      if (el.isDeleted) return false
+
+      // Check if element is within the bounding box
+      const elRight = el.x + (el.width || 0)
+      const elBottom = el.y + (el.height || 0)
+      const boxRight = OCR_BOX_X + OCR_BOX_SIZE
+      const boxBottom = OCR_BOX_Y + OCR_BOX_SIZE
+
+      // Element must be at least partially within the box
+      return !(el.x > boxRight || elRight < OCR_BOX_X ||
+               el.y > boxBottom || elBottom < OCR_BOX_Y)
+    })
+
+    if (elementsInBox.length === 0) {
+      alert('Please draw something inside the blue bounding box!')
       return
     }
 
     try {
       setIsLoading(true)
 
-      // Export canvas to blob with white background
+      // Export only the bounding box area with white background
       const blob = await exportToBlob({
-        elements: excalidrawAPI.getSceneElements(),
+        elements: elementsInBox,
         appState: {
           ...excalidrawAPI.getAppState(),
           exportBackground: true,
           viewBackgroundColor: '#ffffff'
         },
         files: excalidrawAPI.getFiles(),
-        getDimensions: () => ({ width: 800, height: 400 })
+        getDimensions: () => ({
+          width: OCR_BOX_SIZE,
+          height: OCR_BOX_SIZE,
+          // Translate to start from (0, 0)
+        }),
+        exportPadding: 0,
       })
 
       // Convert blob to file
@@ -154,7 +204,10 @@ export default function SketchPage() {
 
   const clearCanvas = () => {
     if (excalidrawAPI) {
-      excalidrawAPI.resetScene()
+      // Reset scene but keep the bounding box
+      excalidrawAPI.updateScene({
+        elements: [boundingBoxRef.current],
+      })
       setLatex('')
     }
   }
@@ -179,14 +232,13 @@ export default function SketchPage() {
   }, [excalidrawAPI, isReady])
 
   return (
-
-      <div className="p-6 max-w-7xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold text-gray-800">Sketch to LaTeX</h1>
-          <p className="text-gray-600 mt-2">
-            Draw mathematical formulas and convert them to LaTeX code
-          </p>
-        </div>
+    <div className="p-6 max-w-7xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-800">Sketch to LaTeX</h1>
+        <p className="text-gray-600 mt-2">
+          Draw mathematical formulas inside the blue box (384×384px) and convert them to LaTeX code
+        </p>
+      </div>
 
       {!isReady && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -217,7 +269,8 @@ export default function SketchPage() {
                   currentItemRoughness: 0,
                   currentItemOpacity: 100
                 },
-                elements: []
+                elements: [boundingBoxRef.current],
+                scrollToContent: false
               }}
               UIOptions={{
                 canvasActions: {
