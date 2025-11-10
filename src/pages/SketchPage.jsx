@@ -25,6 +25,17 @@ const RemoteSource = {
   }
 }
 
+// Additional CSS to fix Excalidraw pointer offset issue
+const excalidrawStyles = `
+  .excalidraw {
+    position: relative !important;
+  }
+  
+  .excalidraw__canvas {
+    position: relative !important;
+  }
+`;
+
 export default function SketchPage() {
   const [latex, setLatex] = useState('')
   const [isReady, setIsReady] = useState(false)
@@ -168,13 +179,14 @@ export default function SketchPage() {
   }, [excalidrawAPI, isReady])
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">Sketch to LaTeX</h1>
-        <p className="text-gray-600 mt-2">
-          Draw mathematical formulas and convert them to LaTeX code
-        </p>
-      </div>
+
+      <div className="p-6 max-w-7xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-gray-800">Sketch to LaTeX</h1>
+          <p className="text-gray-600 mt-2">
+            Draw mathematical formulas and convert them to LaTeX code
+          </p>
+        </div>
 
       {!isReady && (
         <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -190,7 +202,7 @@ export default function SketchPage() {
         <div className="border rounded-lg p-6 bg-white shadow-sm">
           <h2 className="text-xl font-semibold mb-4 text-gray-700">Draw Formula</h2>
           <div
-            className="border rounded-lg overflow-hidden bg-white"
+            className="border rounded-lg overflow-hidden bg-white relative"
             style={{ height: '500px' }}
           >
             <Excalidraw
@@ -285,5 +297,6 @@ export default function SketchPage() {
         </div>
       </div>
     </div>
+
   )
 }
