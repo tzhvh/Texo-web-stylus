@@ -1,110 +1,40 @@
-# Texo - LaTeX OCR Recognition
+# Texo - From Sketch to LaTeX in Seconds
 
-A minimal React SPA for converting mathematical formulas from images to LaTeX using Hugging Face Transformers.js.
+Draw an equation with your stylus—or drop an Excalidraw scene—and watch Texo turn it into production-ready LaTeX. This React rewrite adds stylus and whiteboard support to the original privacy-first, browser-only OCR engine created (and model-fine-tuned) by Sicheng Mao.
 
-## Features
+**OCR model**: [alephpi/Texo](https://github.com/alephpi/Texo/)  
+**Original Vue app**: [alephpi/Texo-web](https://github.com/alephpi/Texo-web/)
 
-- 🚀 **Fast & Accurate** - State-of-the-art OCR model for precise formula recognition
-- 🔒 **Privacy First** - All processing happens in your browser, no data sent to servers
-- ✨ **Easy to Use** - Simply upload, paste, or drag & drop your formula images
-- 📝 **Compose with LaTeX** - Write composes with inline and block LaTeX formulas
+## What’s New in the React Fork
 
-## Tech Stack
+- **Stylus-first canvas** – draw formulas naturally on pressure-sensitive surfaces (Wacom, iPad, Surface, etc.)
+- **Live stroke preview** – see the cropped image that will be sent to the model before you hit “Recognize”
+- **Same offline promise** – all ink processing and recognition still run locally via Transformers.js and Web Workers
 
-- **React 18** - Modern React with hooks
-- **Vite** - Fast build tool and dev server
-- **React Router** - Client-side routing
-- **Tailwind CSS** - Utility-first CSS framework
-- **Transformers.js** - Run ML models in the browser
-- **KaTeX** - Fast math rendering
-- **image-js** - Image processing utilities
+## Core Features
 
-## Getting Started
+- Zero-server, zero-telemetry OCR
+- Sub-second inference after first model download (~150 MB)
+- Copy-paste, drag-drop, or upload any image
+- Built-in KaTeX editor for inline (`$…$`) and display (`$$…$$`) math
+- Responsive PWA shell—works offline once cached
 
-### Prerequisites
-
-- Node.js 16+ and npm
-
-### Installation
+## Quick Start
 
 ```bash
-# Install dependencies
 npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
+npm run dev          # localhost:5173
+npm run build        # production bundle
+npm run preview      # local prod test
 ```
+## Usage Flow
 
-## Project Structure
+1. **Draw** – open “Recognize”, pick the stylus icon, scribble your formula
+2. **Refine** – lasso or erase strokes; Texo auto-crops the bounding box
+3. **Import** – alternatively drop an Excalidraw file; math strokes are separated from arrows, text, and diagrams
+4. **Copy** – hit “Recognize”, get LaTeX, paste into the Compose tab or your document
 
-```
-Texo-web-stylus/
-├── public/
-│   └── test_img/          # Test formula images
-├── src/
-│   ├── pages/
-│   │   ├── HomePage.jsx   # Landing page
-│   │   ├── OCRPage.jsx    # OCR recognition page
-│   │   └── ComposePage.jsx # LaTeX compose editor
-│   ├── workers/
-│   │   ├── ocrWorker.js   # Web Worker for OCR processing
-│   │   └── imageProcessor.js # Image preprocessing utilities
-│   ├── App.jsx            # Main app component with routing
-│   ├── main.jsx           # Entry point
-│   └── index.css          # Global styles with Tailwind
-├── index.html
-├── vite.config.js
-├── tailwind.config.js
-└── package.json
-```
+## Model & Credits
 
-## Usage
-
-### OCR Recognition
-
-1. Navigate to the "Recognize" page
-2. Upload an image containing a mathematical formula
-3. Wait for the model to process (first load may take some time)
-4. View the recognized LaTeX code and preview
-5. Copy the LaTeX to your clipboard
-
-### Compose with LaTeX
-
-1. Navigate to the "Compose" page
-2. Write text with inline (`$formula$`) or block (`$$formula$$`) LaTeX
-3. See real-time preview of your formatted text
-
-## Model Information
-
-This application uses the **FormulaNet** model from Hugging Face:
-- Model: `alephpi/FormulaNet`
-- Architecture: Vision Encoder-Decoder
-- Task: Image-to-LaTeX conversion
-
-## Development
-
-The application uses Web Workers to run the OCR model without blocking the main thread. This ensures a smooth user experience even during intensive computations.
-
-### Key Components
-
-- **OCRPage**: Handles image upload, worker communication, and result display
-- **OCR Worker**: Loads the model and performs inference
-- **Image Processor**: Preprocesses images to the required format
-
-## License
-
-See [LICENSE](LICENSE) file for details.
-
-## Credits
-
- Texo under AGPL from Sicheng Mao (thx) • Powered by React & Transformers.js
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+FormulaNet fine-tuning and the original vuejs implementaation: Sicheng Mao  
+License: retained AGPL (see LICENSE)
