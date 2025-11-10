@@ -70,8 +70,12 @@ export default function SketchPage() {
   const [progress, setProgress] = useState({})
   const [loadingMessage, setLoadingMessage] = useState('Initializing model...')
   const [excalidrawAPI, setExcalidrawAPI] = useState(null)
+  const [autoConvert, setAutoConvert] = useState(false)
+  const [timerProgress, setTimerProgress] = useState(0)
   const workerRef = useRef(null)
   const boundingBoxRef = useRef(createBoundingBox())
+  const timerRef = useRef(null)
+  const lastElementsCountRef = useRef(0)
 
   // Initialize worker
   useEffect(() => {
@@ -231,6 +235,60 @@ export default function SketchPage() {
     return () => window.removeEventListener('keydown', handleKeyPress)
   }, [excalidrawAPI, isReady])
 
+  // Auto-convert timer (5 seconds)
+  useEffect(() => {
+    if (!autoConvert || !isReady || !excalidrawAPI || isLoading) {
+      setTimerProgress(0)
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
+      return
+    }
+
+    const TIMER_DURATION = 5000 // 5 seconds
+    const UPDATE_INTERVAL = 50 // Update every 50ms for smooth animation
+    let startTime = Date.now()
+
+    timerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTime
+      const progress = Math.min((elapsed / TIMER_DURATION) * 100, 100)
+
+      setTimerProgress(progress)
+
+      if (progress >= 100) {
+        // Timer completed - check if there are elements to convert
+        const allElements = excalidrawAPI.getSceneElements()
+        const elementsInBox = allElements.filter(el => {
+          if (el.id === boundingBoxRef.current.id) return false
+          if (el.isDeleted) return false
+          const elRight = el.x + (el.width || 0)
+          const elBottom = el.y + (el.height || 0)
+          const boxRight = OCR_BOX_X + OCR_BOX_SIZE
+          const boxBottom = OCR_BOX_Y + OCR_BOX_SIZE
+          return !(el.x > boxRight || elRight < OCR_BOX_X ||
+                   el.y > boxBottom || elBottom < OCR_BOX_Y)
+        })
+
+        if (elementsInBox.length > 0 && elementsInBox.length !== lastElementsCountRef.current) {
+          lastElementsCountRef.current = elementsInBox.length
+          convertToLatex()
+        }
+
+        // Reset timer
+        startTime = Date.now()
+        setTimerProgress(0)
+      }
+    }, UPDATE_INTERVAL)
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
+    }
+  }, [autoConvert, isReady, excalidrawAPI, isLoading])
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
@@ -299,9 +357,60 @@ export default function SketchPage() {
               Clear Canvas
             </button>
           </div>
-          <p className="mt-2 text-xs text-gray-500">
-            Tip: Press Ctrl/Cmd+Enter to quickly convert
-          </p>
+
+          {/* Auto-convert toggle and timer */}
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAutoConvert(!autoConvert)}
+                disabled={!isReady}
+                className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-medium transition ${
+                  autoConvert
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
+              >
+                <span className={`w-4 h-4 rounded border-2 flex items-center justify-center ${
+                  autoConvert ? 'bg-blue-500 border-blue-500' : 'border-gray-400'
+                }`}>
+                  {autoConvert && (
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </span>
+                Auto-convert (5s)
+              </button>
+              <p className="text-xs text-gray-500">
+                Tip: Press Ctrl/Cmd+Enter to convert manually
+              </p>
+            </div>
+
+            {/* Visual timer progress bar */}
+            {autoConvert && isReady && !isLoading && (
+              <div className="space-y-1">
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all duration-50 ease-linear"
+                    style={{ width: `${timerProgress}%` }}
+                  />
+                </div>
+                <div className="flex gap-1">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <div
+                      key={i}
+                      className={`flex-1 h-1 rounded transition-all duration-200 ${
+                        timerProgress > i * 20
+                          ? 'bg-blue-400 animate-pulse'
+                          : 'bg-gray-200'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           {isLoading && (
             <div className="mt-4 flex items-center text-sm text-blue-600">
               <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full mr-2"></div>
