@@ -389,9 +389,9 @@ export default function SketchPage() {
             {/* Visual timer progress bar */}
             {autoConvert && isReady && !isLoading && (
               <div className="space-y-1">
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-2 bg-gray-200 rounded-full overflow-hidden hidden">
                   <div
-                    className="h-full bg-blue-500 transition-all duration-50 ease-linear"
+                    className="h-full bg-blue-500 transition-all duration-50 ease-linear hidden"
                     style={{ width: `${timerProgress}%` }}
                   />
                 </div>
@@ -401,8 +401,8 @@ export default function SketchPage() {
                       key={i}
                       className={`flex-1 h-1 rounded transition-all duration-200 ${
                         timerProgress > i * 20
-                          ? 'bg-blue-400 animate-pulse'
-                          : 'bg-gray-200'
+                          ? 'bg-blue-400 '
+                          : 'bg-gray-400 animate-pulse'
                       }`}
                     />
                   ))}
