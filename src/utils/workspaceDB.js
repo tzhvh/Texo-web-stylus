@@ -796,7 +796,18 @@ export async function getStorageEstimate() {
   return null;
 }
 
-// Initialize on module load
-initWorkspaceDB().catch(err => {
-  console.error('[WorkspaceDB] Failed to initialize:', err);
-});
+// Initialize on module load (but skip in test environment)
+// Check if we're in a test environment before initializing
+function isTestEnvironment() {
+  return (
+    typeof process !== 'undefined' &&
+    process.env &&
+    (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true')
+  );
+}
+
+if (!isTestEnvironment()) {
+  initWorkspaceDB().catch(err => {
+    console.error('[WorkspaceDB] Failed to initialize:', err);
+  });
+}
