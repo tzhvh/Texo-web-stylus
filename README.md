@@ -1,4 +1,4 @@
-# Texo - From Sketch to LaTeX in Seconds
+# Texo Demo - From Sketch to LaTeX in Seconds
 
 Draw an equation with your stylus—or drop an Excalidraw scene—and watch Texo turn it into production-ready LaTeX. This React rewrite adds stylus and whiteboard support to the original privacy-first, browser-only OCR engine created (and model-fine-tuned) by Sicheng Mao.
 
