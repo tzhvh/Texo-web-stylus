@@ -227,7 +227,7 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
     Logger.debug('EquivalenceChecker', 'Canonicalization failed, trying Algebrite', {}, ['equivalence', 'algebrite-fallback']);
 
     try {
-      const algebraicCheck = checkWithAlgebrite(latex1, latex2, config.algebriteTimeout, debug);
+      const algebraicCheck = checkWithAlgebrite(latex1, latex2, config.algebriteTimeout, debug, config.floatTolerance);
 
       if (debug) {
         Logger.debug('EquivalenceChecker', 'Algebrite check complete', {
@@ -276,14 +276,69 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
 }
 
 /**
+ * Check if a value is approximately zero within tolerance
+ * @param {string} value - The value to check (as string from Algebrite)
+ * @param {number} tolerance - The tolerance threshold
+ * @returns {boolean} - True if value is approximately zero
+ */
+function isApproximatelyZero(value, tolerance = FLOAT_TOLERANCE) {
+  // Exact zero strings
+  if (value === '0' || value === '0.0') {
+    return true;
+  }
+
+  // Try to parse as number
+  // Remove trailing ellipsis if present (e.g., "0.000001...")
+  const cleaned = value.replace(/\.\.\.+$/, '').trim();
+
+  // Handle scientific notation and regular decimals
+  const num = parseFloat(cleaned);
+
+  if (!isNaN(num)) {
+    return Math.abs(num) < tolerance;
+  }
+
+  // Check for very small decimal representation
+  if (/^-?0\.0+[1-9]?/.test(cleaned)) {
+    const num = parseFloat(cleaned);
+    if (!isNaN(num)) {
+      return Math.abs(num) < tolerance;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Normalize Algebrite expression by removing explicit multiplication operators between variables
+ * This handles: "a*c" → "ac", "a*c+a*d" → "ac+ad", "ac/(bd)" → "ac/bd"
+ * @param {string} expr - Algebrite expression
+ * @returns {string} - Normalized expression
+ */
+function normalizeAlgebriteExpr(expr) {
+  let result = expr;
+
+  // Remove explicit * between single letters/variables
+  // Pattern: letter * letter → letter+letter
+  result = result.replace(/([a-z])\*([a-z])/gi, '$1$2');
+
+  // Remove unnecessary parentheses around products in denominators
+  // Pattern: /(xy) → /xy, /(abc) → /abc
+  result = result.replace(/\/\(([a-z]+)\)/gi, '/$1');
+
+  return result;
+}
+
+/**
  * Check equivalence using Algebrite CAS
  * @param {string} latex1 - First LaTeX expression
  * @param {string} latex2 - Second LaTeX expression
  * @param {number} timeout - Timeout in milliseconds
  * @param {boolean} debug - Enable debug logging
+ * @param {number} tolerance - Tolerance for approximate equality
  * @returns {Object} - { equivalent: boolean, method: string }
  */
-function checkWithAlgebrite(latex1, latex2, timeout = 2000, debug = false) {
+function checkWithAlgebrite(latex1, latex2, timeout = 2000, debug = false, tolerance = FLOAT_TOLERANCE) {
   const startTime = performance.now();
 
   try {
@@ -311,10 +366,10 @@ function checkWithAlgebrite(latex1, latex2, timeout = 2000, debug = false) {
 
     Logger.debug('Algebrite', 'Difference computed', {
       result: difference,
-      isZero: difference === '0' || difference === '0.0'
+      isZero: isApproximatelyZero(difference, tolerance)
     }, ['algebrite', 'difference-result']);
 
-    const isZero = difference === '0' || difference === '0.0';
+    const isZero = isApproximatelyZero(difference, tolerance);
 
     if (isZero) {
       Logger.info('Algebrite', '✓ Difference is zero - expressions are equivalent', {
@@ -324,35 +379,48 @@ function checkWithAlgebrite(latex1, latex2, timeout = 2000, debug = false) {
       return {
         equivalent: true,
         method: 'algebrite-difference',
-        difference: '0',
+        difference: difference,
         expr1,
         expr2,
         time: performance.now() - startTime
       };
     }
 
-    // Try expanding and simplifying both
+    // Try expanding and simplifying both (with trig expansion for identities)
     Logger.debug('Algebrite', 'Trying individual simplification', {}, ['algebrite', 'simplify']);
 
-    const simplified1 = Algebrite.run(`simplify(${expr1})`);
-    const simplified2 = Algebrite.run(`simplify(${expr2})`);
+    // First try with circexp to expand trig functions
+    let simplified1 = Algebrite.run(`simplify(circexp(${expr1}))`);
+    let simplified2 = Algebrite.run(`simplify(circexp(${expr2}))`);
+
+    // If circexp didn't help, try regular simplify
+    if (simplified1.includes('circexp') || simplified2.includes('circexp')) {
+      simplified1 = Algebrite.run(`simplify(${expr1})`);
+      simplified2 = Algebrite.run(`simplify(${expr2})`);
+    }
+
+    // Normalize both by removing explicit multiplication between variables
+    const normalized1 = normalizeAlgebriteExpr(simplified1);
+    const normalized2 = normalizeAlgebriteExpr(simplified2);
 
     Logger.debug('Algebrite', 'Simplification complete', {
       simplified1,
       simplified2,
-      match: simplified1 === simplified2
+      normalized1,
+      normalized2,
+      match: normalized1 === normalized2
     }, ['algebrite', 'simplify-result']);
 
-    if (simplified1 === simplified2) {
+    if (normalized1 === normalized2) {
       Logger.info('Algebrite', '✓ Simplified forms match', {
-        simplified: simplified1,
+        simplified: normalized1,
         time: performance.now() - startTime
       }, ['algebrite', 'success']);
 
       return {
         equivalent: true,
         method: 'algebrite-simplify',
-        simplified: simplified1,
+        simplified: normalized1,
         expr1,
         expr2,
         time: performance.now() - startTime
@@ -389,6 +457,7 @@ function checkWithAlgebrite(latex1, latex2, timeout = 2000, debug = false) {
 /**
  * Convert LaTeX to Algebrite syntax (simplified)
  * Note: This is a basic conversion. For production, use a proper LaTeX parser.
+ * Important: Algebrite uses ^ for exponentiation, not ** (like JavaScript/Python)
  */
 function latexToAlgebrite(latex) {
   let result = latex;
@@ -399,9 +468,9 @@ function latexToAlgebrite(latex) {
     '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9'
   };
 
-  // Replace Unicode superscripts with ^{n}
+  // Replace Unicode superscripts with ^n (Algebrite uses ^ not **)
   for (const [unicode, digit] of Object.entries(superscripts)) {
-    result = result.replace(new RegExp(unicode, 'g'), `**${digit}`);
+    result = result.replace(new RegExp(unicode, 'g'), `^${digit}`);
   }
 
   // Handle Unicode math symbols
@@ -411,11 +480,11 @@ function latexToAlgebrite(latex) {
     .replace(/÷/g, '/')          // Unicode division sign (U+00F7)
 
     // Handle LaTeX commands
-    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1)/($2)')
+    .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '(($1)/($2))')  // Extra parens for safety
     .replace(/\\sqrt\{([^}]+)\}/g, 'sqrt($1)')
-    .replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, '($2)**(1/($1))')  // nth root
-    .replace(/\^{([^}]+)}/g, '**($1)')     // ^{...}
-    .replace(/\^(\w)/g, '**$1')             // ^x
+    .replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, '($2)^(1/($1))')  // nth root: use ^ not **
+    .replace(/\^{([^}]+)}/g, '^($1)')      // ^{...} -> ^(...)
+    .replace(/\^(\w)/g, '^$1')              // ^x stays as ^x (Algebrite syntax)
     .replace(/\\cdot/g, '*')
     .replace(/\\times/g, '*')
     .replace(/\\sin/g, 'sin')
@@ -440,18 +509,89 @@ function latexToAlgebrite(latex) {
     .replace(/\\,/g, '')         // thin space
     .replace(/\\ /g, '');         // space
 
+  // CRITICAL FIX: Handle function exponentiation before implicit multiplication
+  // Convert sin^2(x) to (sin(x))^2 by wrapping function calls
+  // This handles \sin^2(x), \cos^2(x), etc.
+  result = convertFunctionPowers(result);
+
   // Handle implicit multiplication (e.g., "4x" -> "4*x", "2(x+1)" -> "2*(x+1)")
   result = result
-    // Number followed by letter
-    .replace(/(\d)([a-zA-Z])/g, '$1*$2')
-    // Number followed by opening paren
-    .replace(/(\d)\(/g, '$1*(')
+    // Number followed by letter (but not after ^)
+    .replace(/(\d)(?!\^)([a-zA-Z])/g, '$1*$2')
+    // Letter followed by opening paren (except for known functions)
+    .replace(/([a-zA-Z])(?!bs)\(/g, (match, letter, offset, string) => {
+      // Check if this is part of a function name (sin, cos, tan, log, sqrt, abs)
+      const before = string.substring(Math.max(0, offset - 10), offset + 1);
+      if (/(?:sin|cos|tan|log|sqrt|abs)$/.test(before)) {
+        return match; // Don't add * for function calls
+      }
+      return letter + '*(';
+    })
+    // CRITICAL FIX: Adjacent parentheses - closing paren followed by opening paren
+    .replace(/\)\s*\(/g, ')*(')
     // Closing paren followed by number
     .replace(/\)(\d)/g, ')*$1')
     // Closing paren followed by letter
     .replace(/\)([a-zA-Z])/g, ')*$1')
-    // Letter followed by opening paren
-    .replace(/([a-zA-Z])\(/g, '$1*(');
+    // Number followed by opening paren (but not immediately after ^)
+    .replace(/(\d)(?!\^)\(/g, (match, digit, offset, string) => {
+      // Check if the digit is part of an exponent operator (^)
+      if (offset >= 1 && string[offset - 1] === '^') {
+        return match; // Don't add * after exponent
+      }
+      return digit + '*(';
+    });
+
+  return result;
+}
+
+/**
+ * Convert function exponentiation to proper Algebrite syntax
+ * Transforms: sin^2(x) → (sin(x))^2
+ * Handles: sin, cos, tan, log, ln, sqrt
+ */
+function convertFunctionPowers(str) {
+  // Pattern: (function)^digit followed by opening paren
+  // We need to find the matching closing paren and wrap the entire function call
+
+  const funcPattern = /(sin|cos|tan|log|sqrt)\^(\d+)\(/g;
+  let result = str;
+  let match;
+
+  // Use a loop to handle multiple occurrences
+  while ((match = funcPattern.exec(str)) !== null) {
+    const funcName = match[1];
+    const exponent = match[2];
+    const startIdx = match.index;
+    const parenStartIdx = match.index + match[0].length - 1; // Index of opening (
+
+    // Find matching closing parenthesis
+    let depth = 1;
+    let parenEndIdx = parenStartIdx + 1;
+
+    while (depth > 0 && parenEndIdx < str.length) {
+      if (str[parenEndIdx] === '(') depth++;
+      if (str[parenEndIdx] === ')') depth--;
+      parenEndIdx++;
+    }
+
+    if (depth === 0) {
+      // Found matching paren, now reconstruct
+      const arg = str.substring(parenStartIdx + 1, parenEndIdx - 1);
+      const replacement = `(${funcName}(${arg}))^${exponent}`;
+
+      // Replace in result
+      result = str.substring(0, startIdx) + replacement + str.substring(parenEndIdx);
+
+      // Update str for next iteration
+      str = result;
+
+      // Reset regex lastIndex since we modified the string
+      funcPattern.lastIndex = 0;
+    } else {
+      break; // Malformed expression
+    }
+  }
 
   return result;
 }
