@@ -120,10 +120,13 @@ export class TilingEngine {
     const tiles = [];
     const contentWidth = bounds.maxX - bounds.minX;
 
-    // Single tile if content fits
-    if (contentWidth <= this.modelConfig.inputSize.width) {
+    // Single tile if content fits in max tile width
+    if (contentWidth <= this.modelConfig.maxTileWidth) {
+      // Filter out row dividers for single tile
+      const filteredElements = elements.filter(el => !(el.type === 'line' && el.isRowDivider));
+
       const tile = this.createVariableTile(
-        elements,
+        filteredElements,
         bounds,
         0,
         mathUnits,
@@ -249,8 +252,9 @@ export class TilingEngine {
       // Store reference for next iteration
       previousTile = tile;
 
-      // Move to next position (non-overlapping start)
-      currentX = tileEndX;
+      // Move to next position (with overlap)
+      // Next tile starts overlap.size pixels before this tile ends
+      currentX = tileEndX - (rightOverlapSize > 0 ? this.overlapConfig.size : 0);
       tileIndex++;
     }
 

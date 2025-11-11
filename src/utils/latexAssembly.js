@@ -32,8 +32,6 @@ export class LatexTokenizer {
     const tokens = [];
     let current = '';
     let inCommand = false;
-    let braceDepth = 0;
-    let bracketContent = '';
 
     for (let i = 0; i < latex.length; i++) {
       const char = latex[i];
@@ -42,7 +40,7 @@ export class LatexTokenizer {
       if (char === '\\') {
         // Start of command
         if (current && !inCommand) {
-          tokens.push(current);
+          this.pushTokenizedContent(current, tokens);
           current = '';
         }
         inCommand = true;
@@ -50,49 +48,38 @@ export class LatexTokenizer {
       } else if (inCommand && /[a-zA-Z]/.test(char)) {
         // Continue command
         current += char;
-      } else if (char === '{') {
-        // Opening brace
+      } else if (char === '{' || char === '}') {
+        // Brace
         if (inCommand) {
           tokens.push(current);
           current = '';
           inCommand = false;
         } else if (current) {
-          tokens.push(current);
+          this.pushTokenizedContent(current, tokens);
           current = '';
         }
+        tokens.push(char);
 
-        braceDepth++;
-        tokens.push('{');
-
-      } else if (char === '}') {
-        // Closing brace
-        if (current) {
-          tokens.push(current);
-          current = '';
-        }
-        braceDepth--;
-        tokens.push('}');
-
-      } else if (char === ' ' && braceDepth === 0) {
-        // Space at top level (separator)
+      } else if (char === ' ') {
+        // Space (separator)
         if (inCommand) {
           tokens.push(current);
           current = '';
           inCommand = false;
         } else if (current.trim()) {
-          tokens.push(current);
+          this.pushTokenizedContent(current, tokens);
           current = '';
         }
         // Skip the space itself (it's a separator)
 
-      } else if (this.isOperator(char) && braceDepth === 0) {
-        // Operator at top level
+      } else if (this.isOperator(char)) {
+        // Operator
         if (inCommand) {
           tokens.push(current);
           current = '';
           inCommand = false;
         } else if (current) {
-          tokens.push(current);
+          this.pushTokenizedContent(current, tokens);
           current = '';
         }
         tokens.push(char);
@@ -104,16 +91,48 @@ export class LatexTokenizer {
           current = '';
           inCommand = false;
         }
+
+        // Check if we need to split number from letter (e.g., "4x" -> "4", "x")
+        if (current.length > 0) {
+          const currentIsDigit = /\d/.test(current[current.length - 1]);
+          const charIsLetter = /[a-zA-Z]/.test(char);
+          const charIsDigit = /\d/.test(char);
+          const currentIsLetter = /[a-zA-Z]/.test(current[current.length - 1]);
+
+          if ((currentIsDigit && charIsLetter) || (currentIsLetter && charIsDigit)) {
+            // Split: push current and start new token
+            this.pushTokenizedContent(current, tokens);
+            current = char;
+            continue;
+          }
+        }
+
         current += char;
       }
     }
 
     // Push remaining content
     if (current) {
-      tokens.push(current);
+      this.pushTokenizedContent(current, tokens);
     }
 
     return tokens.filter(t => t.length > 0);
+  }
+
+  /**
+   * Push content as tokens, splitting numbers from letters if needed
+   */
+  pushTokenizedContent(content, tokens) {
+    if (!content) return;
+
+    // Split content into numbers and non-numbers
+    const parts = content.match(/(\d+|[^\d]+)/g) || [content];
+
+    for (const part of parts) {
+      if (part.trim()) {
+        tokens.push(part);
+      }
+    }
   }
 
   /**
@@ -129,14 +148,13 @@ export class LatexTokenizer {
       const token = tokens[i];
       const nextToken = i < tokens.length - 1 ? tokens[i + 1] : null;
 
-      // Add the token
-      result += token;
-
-      // Decide whether to add space after
-      const needsSpace = this.needsSpaceAfter(token, nextToken, prevToken);
-      if (needsSpace) {
+      // Add space before token if needed
+      if (prevToken && this.needsSpaceBefore(token, prevToken)) {
         result += ' ';
       }
+
+      // Add the token
+      result += token;
 
       prevToken = token;
     }
@@ -145,31 +163,45 @@ export class LatexTokenizer {
   }
 
   /**
-   * Determine if space is needed after token
+   * Determine if space is needed before token
    */
-  needsSpaceAfter(token, nextToken, prevToken) {
-    if (!nextToken) return false;
+  needsSpaceBefore(token, prevToken) {
+    if (!prevToken) return false;
 
     // No space after opening brace
-    if (token === '{') return false;
+    if (prevToken === '{') return false;
 
     // No space before closing brace
-    if (nextToken === '}') return false;
+    if (token === '}') return false;
 
-    // Space after commands
-    if (token.startsWith('\\')) {
-      // Unless followed by brace
-      if (nextToken === '{' || nextToken === '}') return false;
-      return true;
-    }
+    // No space before opening brace (except after commands)
+    if (token === '{' && !prevToken.startsWith('\\')) return false;
 
-    // Space around operators (except ^ and _)
+    // No space after ^ or _
+    if (prevToken === '^' || prevToken === '_') return false;
+
+    // No space before ^ or _
+    if (token === '^' || token === '_') return false;
+
+    // Space before operators (except ^ and _)
     if (this.isOperator(token) && token !== '^' && token !== '_') {
       return true;
     }
 
-    // Space after numbers/variables before commands
-    if (nextToken.startsWith('\\')) return true;
+    // Space after operators (except ^ and _)
+    if (this.isOperator(prevToken) && prevToken !== '^' && prevToken !== '_') {
+      return true;
+    }
+
+    // Space after commands (unless followed by brace)
+    if (prevToken.startsWith('\\') && token !== '{' && token !== '}') {
+      return true;
+    }
+
+    // Space before commands
+    if (token.startsWith('\\')) {
+      return true;
+    }
 
     return false;
   }
@@ -408,7 +440,7 @@ export class RestorativeLatexAssembler {
       };
     }
 
-    // Normalize whitespace
+    // Normalize whitespace for identity check
     const leftNorm = normalizeLatex(left);
     const rightNorm = normalizeLatex(right);
 
@@ -422,18 +454,35 @@ export class RestorativeLatexAssembler {
       };
     }
 
-    // Calculate similarity
-    const similarity = similarityRatio(leftNorm, rightNorm);
+    // Calculate similarity on original strings (with spaces) for better accuracy
+    const similarity = similarityRatio(left.trim(), right.trim());
     const distance = levenshteinDistance(leftNorm, rightNorm);
 
+    // Also check for common content (token overlap)
+    const leftTokens = this.tokenizer.tokenize(left);
+    const rightTokens = this.tokenizer.tokenize(right);
+    const commonTokens = leftTokens.filter(t => rightTokens.includes(t));
+    const tokenOverlap = commonTokens.length / Math.max(leftTokens.length, rightTokens.length);
+
+    // Consider similar if either:
+    // 1. String similarity is above threshold (0.85)
+    // 2. Token overlap is high (>50%) - indicates mostly shared tokens
+    // 3. Token overlap is moderate (>40%) AND string similarity is good (>0.7)
+    // This handles imperfect token extraction while avoiding false positives
     const threshold = this.config.restorativeMerge.similarityThreshold;
-    const similar = similarity >= threshold;
+    const similar = similarity >= threshold ||
+                    tokenOverlap > 0.5 ||
+                    (tokenOverlap > 0.4 && similarity > 0.7);
+
+    // Adjust similarity to account for token overlap (but not too much)
+    const adjustedSimilarity = Math.max(similarity, tokenOverlap * 0.88);
 
     return {
       identical: false,
       similar,
-      similarity,
-      editDistance: distance
+      similarity: adjustedSimilarity,
+      editDistance: distance,
+      tokenOverlap
     };
   }
 

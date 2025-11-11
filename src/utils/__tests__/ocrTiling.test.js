@@ -3,6 +3,7 @@
  * Demonstrates various tiling scenarios
  */
 
+import { vi } from 'vitest';
 import { TilingEngine } from '../ocrTiling';
 import { getActiveModelConfig } from '../../config/ocrModels';
 
@@ -315,7 +316,7 @@ describe('TilingEngine', () => {
     });
 
     test('should respect cache TTL', () => {
-      jest.useFakeTimers();
+      vi.useFakeTimers();
 
       const hash = 'test-hash-456';
       const data = { latex: 'y = mx + b', timestamp: Date.now() };
@@ -323,12 +324,12 @@ describe('TilingEngine', () => {
       engine.cacheTile(hash, data);
 
       // Fast forward 2 hours
-      jest.advanceTimersByTime(2 * 60 * 60 * 1000);
+      vi.advanceTimersByTime(2 * 60 * 60 * 1000);
 
       const cached = engine.getCachedTile(hash);
       expect(cached).toBeNull(); // Should be expired
 
-      jest.useRealTimers();
+      vi.useRealTimers();
     });
   });
 

@@ -74,8 +74,8 @@ export class MathUnitDetector {
         maxY: line.y + 60
       });
 
-      // Require substantial content both above and below
-      if (above.length >= 2 && below.length >= 2) {
+      // Require content both above and below (at least 1 each)
+      if (above.length >= 1 && below.length >= 1) {
         const allElements = [
           line,
           ...above.map(r => r.element),
