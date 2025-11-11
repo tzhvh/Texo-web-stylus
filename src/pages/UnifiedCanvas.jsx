@@ -3,23 +3,23 @@
  * Full-screen sketching surface with ruled lines, OCR tiles, and sequential CAS validation
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw';
-import { useRowSystem } from '../hooks/useRowSystem';
-import { useAutoValidation } from '../hooks/useAutoValidation';
-import { useCanvasPersistence } from '../hooks/useCanvasPersistence';
-import { TilingEngine } from '../utils/ocrTiling';
-import { RestorativeLatexAssembler } from '../utils/latexAssembly';
-import { OCRWorkerPool } from '../workers/ocrWorkerPool';
-import { getActiveModelConfig } from '../config/ocrModels';
-import Logger from '../utils/logger';
-import './UnifiedCanvas.css';
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
+import { useRowSystem } from "../hooks/useRowSystem";
+import { useAutoValidation } from "../hooks/useAutoValidation";
+import { useCanvasPersistence } from "../hooks/useCanvasPersistence";
+import { TilingEngine } from "../utils/ocrTiling";
+import { RestorativeLatexAssembler } from "../utils/latexAssembly";
+import { OCRWorkerPool } from "../workers/ocrWorkerPool";
+import { getActiveModelConfig } from "../config/ocrModels";
+import Logger from "../utils/logger";
+import "./MagicCanvas.css";
 
 const ROW_HEIGHT = 384; // Match model input size
-const ROW_COLOR = '#e5e7eb'; // gray-200
+const ROW_COLOR = "#e5e7eb"; // gray-200
 const ROW_DIVIDER_OPACITY = 30;
 
-function UnifiedCanvas() {
+function MagicCanvas() {
   // Excalidraw API
   const [excalidrawAPI, setExcalidrawAPI] = useState(null);
 
@@ -32,7 +32,7 @@ function UnifiedCanvas() {
     selectRow,
     updateOCRStatus,
     updateValidationStatus,
-    getAllRows
+    getAllRows,
   } = useRowSystem(ROW_HEIGHT);
 
   // OCR & Processing
@@ -59,10 +59,10 @@ function UnifiedCanvas() {
     updateValidationStatus,
     enabled: autoValidationEnabled,
     config: {
-      region: 'US',
+      region: "US",
       useAlgebrite: true,
-      debug: debugMode
-    }
+      debug: debugMode,
+    },
   });
 
   // Canvas persistence
@@ -73,20 +73,20 @@ function UnifiedCanvas() {
     isSaving,
     lastSaved,
     hasUnsavedChanges,
-    markDirty
-  } = useCanvasPersistence('unified-canvas-doc');
+    markDirty,
+  } = useCanvasPersistence("unified-canvas-doc");
 
   // Initialize engines
   useEffect(() => {
-    Logger.info('UnifiedCanvas', 'Initializing');
+    Logger.info("MagicCanvas", "Initializing");
 
     tilingEngineRef.current = new TilingEngine(ROW_HEIGHT);
     latexAssemblerRef.current = new RestorativeLatexAssembler();
     workerPoolRef.current = new OCRWorkerPool(2);
 
     // Initialize worker pool
-    workerPoolRef.current.initialize(modelConfig).catch(err => {
-      Logger.error('UnifiedCanvas', 'Worker pool initialization failed', err);
+    workerPoolRef.current.initialize(modelConfig).catch((err) => {
+      Logger.error("MagicCanvas", "Worker pool initialization failed", err);
     });
 
     return () => {
@@ -112,17 +112,20 @@ function UnifiedCanvas() {
 
       dividers.push({
         id: `row-divider-${i}`,
-        type: 'line',
+        type: "line",
         x: viewport.x - 500, // Extend beyond viewport
         y,
         width: lineWidth,
         height: 0,
         // Required for Excalidraw line elements
-        points: [[0, 0], [lineWidth, 0]], // Horizontal line
+        points: [
+          [0, 0],
+          [lineWidth, 0],
+        ], // Horizontal line
         strokeColor: ROW_COLOR,
-        backgroundColor: 'transparent',
+        backgroundColor: "transparent",
         strokeWidth: 1,
-        strokeStyle: 'solid',
+        strokeStyle: "solid",
         opacity: ROW_DIVIDER_OPACITY,
         locked: true,
         isRowDivider: true,
@@ -137,7 +140,7 @@ function UnifiedCanvas() {
         boundElements: null,
         updated: Date.now(),
         link: null,
-        locked: true
+        locked: true,
       });
     }
 
@@ -147,146 +150,163 @@ function UnifiedCanvas() {
   /**
    * Handle scene change - update row assignments
    */
-  const handleSceneChange = useCallback((elements, appState) => {
-    if (!elements) return;
+  const handleSceneChange = useCallback(
+    (elements, appState) => {
+      if (!elements) return;
 
-    // Filter out row dividers
-    const contentElements = elements.filter(el => !el.isRowDivider);
+      // Filter out row dividers
+      const contentElements = elements.filter((el) => !el.isRowDivider);
 
-    // Update row assignments
-    updateRows(contentElements);
-
-  }, [updateRows]);
+      // Update row assignments
+      updateRows(contentElements);
+    },
+    [updateRows],
+  );
 
   /**
    * Process a specific row with OCR
    */
-  const processRow = useCallback(async (rowId) => {
-    if (!excalidrawAPI || !tilingEngineRef.current || !workerPoolRef.current) {
-      Logger.warn('UnifiedCanvas', 'Not ready to process row', { rowId });
-      return;
-    }
-
-    setIsProcessing(true);
-    setProcessingRowId(rowId);
-
-    try {
-      Logger.info('UnifiedCanvas', `Processing row ${rowId}`);
-
-      // Update status
-      updateOCRStatus(rowId, 'processing', { progress: 0 });
-
-      // Get row elements
-      const allElements = excalidrawAPI.getSceneElements();
-      const rowElements = getRowElements(rowId, allElements);
-
-      if (rowElements.length === 0) {
-        Logger.warn('UnifiedCanvas', `Row ${rowId} is empty`);
-        updateOCRStatus(rowId, 'complete', { latex: '', tiles: [] });
+  const processRow = useCallback(
+    async (rowId) => {
+      if (
+        !excalidrawAPI ||
+        !tilingEngineRef.current ||
+        !workerPoolRef.current
+      ) {
+        Logger.warn("MagicCanvas", "Not ready to process row", { rowId });
         return;
       }
 
-      // Generate tiles
-      const tiles = await tilingEngineRef.current.generateRowTiles(
-        rowId,
-        rowElements,
-        10000 // Canvas width
-      );
+      setIsProcessing(true);
+      setProcessingRowId(rowId);
 
-      Logger.info('UnifiedCanvas', `Generated ${tiles.length} tiles for row ${rowId}`);
+      try {
+        Logger.info("MagicCanvas", `Processing row ${rowId}`);
 
-      if (tiles.length === 0) {
-        updateOCRStatus(rowId, 'complete', { latex: '', tiles: [] });
-        return;
-      }
+        // Update status
+        updateOCRStatus(rowId, "processing", { progress: 0 });
 
-      // Render tiles to blobs
-      setProgress({ completed: 0, total: tiles.length });
+        // Get row elements
+        const allElements = excalidrawAPI.getSceneElements();
+        const rowElements = getRowElements(rowId, allElements);
 
-      for (let i = 0; i < tiles.length; i++) {
-        const tile = tiles[i];
+        if (rowElements.length === 0) {
+          Logger.warn("MagicCanvas", `Row ${rowId} is empty`);
+          updateOCRStatus(rowId, "complete", { latex: "", tiles: [] });
+          return;
+        }
 
-        // Render tile to blob
-        const blob = await renderTile(tile, excalidrawAPI);
-        tile.blob = blob;
+        // Generate tiles
+        const tiles = await tilingEngineRef.current.generateRowTiles(
+          rowId,
+          rowElements,
+          10000, // Canvas width
+        );
 
-        setProgress({ completed: i + 1, total: tiles.length, phase: 'rendering' });
-      }
+        Logger.info(
+          "MagicCanvas",
+          `Generated ${tiles.length} tiles for row ${rowId}`,
+        );
 
-      // Process tiles with OCR worker pool
-      updateOCRStatus(rowId, 'processing', { progress: 0.3, tiles });
+        if (tiles.length === 0) {
+          updateOCRStatus(rowId, "complete", { latex: "", tiles: [] });
+          return;
+        }
 
-      await workerPoolRef.current.processTiles(tiles, (progress) => {
-        updateOCRStatus(rowId, 'processing', {
-          progress: 0.3 + (progress.percentage * 0.5 / 100),
-          tiles
+        // Render tiles to blobs
+        setProgress({ completed: 0, total: tiles.length });
+
+        for (let i = 0; i < tiles.length; i++) {
+          const tile = tiles[i];
+
+          // Render tile to blob
+          const blob = await renderTile(tile, excalidrawAPI);
+          tile.blob = blob;
+
+          setProgress({
+            completed: i + 1,
+            total: tiles.length,
+            phase: "rendering",
+          });
+        }
+
+        // Process tiles with OCR worker pool
+        updateOCRStatus(rowId, "processing", { progress: 0.3, tiles });
+
+        await workerPoolRef.current.processTiles(tiles, (progress) => {
+          updateOCRStatus(rowId, "processing", {
+            progress: 0.3 + (progress.percentage * 0.5) / 100,
+            tiles,
+          });
+          setProgress({
+            completed: progress.completed,
+            total: progress.total,
+            phase: "ocr",
+          });
         });
-        setProgress({
-          completed: progress.completed,
-          total: progress.total,
-          phase: 'ocr'
+
+        Logger.info("MagicCanvas", `OCR complete for row ${rowId}`);
+
+        // Assemble LaTeX from tiles
+        updateOCRStatus(rowId, "processing", { progress: 0.8 });
+
+        const assemblyResult = latexAssemblerRef.current.assembleTiles(tiles);
+
+        Logger.info("MagicCanvas", `Assembly complete for row ${rowId}`, {
+          latex: assemblyResult.latex,
+          confidence: assemblyResult.confidence,
+          repairs: assemblyResult.repairs.length,
         });
-      });
 
-      Logger.info('UnifiedCanvas', `OCR complete for row ${rowId}`);
-
-      // Assemble LaTeX from tiles
-      updateOCRStatus(rowId, 'processing', { progress: 0.8 });
-
-      const assemblyResult = latexAssemblerRef.current.assembleTiles(tiles);
-
-      Logger.info('UnifiedCanvas', `Assembly complete for row ${rowId}`, {
-        latex: assemblyResult.latex,
-        confidence: assemblyResult.confidence,
-        repairs: assemblyResult.repairs.length
-      });
-
-      // Update row with results
-      updateOCRStatus(rowId, 'complete', {
-        latex: assemblyResult.latex,
-        tiles,
-        confidence: assemblyResult.confidence,
-        repairs: assemblyResult.repairs,
-        progress: 1.0
-      });
-
-    } catch (error) {
-      Logger.error('UnifiedCanvas', `Error processing row ${rowId}`, error);
-      updateOCRStatus(rowId, 'error', { error: error.message });
-    } finally {
-      setIsProcessing(false);
-      setProcessingRowId(null);
-      setProgress({ completed: 0, total: 0 });
-    }
-  }, [excalidrawAPI, getRowElements, updateOCRStatus]);
+        // Update row with results
+        updateOCRStatus(rowId, "complete", {
+          latex: assemblyResult.latex,
+          tiles,
+          confidence: assemblyResult.confidence,
+          repairs: assemblyResult.repairs,
+          progress: 1.0,
+        });
+      } catch (error) {
+        Logger.error("MagicCanvas", `Error processing row ${rowId}`, error);
+        updateOCRStatus(rowId, "error", { error: error.message });
+      } finally {
+        setIsProcessing(false);
+        setProcessingRowId(null);
+        setProgress({ completed: 0, total: 0 });
+      }
+    },
+    [excalidrawAPI, getRowElements, updateOCRStatus],
+  );
 
   /**
    * Render tile to blob using Excalidraw's export
    */
   const renderTile = async (tile, api) => {
     // Transform elements to tile coordinate system
-    const transformedElements = tile.elements.map(el => ({
+    const transformedElements = tile.elements.map((el) => ({
       ...el,
       x: (el.x - tile.bounds.minX) * tile.scale + tile.padding.x,
       y: (el.y - tile.bounds.minY) * tile.scale + tile.padding.y,
       width: (el.width || 0) * tile.scale,
       height: (el.height || 0) * tile.scale,
       strokeWidth: (el.strokeWidth || 2) * tile.scale,
-      points: el.points ? el.points.map(p => [p[0] * tile.scale, p[1] * tile.scale]) : undefined
+      points: el.points
+        ? el.points.map((p) => [p[0] * tile.scale, p[1] * tile.scale])
+        : undefined,
     }));
 
     const blob = await exportToBlob({
       elements: transformedElements,
       appState: {
         exportBackground: true,
-        viewBackgroundColor: modelConfig.paddingColor || '#FFFFFF'
+        viewBackgroundColor: modelConfig.paddingColor || "#FFFFFF",
       },
       files: api.getFiles(),
       getDimensions: () => ({
         width: tile.outputWidth,
-        height: tile.outputHeight
+        height: tile.outputHeight,
       }),
-      exportPadding: 0
+      exportPadding: 0,
     });
 
     return blob;
@@ -297,15 +317,15 @@ function UnifiedCanvas() {
    */
   const processAllRows = useCallback(async () => {
     const allRows = getAllRows();
-    const rowsWithContent = allRows.filter(row => row.elementIds.size > 0);
+    const rowsWithContent = allRows.filter((row) => row.elementIds.size > 0);
 
-    Logger.info('UnifiedCanvas', `Processing ${rowsWithContent.length} rows`);
+    Logger.info("MagicCanvas", `Processing ${rowsWithContent.length} rows`);
 
     for (const row of rowsWithContent) {
       await processRow(row.id);
     }
 
-    Logger.info('UnifiedCanvas', 'All rows processed');
+    Logger.info("MagicCanvas", "All rows processed");
   }, [getAllRows, processRow]);
 
   /**
@@ -326,7 +346,7 @@ function UnifiedCanvas() {
       elements,
       appState,
       files,
-      rowData
+      rowData,
     });
   }, [excalidrawAPI, getAllRows, saveCanvas]);
 
@@ -339,12 +359,12 @@ function UnifiedCanvas() {
     if (data && excalidrawAPI) {
       excalidrawAPI.updateScene({
         elements: data.elements,
-        appState: data.appState
+        appState: data.appState,
       });
 
       // TODO: Load row data
 
-      Logger.info('UnifiedCanvas', 'Canvas loaded');
+      Logger.info("MagicCanvas", "Canvas loaded");
     }
   }, [excalidrawAPI, loadCanvas]);
 
@@ -366,17 +386,20 @@ function UnifiedCanvas() {
       elements,
       appState,
       files,
-      rowData
+      rowData,
     });
   }, [excalidrawAPI, getAllRows, exportCanvas]);
 
   /**
    * Handle row click (selection)
    */
-  const handleRowClick = useCallback((rowId) => {
-    selectRow(rowId);
-    Logger.debug('UnifiedCanvas', `Selected row ${rowId}`);
-  }, [selectRow]);
+  const handleRowClick = useCallback(
+    (rowId) => {
+      selectRow(rowId);
+      Logger.debug("MagicCanvas", `Selected row ${rowId}`);
+    },
+    [selectRow],
+  );
 
   /**
    * Generate and inject row dividers when API is ready
@@ -394,14 +417,17 @@ function UnifiedCanvas() {
         x: appState.scrollX || 0,
         y: appState.scrollY || 0,
         width: appState.width || window.innerWidth,
-        height: appState.height || window.innerHeight
+        height: appState.height || window.innerHeight,
       };
 
       const dividers = generateRowDividers(viewport);
 
-      Logger.debug('UnifiedCanvas', `Initializing ${dividers.length} row dividers`);
+      Logger.debug(
+        "MagicCanvas",
+        `Initializing ${dividers.length} row dividers`,
+      );
       excalidrawAPI.updateScene({
-        elements: dividers
+        elements: dividers,
       });
 
       dividersInitializedRef.current = true;
@@ -416,7 +442,7 @@ function UnifiedCanvas() {
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Ctrl+Enter: Process selected row or all rows
-      if (e.ctrlKey && e.key === 'Enter') {
+      if (e.ctrlKey && e.key === "Enter") {
         e.preventDefault();
         if (selectedRow !== null) {
           processRow(selectedRow);
@@ -426,13 +452,13 @@ function UnifiedCanvas() {
       }
 
       // D key: Toggle debug mode
-      if (e.key === 'd' && !e.ctrlKey && !e.altKey) {
-        setDebugMode(prev => !prev);
+      if (e.key === "d" && !e.ctrlKey && !e.altKey) {
+        setDebugMode((prev) => !prev);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedRow, processRow, processAllRows]);
 
   /**
@@ -446,10 +472,10 @@ function UnifiedCanvas() {
       x: appState.scrollX,
       y: appState.scrollY,
       width: appState.width,
-      height: appState.height
+      height: appState.height,
     };
 
-    const visibleRows = Array.from(rows.values()).filter(row => {
+    const visibleRows = Array.from(rows.values()).filter((row) => {
       const rowTop = row.y;
       const rowBottom = row.y + row.height;
       return rowBottom >= viewport.y && rowTop <= viewport.y + viewport.height;
@@ -457,7 +483,7 @@ function UnifiedCanvas() {
 
     return (
       <div className="row-overlays">
-        {visibleRows.map(row => (
+        {visibleRows.map((row) => (
           <RowOverlay
             key={row.id}
             row={row}
@@ -481,22 +507,22 @@ function UnifiedCanvas() {
           onChange={handleSceneChange}
           initialData={{
             appState: {
-              viewBackgroundColor: '#ffffff',
-              currentItemStrokeColor: '#000000',
+              viewBackgroundColor: "#ffffff",
+              currentItemStrokeColor: "#000000",
               currentItemStrokeWidth: 2,
               currentItemRoughness: 0, // Smooth lines for better OCR
               gridSize: null,
-              zoom: { value: 1 }
+              zoom: { value: 1 },
             },
-            elements: []
+            elements: [],
           }}
           UIOptions={{
             canvasActions: {
               loadScene: false,
               saveAsImage: false,
               export: false,
-              clearCanvas: false
-            }
+              clearCanvas: false,
+            },
           }}
         />
       </div>
@@ -513,7 +539,7 @@ function UnifiedCanvas() {
           disabled={isProcessing}
           className="btn btn-primary"
         >
-          {isProcessing ? 'Processing...' : 'Process All Rows'}
+          {isProcessing ? "Processing..." : "Process All Rows"}
         </button>
 
         {selectedRow !== null && (
@@ -530,7 +556,7 @@ function UnifiedCanvas() {
           onClick={() => setDebugMode(!debugMode)}
           className="btn btn-outline"
         >
-          Debug: {debugMode ? 'ON' : 'OFF'}
+          Debug: {debugMode ? "ON" : "OFF"}
         </button>
 
         <button
@@ -538,37 +564,37 @@ function UnifiedCanvas() {
           disabled={isValidating || rows.size < 2}
           className="btn btn-success"
         >
-          {isValidating ? 'Validating...' : 'Validate All'}
+          {isValidating ? "Validating..." : "Validate All"}
         </button>
 
         <button
           onClick={() => setAutoValidationEnabled(!autoValidationEnabled)}
           className="btn btn-outline"
         >
-          Auto-Validate: {autoValidationEnabled ? 'ON' : 'OFF'}
+          Auto-Validate: {autoValidationEnabled ? "ON" : "OFF"}
         </button>
 
-        <div style={{ borderLeft: '1px solid #e5e7eb', height: '24px', margin: '0 4px' }} />
+        <div
+          style={{
+            borderLeft: "1px solid #e5e7eb",
+            height: "24px",
+            margin: "0 4px",
+          }}
+        />
 
         <button
           onClick={handleSave}
           disabled={isSaving}
           className="btn btn-outline"
         >
-          {isSaving ? 'Saving...' : 'Save'}
+          {isSaving ? "Saving..." : "Save"}
         </button>
 
-        <button
-          onClick={handleLoad}
-          className="btn btn-outline"
-        >
+        <button onClick={handleLoad} className="btn btn-outline">
           Load
         </button>
 
-        <button
-          onClick={handleExport}
-          className="btn btn-outline"
-        >
+        <button onClick={handleExport} className="btn btn-outline">
           Export
         </button>
 
@@ -578,7 +604,11 @@ function UnifiedCanvas() {
             <span>
               Processing row {processingRowId}
               {progress.total > 0 && (
-                <> ({progress.completed}/{progress.total} {progress.phase || 'tiles'})</>
+                <>
+                  {" "}
+                  ({progress.completed}/{progress.total}{" "}
+                  {progress.phase || "tiles"})
+                </>
               )}
             </span>
           )}
@@ -593,7 +623,9 @@ function UnifiedCanvas() {
         {lastSaved && (
           <span>Last saved: {new Date(lastSaved).toLocaleTimeString()}</span>
         )}
-        {hasUnsavedChanges && <span style={{ color: '#f59e0b' }}>● Unsaved changes</span>}
+        {hasUnsavedChanges && (
+          <span style={{ color: "#f59e0b" }}>● Unsaved changes</span>
+        )}
       </div>
     </div>
   );
@@ -609,44 +641,52 @@ function RowOverlay({ row, viewport, zoom, selected, onClick, debugMode }) {
 
   // Position overlay at row
   const style = {
-    position: 'absolute',
+    position: "absolute",
     top: `${canvasY}px`,
     left: `${viewport.x}px`,
     width: `${viewport.width}px`,
     height: `${canvasHeight}px`,
-    pointerEvents: 'none'
+    pointerEvents: "none",
   };
 
   // Add validation class
-  const validationClass = row.validationStatus !== 'unchecked' ? `validation-${row.validationStatus}` : '';
+  const validationClass =
+    row.validationStatus !== "unchecked"
+      ? `validation-${row.validationStatus}`
+      : "";
 
   return (
-    <div className={`row-overlay ${selected ? 'selected' : ''} ${validationClass}`} style={style}>
+    <div
+      className={`row-overlay ${selected ? "selected" : ""} ${validationClass}`}
+      style={style}
+    >
       {/* Row number */}
       <div className="row-number">{row.id}</div>
 
       {/* OCR Status */}
-      {row.ocrStatus !== 'pending' && (
+      {row.ocrStatus !== "pending" && (
         <div className={`ocr-status status-${row.ocrStatus}`}>
-          {row.ocrStatus === 'processing' && `Processing... ${(row.ocrProgress * 100).toFixed(0)}%`}
-          {row.ocrStatus === 'complete' && '✓ OCR Complete'}
-          {row.ocrStatus === 'error' && '✗ OCR Error'}
+          {row.ocrStatus === "processing" &&
+            `Processing... ${(row.ocrProgress * 100).toFixed(0)}%`}
+          {row.ocrStatus === "complete" && "✓ OCR Complete"}
+          {row.ocrStatus === "error" && "✗ OCR Error"}
         </div>
       )}
 
       {/* LaTeX output */}
       {row.latex && (
         <div className="row-latex">
-          {row.latex.substring(0, 100)}{row.latex.length > 100 ? '...' : ''}
+          {row.latex.substring(0, 100)}
+          {row.latex.length > 100 ? "..." : ""}
         </div>
       )}
 
       {/* Validation status */}
-      {row.validationStatus !== 'unchecked' && (
+      {row.validationStatus !== "unchecked" && (
         <div className={`validation-status status-${row.validationStatus}`}>
-          {row.validationStatus === 'valid' && '✓'}
-          {row.validationStatus === 'invalid' && '✗'}
-          {row.validationStatus === 'error' && '⚠️'}
+          {row.validationStatus === "valid" && "✓"}
+          {row.validationStatus === "invalid" && "✗"}
+          {row.validationStatus === "error" && "⚠️"}
         </div>
       )}
 
@@ -656,7 +696,12 @@ function RowOverlay({ row, viewport, zoom, selected, onClick, debugMode }) {
           <div>Elements: {row.elementIds.size}</div>
           <div>Tiles: {row.tiles?.length || 0}</div>
           {row.tiles && row.tiles.length > 0 && (
-            <div>Tile dims: {row.tiles.map(t => `${t.logicalWidth}x${t.logicalHeight}`).join(', ')}</div>
+            <div>
+              Tile dims:{" "}
+              {row.tiles
+                .map((t) => `${t.logicalWidth}x${t.logicalHeight}`)
+                .join(", ")}
+            </div>
           )}
         </div>
       )}
@@ -664,11 +709,11 @@ function RowOverlay({ row, viewport, zoom, selected, onClick, debugMode }) {
       {/* Click handler */}
       <div
         className="row-clickable"
-        style={{ pointerEvents: 'all', cursor: 'pointer' }}
+        style={{ pointerEvents: "all", cursor: "pointer" }}
         onClick={onClick}
       />
     </div>
   );
 }
 
-export default UnifiedCanvas;
+export default MagicCanvas;
