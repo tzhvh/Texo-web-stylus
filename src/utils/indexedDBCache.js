@@ -1,33 +1,23 @@
 /**
  * IndexedDB Cache for Canonical Forms
- * Stores canonicalized expressions for fast lookup
+ * Now uses workspace-based storage via workspaceDB
+ * Maintains backward compatibility with existing API
  */
 
-const DB_NAME = 'texo-cas-cache';
-const DB_VERSION = 1;
-const STORE_NAME = 'canonical-forms';
+import {
+  initWorkspaceDB,
+  cacheCanonicalForm as workspaceCacheCanonical,
+  getCachedCanonicalForm as workspaceGetCachedCanonical,
+  clearCASCache as workspaceClearCASCache,
+  getCacheStats as workspaceGetCacheStats,
+  logDiagnostic
+} from './workspaceDB.js';
 
 /**
- * Initialize IndexedDB
+ * Initialize IndexedDB (now uses workspace system)
  */
 export function initDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-
-      // Create object store if it doesn't exist
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'latex' });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
-        store.createIndex('canonical', 'canonical', { unique: false });
-      }
-    };
-  });
+  return initWorkspaceDB();
 }
 
 /**
@@ -37,24 +27,8 @@ export function initDB() {
  * @param {Object} metadata - Additional metadata
  */
 export async function cacheCanonicalForm(latex, canonical, metadata = {}) {
-  const db = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-
-    const data = {
-      latex,
-      canonical,
-      timestamp: Date.now(),
-      ...metadata
-    };
-
-    const request = store.put(data);
-
-    request.onsuccess = () => resolve(data);
-    request.onerror = () => reject(request.error);
-  });
+  await logDiagnostic('debug', 'cas', `Caching canonical form for: ${latex.substring(0, 50)}...`);
+  return workspaceCacheCanonical(latex, canonical, metadata);
 }
 
 /**
@@ -63,32 +37,11 @@ export async function cacheCanonicalForm(latex, canonical, metadata = {}) {
  * @returns {Object|null} - Cached data or null if not found
  */
 export async function getCachedCanonicalForm(latex) {
-  const db = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(latex);
-
-    request.onsuccess = () => {
-      if (request.result) {
-        // Check if cache is stale (older than 7 days)
-        const age = Date.now() - request.result.timestamp;
-        const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-        if (age < maxAge) {
-          resolve(request.result);
-        } else {
-          // Stale cache, delete it
-          deleteFromCache(latex).then(() => resolve(null));
-        }
-      } else {
-        resolve(null);
-      }
-    };
-
-    request.onerror = () => reject(request.error);
-  });
+  const result = await workspaceGetCachedCanonical(latex, 7);
+  if (result) {
+    await logDiagnostic('debug', 'cas', `Cache hit for: ${latex.substring(0, 50)}...`);
+  }
+  return result;
 }
 
 /**
@@ -96,53 +49,30 @@ export async function getCachedCanonicalForm(latex) {
  * @param {string} latex - LaTeX expression to delete
  */
 export async function deleteFromCache(latex) {
-  const db = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.delete(latex);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  // This functionality is now handled by workspace clearing
+  // Individual deletion is not supported in the new workspace model
+  // Use clearCache() to clear all entries
+  await logDiagnostic('warn', 'cache', 'Individual cache deletion not supported, use clearCache() instead');
+  return;
 }
 
 /**
  * Clear entire cache
  */
 export async function clearCache() {
-  const db = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.clear();
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  await logDiagnostic('info', 'cache', 'Clearing CAS cache for current workspace');
+  return workspaceClearCASCache();
 }
 
 /**
  * Get cache statistics
  */
 export async function getCacheStats() {
-  const db = await initDB();
-
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const countRequest = store.count();
-
-    countRequest.onsuccess = () => {
-      resolve({
-        count: countRequest.result,
-        dbName: DB_NAME,
-        version: DB_VERSION
-      });
-    };
-
-    countRequest.onerror = () => reject(countRequest.error);
-  });
+  const stats = await workspaceGetCacheStats();
+  return {
+    count: stats.casCache.count,
+    oldestEntry: stats.casCache.oldestEntry,
+    newestEntry: stats.casCache.newestEntry,
+    workspaceId: stats.workspaceId
+  };
 }
