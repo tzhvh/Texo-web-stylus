@@ -127,6 +127,7 @@ export default function ComposePage() {
   const debounceTimerRef = useRef(null);
   const [showHelp, setShowHelp] = useState(false);
   const [debugMode, setDebugMode] = useState(true); // Default to true
+  const [forceAlgebrite, setForceAlgebrite] = useState(false); // Force Algebrite usage
 
   // Load debug mode from session state on mount
   useEffect(() => {
@@ -293,9 +294,9 @@ export default function ComposePage() {
         const prevLatex = prevLine.latex;
         const currLatex = currLine.latex;
 
-        // Check cache first
+        // Check cache first (skip if force mode is active)
         const cacheKey = `${prevLatex}|${currLatex}`;
-        let cached = await getCachedCanonicalForm(cacheKey);
+        let cached = forceAlgebrite ? null : await getCachedCanonicalForm(cacheKey);
 
         let result;
         if (cached) {
@@ -305,15 +306,18 @@ export default function ComposePage() {
           // Perform equivalence check with debug flag
           result = checkEquivalence(prevLatex, currLatex, {
             ...EquivalenceConfig,
-            debug: debugMode
+            debug: debugMode,
+            forceAlgebrite: forceAlgebrite  // Pass force flag
           });
 
-          // Cache the result
-          await cacheCanonicalForm(cacheKey, result.canonical1 || "", {
-            result: result,
-            prevLatex,
-            currLatex,
-          });
+          // Cache the result (skip if force mode is active)
+          if (!forceAlgebrite) {
+            await cacheCanonicalForm(cacheKey, result.canonical1 || "", {
+              result: result,
+              prevLatex,
+              currLatex,
+            });
+          }
         }
 
         // Create spatial mapping for error highlighting
@@ -534,6 +538,24 @@ export default function ComposePage() {
                 </span>
               </label>
 
+              {/* Force Algebrite Toggle */}
+              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
+                forceAlgebrite
+                  ? 'bg-orange-50 border-orange-500 text-orange-700'
+                  : 'bg-gray-50 border-gray-300 text-gray-600'
+              }`}
+              title="Skip fast canonicalization and force Algebrite CAS">
+                <input
+                  type="checkbox"
+                  checked={forceAlgebrite}
+                  onChange={(e) => setForceAlgebrite(e.target.checked)}
+                  className="w-4 h-4 rounded"
+                />
+                <span className="font-medium text-sm">
+                  {forceAlgebrite ? '⚡ Force Algebrite' : 'Force Algebrite'}
+                </span>
+              </label>
+
               <button
                 onClick={() => setShowHelp(!showHelp)}
                 className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded transition"
@@ -560,6 +582,15 @@ export default function ComposePage() {
             <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
               <span className="text-green-700 text-sm font-medium">
                 ✓ Debug logging is active - check browser console and Database page for detailed logs
+              </span>
+            </div>
+          )}
+
+          {/* Force Algebrite Mode Warning Banner */}
+          {forceAlgebrite && (
+            <div className="mb-4 p-3 bg-orange-50 border border-orange-300 rounded-lg flex items-center gap-2">
+              <span className="text-orange-700 text-sm font-medium">
+                ⚠️ Force Algebrite Mode Active - Cache disabled, using slower but comprehensive CAS engine
               </span>
             </div>
           )}

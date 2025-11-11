@@ -153,6 +153,54 @@ describe('Equivalence Checker', () => {
       expect(result.method).toBe('canonicalization');
     });
   });
+
+  describe('Canonicalization - Like Terms', () => {
+    test('should combine simple like terms', () => {
+      const result = checkEquivalence('2x + 3x', '5x');
+      expect(result.equivalent).toBe(true);
+      expect(result.method).toBe('canonicalization');
+    });
+
+    test('should combine like terms with multiple variables', () => {
+      const result = checkEquivalence('2xy + 3xy', '5xy');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should combine mixed terms correctly', () => {
+      const result = checkEquivalence('2x + 3y + 4x', '6x + 3y');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should handle negative coefficients', () => {
+      const result = checkEquivalence('5x - 2x', '3x');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should handle terms that cancel out', () => {
+      const result = checkEquivalence('3x - 3x', '0');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should combine multiple groups of like terms', () => {
+      const result = checkEquivalence('2x + 3y + 4x + 5y', '6x + 8y');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should handle single variable without coefficient', () => {
+      const result = checkEquivalence('x + x', '2x');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should handle complex polynomial', () => {
+      const result = checkEquivalence('3x^2 + 2x + 5x^2 - x', '8x^2 + x');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should not combine unlike terms', () => {
+      const result = checkEquivalence('2x + 3y', '5xy');
+      expect(result.equivalent).toBe(false);
+    });
+  });
 });
 
 /**
@@ -186,6 +234,77 @@ describe('Multi-line Validation', () => {
 
     const result2 = checkEquivalence(lines[1], lines[2]);
     expect(result2.equivalent).toBe(false);
+  });
+});
+
+/**
+ * Force Algebrite Mode Tests
+ */
+describe('Force Algebrite Mode', () => {
+  test('should skip canonicalization when forceAlgebrite is true', () => {
+    const result = checkEquivalence('2x + 3x', '5x', {
+      forceAlgebrite: true
+    });
+
+    expect(result.equivalent).toBe(true);
+    expect(result.method).toMatch(/^algebrite-/);  // Should use Algebrite method
+    expect(result.forced).toBe(true);  // Should have forced flag
+  });
+
+  test('should use canonicalization when forceAlgebrite is false', () => {
+    const result = checkEquivalence('2x + 3x', '5x', {
+      forceAlgebrite: false
+    });
+
+    expect(result.equivalent).toBe(true);
+    expect(result.method).toBe('canonicalization');  // Should use fast path
+    expect(result.forced).toBeUndefined();  // No forced flag
+  });
+
+  test('should handle complex expressions in force mode', () => {
+    const result = checkEquivalence('\\sin^2(x) + \\cos^2(x)', '1', {
+      forceAlgebrite: true
+    });
+
+    expect(result.equivalent).toBe(true);
+    expect(result.forced).toBe(true);
+  });
+
+  test('should detect inequivalence in force mode', () => {
+    const result = checkEquivalence('x + 2', 'x + 3', {
+      forceAlgebrite: true
+    });
+
+    expect(result.equivalent).toBe(false);
+    expect(result.forced).toBe(true);
+  });
+
+  test('should have slower performance in force mode', () => {
+    // Run normal mode
+    const normalResult = checkEquivalence('2x + 3x', '5x', {
+      forceAlgebrite: false
+    });
+
+    // Run force mode
+    const forcedResult = checkEquivalence('2x + 3x', '5x', {
+      forceAlgebrite: true
+    });
+
+    // Force mode should be slower (though both should work)
+    expect(normalResult.equivalent).toBe(true);
+    expect(forcedResult.equivalent).toBe(true);
+    expect(normalResult.method).toBe('canonicalization');
+    expect(forcedResult.method).toMatch(/^algebrite-/);
+  });
+
+  test('should return forced flag even on errors', () => {
+    const result = checkEquivalence('\\invalid{syntax}', 'x + 1', {
+      forceAlgebrite: true
+    });
+
+    expect(result.equivalent).toBe(false);
+    expect(result.forced).toBe(true);
+    expect(result.error).toBeDefined();
   });
 });
 

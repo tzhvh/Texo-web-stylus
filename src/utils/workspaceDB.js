@@ -100,6 +100,7 @@ const DEFAULT_SESSION_STATE = {
   maxCanonicalizationIterations: 100, // Max iterations for rule engine
   useAlgebrite: true,                 // Enable Algebrite fallback
   algebriteTimeout: 2000,             // Algebrite timeout in ms
+  forceAlgebrite: false,              // Force Algebrite usage (bypass canonicalization)
   region: 'US',                       // Math notation region
   floatTolerance: 1e-6,               // Floating point comparison tolerance
   theme: 'light',                     // UI theme

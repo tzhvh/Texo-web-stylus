@@ -22,7 +22,8 @@ export const EquivalenceConfig = {
   floatTolerance: FLOAT_TOLERANCE,
   useAlgebrite: true,
   algebriteTimeout: 2000, // ms
-  maxCanonicalizationIterations: 100
+  maxCanonicalizationIterations: 100,
+  forceAlgebrite: false // Skip canonicalization and force Algebrite usage
 };
 
 /**
@@ -157,6 +158,7 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
       equivalent: false,
       method: 'parse-error',
       error,
+      ...(config.forceAlgebrite && { forced: true }),  // Add forced flag if in force mode
       time: performance.now() - startTime
     };
   }
@@ -170,6 +172,36 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
       ast1: JSON.stringify(ast1),
       ast2: JSON.stringify(ast2)
     }, ['equivalence', 'simplify']);
+  }
+
+  // Step 2.5: If forceAlgebrite is enabled, skip canonicalization and go straight to Algebrite
+  if (config.forceAlgebrite) {
+    Logger.debug('EquivalenceChecker', 'Force Algebrite mode - skipping canonicalization', {}, ['equivalence', 'force-algebrite']);
+
+    try {
+      const algebraicCheck = checkWithAlgebrite(latex1, latex2, config.algebriteTimeout, debug, config.floatTolerance);
+
+      return {
+        equivalent: algebraicCheck.equivalent,
+        method: algebraicCheck.method,
+        simplifiedLatex1: algebraicCheck.simplifiedLatex1,
+        simplifiedLatex2: algebraicCheck.simplifiedLatex2,
+        forced: true,  // Indicate this was forced
+        time: performance.now() - startTime
+      };
+    } catch (error) {
+      Logger.error('EquivalenceChecker', 'Forced Algebrite check failed', {
+        error: error.message
+      }, ['equivalence', 'algebrite-error']);
+
+      return {
+        equivalent: false,
+        method: 'algebrite-error',
+        error: error.message,
+        forced: true,
+        time: performance.now() - startTime
+      };
+    }
   }
 
   // Step 3: Canonicalize both expressions
