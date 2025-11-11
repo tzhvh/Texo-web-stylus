@@ -165,7 +165,7 @@ export default function OCRPage() {
   };
 
   const loadExampleImage = () => {
-    fetch("/test_img/单行公式.png")
+    fetch("/test_img/test.png")
       .then((r) => {
         if (!r.ok) throw new Error("Example image not found");
         return r.blob();
