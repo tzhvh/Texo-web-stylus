@@ -118,70 +118,6 @@ const createValidationPlugin = () => {
   });
 };
 
-// Create a plugin key for the LaTeX error plugin
-const latexErrorPluginKey = new PluginKey("latexError");
-
-// LaTeX Error checking plugin - automatically checks on document changes
-const createLatexErrorPlugin = () => {
-  return new Plugin({
-    key: latexErrorPluginKey,
-    state: {
-      init(config, state) {
-        // Initialize with error checking
-        return checkLatexErrorsForState(state);
-      },
-      apply(tr, oldState, oldEditorState, newEditorState) {
-        // If document changed, recheck errors
-        if (tr.docChanged) {
-          return checkLatexErrorsForState(newEditorState);
-        }
-
-        // Otherwise, just remap decorations
-        return {
-          decorations: oldState.decorations.map(tr.mapping, tr.doc),
-          errors: oldState.errors,
-        };
-      },
-    },
-    props: {
-      decorations(state) {
-        return this.getState(state).decorations;
-      },
-    },
-  });
-};
-
-// Helper function to check LaTeX errors for a given state
-const checkLatexErrorsForState = (state) => {
-  const decorations = [];
-  const errors = {};
-
-  state.doc.descendants((node, pos) => {
-    if (node.type.name === "math_display" || node.type.name === "math_inline") {
-      const content = node.textContent;
-      const validation = validateLatex(content);
-
-      if (!validation.valid) {
-        // Add error decoration
-        decorations.push(
-          Decoration.node(pos, pos + node.nodeSize, {
-            class: "math-node-error",
-            title: validation.error, // Tooltip with error message
-          })
-        );
-
-        // Store error message
-        errors[pos] = validation.error;
-      }
-    }
-  });
-
-  return {
-    decorations: DecorationSet.create(state.doc, decorations),
-    errors: errors,
-  };
-};
-
 // Helper function to validate LaTeX syntax
 const validateLatex = (latex) => {
   if (!latex || !latex.trim()) {
@@ -291,9 +227,6 @@ export default function ComposePage() {
     // Create validation plugin instance
     const validationPlugin = createValidationPlugin();
 
-    // Create LaTeX error plugin instance
-    const latexErrorPlugin = createLatexErrorPlugin();
-
     // Create plugins
     const plugins = [
       history(),
@@ -313,7 +246,6 @@ export default function ComposePage() {
       keymap(baseKeymap),
       inputRules({ rules: [inlineMathInputRule, blockMathInputRule] }),
       validationPlugin,
-      latexErrorPlugin,
     ];
 
     // Create editor state
@@ -490,6 +422,7 @@ export default function ComposePage() {
 
     // Create decorations for validation results
     const decorations = [];
+    const validatedPositions = new Set();
 
     validationResults.forEach((result) => {
       // Highlight both the current and previous nodes
@@ -497,6 +430,8 @@ export default function ComposePage() {
 
       positions.forEach((pos) => {
         if (pos !== undefined) {
+          validatedPositions.add(pos);
+
           // Find the node at this position
           const $pos = state.doc.resolve(pos);
           const node = $pos.nodeAfter;
@@ -506,19 +441,53 @@ export default function ComposePage() {
             (node.type.name === "math_display" ||
               node.type.name === "math_inline")
           ) {
-            // Apply the appropriate class based on equivalence
-            const className = result.equivalent
-              ? "bg-green-50 border-green-300 border rounded inline-block"
-              : "bg-red-50 border-red-300 border rounded inline-block";
+            // Check for LaTeX errors first
+            const content = node.textContent;
+            const validation = validateLatex(content);
+
+            let className;
+            if (!validation.valid) {
+              // Invalid LaTeX - red error styling takes precedence
+              className = "bg-red-50 border-red-500 border-2 rounded inline-block";
+            } else {
+              // Valid LaTeX - show equivalence result
+              className = result.equivalent
+                ? "bg-green-50 border-green-300 border rounded inline-block"
+                : "bg-red-50 border-red-300 border rounded inline-block";
+            }
 
             decorations.push(
               Decoration.node(pos, pos + node.nodeSize, {
                 class: className,
+                title: !validation.valid ? validation.error : undefined,
               }),
             );
           }
         }
       });
+    });
+
+    // Add LaTeX error decorations for nodes NOT being validated
+    // Only decorate nodes with content (avoid decorating empty nodes being edited)
+    state.doc.descendants((node, pos) => {
+      if ((node.type.name === "math_display" || node.type.name === "math_inline") &&
+          !validatedPositions.has(pos)) {
+        const content = node.textContent;
+
+        // Only validate if there's actual content (not just whitespace)
+        if (content.trim()) {
+          const validation = validateLatex(content);
+
+          if (!validation.valid) {
+            decorations.push(
+              Decoration.node(pos, pos + node.nodeSize, {
+                class: "math-node-error",
+                title: validation.error,
+              }),
+            );
+          }
+        }
+      }
     });
 
     // Create new decoration set
