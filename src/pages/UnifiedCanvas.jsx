@@ -44,6 +44,7 @@ function UnifiedCanvas() {
   const tilingEngineRef = useRef(null);
   const latexAssemblerRef = useRef(null);
   const workerPoolRef = useRef(null);
+  const dividersInitializedRef = useRef(false);
 
   // Model config
   const modelConfig = getActiveModelConfig();
@@ -378,39 +379,35 @@ function UnifiedCanvas() {
   }, [selectRow]);
 
   /**
-   * Generate and inject row dividers when viewport changes
+   * Generate and inject row dividers when API is ready
+   * Only runs once on mount to avoid infinite loops
    */
   useEffect(() => {
-    if (!excalidrawAPI) return;
+    if (!excalidrawAPI || dividersInitializedRef.current) return;
 
-    const appState = excalidrawAPI.getAppState();
-    if (!appState) return;
+    // Wait a tick for Excalidraw to fully initialize
+    const timer = setTimeout(() => {
+      const appState = excalidrawAPI.getAppState();
+      if (!appState) return;
 
-    const viewport = {
-      x: appState.scrollX || 0,
-      y: appState.scrollY || 0,
-      width: appState.width || 0,
-      height: appState.height || 0
-    };
+      const viewport = {
+        x: appState.scrollX || 0,
+        y: appState.scrollY || 0,
+        width: appState.width || window.innerWidth,
+        height: appState.height || window.innerHeight
+      };
 
-    const dividers = generateRowDividers(viewport);
-    const currentElements = excalidrawAPI.getSceneElements();
+      const dividers = generateRowDividers(viewport);
 
-    // Check if we need to add new dividers
-    const existingDividerIds = new Set(
-      currentElements
-        .filter(el => el.isRowDivider)
-        .map(el => el.id)
-    );
-
-    const newDividers = dividers.filter(d => !existingDividerIds.has(d.id));
-
-    if (newDividers.length > 0) {
-      Logger.debug('UnifiedCanvas', `Adding ${newDividers.length} new row dividers`);
+      Logger.debug('UnifiedCanvas', `Initializing ${dividers.length} row dividers`);
       excalidrawAPI.updateScene({
-        elements: [...currentElements, ...newDividers]
+        elements: dividers
       });
-    }
+
+      dividersInitializedRef.current = true;
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [excalidrawAPI, generateRowDividers]);
 
   /**
@@ -504,7 +501,7 @@ function UnifiedCanvas() {
         />
       </div>
 
-      {/* Row dividers are injected via useEffect (see line 383) */}
+      {/* Row dividers are injected once on mount via useEffect (see line 385) */}
 
       {/* Row overlays */}
       {renderRowOverlays()}
