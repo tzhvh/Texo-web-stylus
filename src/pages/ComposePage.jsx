@@ -46,6 +46,7 @@ import {
   saveSessionState,
   loadSessionState,
 } from "../utils/workspaceDB.js";
+import Logger from "../utils/logger.js";
 
 // ProseMirror Schema with math nodes
 const mathSchema = new Schema({
@@ -133,14 +134,25 @@ export default function ComposePage() {
       const savedDebug = await loadSessionState('debugMode');
       if (savedDebug !== null) {
         setDebugMode(savedDebug);
+        Logger.setDebugMode(savedDebug);
+      } else {
+        // Default to true
+        Logger.setDebugMode(true);
       }
     };
     loadDebugSetting();
   }, []);
 
-  // Save debug mode to session state when it changes
+  // Save debug mode to session state and sync with Logger when it changes
   useEffect(() => {
     saveSessionState('debugMode', debugMode);
+    Logger.setDebugMode(debugMode);
+
+    // Log the toggle action
+    Logger.info('ComposePage', `Debug mode ${debugMode ? 'ENABLED' : 'DISABLED'}`, {
+      debugMode,
+      timestamp: Date.now()
+    }, ['config', 'debug-toggle']);
   }, [debugMode]);
 
   // Initialize ProseMirror editor
@@ -504,16 +516,24 @@ export default function ComposePage() {
         <div className="lg:col-span-2 border rounded-lg p-6 bg-white shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-700">Math Editor</h2>
-            <div className="flex gap-2 items-center">
-              <label className="flex items-center gap-1 text-sm text-gray-700">
+            <div className="flex gap-3 items-center">
+              {/* Prominent Debug Toggle */}
+              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
+                debugMode
+                  ? 'bg-green-50 border-green-500 text-green-700'
+                  : 'bg-gray-50 border-gray-300 text-gray-600'
+              }`}>
                 <input
                   type="checkbox"
                   checked={debugMode}
                   onChange={(e) => setDebugMode(e.target.checked)}
-                  className="rounded"
+                  className="w-4 h-4 rounded"
                 />
-                Debug
+                <span className="font-medium text-sm">
+                  {debugMode ? '🐛 Debug ON' : 'Debug OFF'}
+                </span>
               </label>
+
               <button
                 onClick={() => setShowHelp(!showHelp)}
                 className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded transition"
@@ -534,6 +554,15 @@ export default function ComposePage() {
               </button>
             </div>
           </div>
+
+          {/* Debug Mode Confirmation Banner */}
+          {debugMode && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+              <span className="text-green-700 text-sm font-medium">
+                ✓ Debug logging is active - check browser console and Database page for detailed logs
+              </span>
+            </div>
+          )}
 
           {showHelp && (
             <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded text-sm">
