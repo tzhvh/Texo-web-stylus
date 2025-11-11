@@ -260,10 +260,31 @@ function checkWithAlgebrite(latex1, latex2, timeout = 2000) {
  * Note: This is a basic conversion. For production, use a proper LaTeX parser.
  */
 function latexToAlgebrite(latex) {
-  return latex
+  let result = latex;
+
+  // Handle Unicode superscripts (⁰¹²³⁴⁵⁶⁷⁸⁹)
+  const superscripts = {
+    '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4',
+    '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9'
+  };
+
+  // Replace Unicode superscripts with ^{n}
+  for (const [unicode, digit] of Object.entries(superscripts)) {
+    result = result.replace(new RegExp(unicode, 'g'), `**${digit}`);
+  }
+
+  // Handle Unicode math symbols
+  result = result
+    .replace(/·/g, '*')          // Unicode middle dot (U+00B7)
+    .replace(/×/g, '*')          // Unicode multiplication sign (U+00D7)
+    .replace(/÷/g, '/')          // Unicode division sign (U+00F7)
+
+    // Handle LaTeX commands
     .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1)/($2)')
     .replace(/\\sqrt\{([^}]+)\}/g, 'sqrt($1)')
-    .replace(/\^/g, '**')
+    .replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, '($2)**(1/($1))')  // nth root
+    .replace(/\^{([^}]+)}/g, '**($1)')     // ^{...}
+    .replace(/\^(\w)/g, '**$1')             // ^x
     .replace(/\\cdot/g, '*')
     .replace(/\\times/g, '*')
     .replace(/\\sin/g, 'sin')
@@ -276,9 +297,32 @@ function latexToAlgebrite(latex) {
     .replace(/\\right\)/g, ')')
     .replace(/\\left\[/g, '[')
     .replace(/\\right\]/g, ']')
+    .replace(/\\left\|/g, 'abs(')
+    .replace(/\\right\|/g, ')')
+
+    // Handle remaining braces
     .replace(/\{/g, '(')
     .replace(/\}/g, ')')
-    .replace(/\$/g, '');
+
+    // Clean up
+    .replace(/\$/g, '')
+    .replace(/\\,/g, '')         // thin space
+    .replace(/\\ /g, '');         // space
+
+  // Handle implicit multiplication (e.g., "4x" -> "4*x", "2(x+1)" -> "2*(x+1)")
+  result = result
+    // Number followed by letter
+    .replace(/(\d)([a-zA-Z])/g, '$1*$2')
+    // Number followed by opening paren
+    .replace(/(\d)\(/g, '$1*(')
+    // Closing paren followed by number
+    .replace(/\)(\d)/g, ')*$1')
+    // Closing paren followed by letter
+    .replace(/\)([a-zA-Z])/g, ')*$1')
+    // Letter followed by opening paren
+    .replace(/([a-zA-Z])\(/g, '$1*(');
+
+  return result;
 }
 
 /**
