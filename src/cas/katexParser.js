@@ -80,6 +80,15 @@ export function simplifyKatexAst(katexAst) {
   function simplifyNode(node) {
     if (!node) return null;
 
+    // Handle numbers first (before text/symbols)
+    if (node.type === 'textord' && node.text && /^\d+(\.\d+)?$/.test(node.text)) {
+      return {
+        type: 'number',
+        value: parseFloat(node.text),
+        loc: node.loc
+      };
+    }
+
     // Handle text/symbols
     if (node.type === 'textord' || node.type === 'mathord') {
       return {
@@ -89,17 +98,17 @@ export function simplifyKatexAst(katexAst) {
       };
     }
 
-    // Handle numbers
-    if (node.type === 'textord' && /^\d+$/.test(node.text)) {
+    // Handle operators
+    if (node.type === 'bin' || node.type === 'op') {
       return {
-        type: 'number',
-        value: parseFloat(node.text),
+        type: 'operator',
+        op: node.text || node.value,
         loc: node.loc
       };
     }
 
-    // Handle operators
-    if (node.type === 'bin' || node.type === 'op') {
+    // Handle atom nodes (which can be operators like +, -, etc.)
+    if (node.type === 'atom' && node.family === 'bin') {
       return {
         type: 'operator',
         op: node.text || node.value,

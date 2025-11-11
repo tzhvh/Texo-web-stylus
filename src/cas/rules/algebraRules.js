@@ -104,6 +104,84 @@ export function getAlgebraRules() {
       }
     },
 
+    // Rule: Combine like terms
+    // 2x + 3x → 5x, 4xy + 2xy → 6xy
+    {
+      name: 'combine-like-terms',
+      description: 'Combine terms with same variable part',
+      priority: 68,
+      region: ['US', 'UK', 'EU'],
+      match: (ast) => {
+        if (!Array.isArray(ast)) return false;
+        // Check if expression contains addition
+        if (!ast.some(node => isType(node, 'operator') && node.op === '+')) return false;
+
+        // Extract terms and check for like terms
+        const terms = extractTerms(ast);
+        const variableParts = new Map();
+
+        for (const term of terms) {
+          const { coefficient, variablePart } = extractCoefficientAndVariables(term);
+          const key = JSON.stringify(stripLoc(variablePart));
+          if (variablePart !== null) {
+            if (variableParts.has(key)) {
+              return true; // Found like terms
+            }
+            variableParts.set(key, coefficient);
+          }
+        }
+
+        return false;
+      },
+      transform: (ast) => {
+        const terms = extractTerms(ast);
+        const grouped = new Map();
+
+        // Group terms by their variable part
+        for (const term of terms) {
+          const { coefficient, variablePart } = extractCoefficientAndVariables(term);
+          const key = JSON.stringify(stripLoc(variablePart));
+
+          if (!grouped.has(key)) {
+            grouped.set(key, { coefficients: [], variablePart });
+          }
+          grouped.get(key).coefficients.push(coefficient);
+        }
+
+        // Combine coefficients for each group
+        const result = [];
+        let first = true;
+
+        for (const [, group] of grouped) {
+          const totalCoeff = group.coefficients.reduce((sum, c) => sum + c, 0);
+
+          // Skip terms with zero coefficient
+          if (totalCoeff === 0) continue;
+
+          // Add operator before each term (except first)
+          if (!first) {
+            result.push({ type: 'operator', op: '+' });
+          }
+          first = false;
+
+          // Add coefficient if not 1 or if no variable part
+          if (group.variablePart === null || totalCoeff !== 1) {
+            result.push({ type: 'number', value: totalCoeff });
+          }
+
+          // Add variable part with multiplication operator if needed
+          if (group.variablePart !== null) {
+            if (totalCoeff !== 1) {
+              result.push({ type: 'operator', op: '\\cdot' });
+            }
+            result.push(...group.variablePart);
+          }
+        }
+
+        return result.length > 0 ? result : [{ type: 'number', value: 0 }];
+      }
+    },
+
     // Rule: Sort commutative operands alphabetically
     // c + b + a → a + b + c
     {
@@ -136,6 +214,56 @@ export function getAlgebraRules() {
         }
 
         return result;
+      }
+    },
+
+    // Rule: Sort multiplication factors alphabetically
+    // c * b * a → a * b * c
+    {
+      name: 'sort-multiplication-factors',
+      description: 'Sort multiplication factors alphabetically',
+      priority: 75,
+      region: ['US', 'UK', 'EU'],
+      match: (ast) => {
+        if (!Array.isArray(ast)) return false;
+        // Check if expression contains multiplication
+        return ast.some(node => isType(node, 'operator') &&
+          (node.op === '\\cdot' || node.op === '\\times' || node.op === '*'));
+      },
+      transform: (ast) => {
+        const factors = extractFactors(ast);
+
+        // Separate numeric factors from non-numeric
+        const numericFactors = [];
+        const nonNumericFactors = [];
+
+        for (const factor of factors) {
+          if (factor.op === null && factor.nodes.length === 1 && isNumber(factor.nodes[0])) {
+            numericFactors.push(factor);
+          } else if (factor.op === null) {
+            nonNumericFactors.push(factor);
+          }
+        }
+
+        // Sort non-numeric factors alphabetically
+        nonNumericFactors.sort((a, b) => {
+          const aStr = JSON.stringify(a.nodes);
+          const bStr = JSON.stringify(b.nodes);
+          return aStr.localeCompare(bStr);
+        });
+
+        // Rebuild: numbers first, then sorted variables
+        const result = [];
+        const allFactors = [...numericFactors, ...nonNumericFactors];
+
+        for (let i = 0; i < allFactors.length; i++) {
+          if (i > 0) {
+            result.push({ type: 'operator', op: '\\cdot' });
+          }
+          result.push(...allFactors[i].nodes);
+        }
+
+        return result.length > 0 ? result : ast;
       }
     },
 
@@ -300,4 +428,65 @@ export function getAlgebraRules() {
       }
     }
   ];
+}
+
+/**
+ * Helper function to strip loc data from AST for comparison
+ */
+function stripLoc(node) {
+  if (!node) return node;
+  if (Array.isArray(node)) {
+    return node.map(stripLoc);
+  }
+  if (typeof node === 'object') {
+    const copy = {};
+    for (const key in node) {
+      if (key !== 'loc') {
+        copy[key] = stripLoc(node[key]);
+      }
+    }
+    return copy;
+  }
+  return node;
+}
+
+/**
+ * Helper function to extract coefficient and variable part from a term
+ * Examples:
+ *   [2, *, x] -> { coefficient: 2, variablePart: [x] }
+ *   [x] -> { coefficient: 1, variablePart: [x] }
+ *   [-, 3, *, x] -> { coefficient: -3, variablePart: [x] }
+ *   [5] -> { coefficient: 5, variablePart: null }
+ */
+function extractCoefficientAndVariables(term) {
+  if (!Array.isArray(term) || term.length === 0) {
+    return { coefficient: 0, variablePart: null };
+  }
+
+  let coefficient = 1;
+  let startIndex = 0;
+
+  // Check for leading negative sign
+  if (isType(term[0], 'sign') && term[0].value === '-') {
+    coefficient = -1;
+    startIndex = 1;
+  }
+
+  // Check if first element (after potential sign) is a number
+  if (startIndex < term.length && isNumber(term[startIndex])) {
+    coefficient *= getNumber(term[startIndex]);
+    startIndex++;
+
+    // Skip multiplication operator if present
+    if (startIndex < term.length &&
+        isType(term[startIndex], 'operator') &&
+        (term[startIndex].op === '\\cdot' || term[startIndex].op === '\\times' || term[startIndex].op === '*')) {
+      startIndex++;
+    }
+  }
+
+  // Extract variable part (everything after coefficient)
+  const variablePart = startIndex < term.length ? term.slice(startIndex) : null;
+
+  return { coefficient, variablePart };
 }

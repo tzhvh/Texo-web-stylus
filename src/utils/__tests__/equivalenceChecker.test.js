@@ -153,6 +153,54 @@ describe('Equivalence Checker', () => {
       expect(result.method).toBe('canonicalization');
     });
   });
+
+  describe('Canonicalization - Like Terms', () => {
+    test('should combine simple like terms', () => {
+      const result = checkEquivalence('2x + 3x', '5x');
+      expect(result.equivalent).toBe(true);
+      expect(result.method).toBe('canonicalization');
+    });
+
+    test('should combine like terms with multiple variables', () => {
+      const result = checkEquivalence('2xy + 3xy', '5xy');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should combine mixed terms correctly', () => {
+      const result = checkEquivalence('2x + 3y + 4x', '6x + 3y');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should handle negative coefficients', () => {
+      const result = checkEquivalence('5x - 2x', '3x');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should handle terms that cancel out', () => {
+      const result = checkEquivalence('3x - 3x', '0');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should combine multiple groups of like terms', () => {
+      const result = checkEquivalence('2x + 3y + 4x + 5y', '6x + 8y');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should handle single variable without coefficient', () => {
+      const result = checkEquivalence('x + x', '2x');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should handle complex polynomial', () => {
+      const result = checkEquivalence('3x^2 + 2x + 5x^2 - x', '8x^2 + x');
+      expect(result.equivalent).toBe(true);
+    });
+
+    test('should not combine unlike terms', () => {
+      const result = checkEquivalence('2x + 3y', '5xy');
+      expect(result.equivalent).toBe(false);
+    });
+  });
 });
 
 /**
