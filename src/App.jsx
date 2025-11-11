@@ -40,10 +40,10 @@ export default function App() {
               Database
             </Link>
             <Link
-              to="/unified"
+              to="/magic"
               className="text-gray-700 hover:text-blue-600 font-medium transition"
             >
-              Unified Canvas
+              Magic Canvas
             </Link>
           </nav>
         </header>
@@ -53,7 +53,7 @@ export default function App() {
             <Route path="/" element={<SketchPage />} />
             <Route path="/compose" element={<ComposePage />} />
             <Route path="/database" element={<DatabasePage />} />
-            <Route path="/unified" element={<MagicCanvas />} />
+            <Route path="/magic" element={<MagicCanvas />} />
           </Routes>
         </main>
         <footer className="bg-white border-t p-4 text-center text-sm text-gray-500">
