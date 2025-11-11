@@ -215,7 +215,18 @@ export const Logger = {
   }
 };
 
-// Auto-initialize on module load
-Logger.init();
+// Auto-initialize on module load (but skip in test environment)
+// Check if we're in a test environment before initializing
+function isTestEnvironment() {
+  return (
+    typeof process !== 'undefined' &&
+    process.env &&
+    (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true')
+  );
+}
+
+if (!isTestEnvironment()) {
+  Logger.init();
+}
 
 export default Logger;

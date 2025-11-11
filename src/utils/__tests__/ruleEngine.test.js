@@ -84,21 +84,23 @@ describe('Rule Application', () => {
   test('should apply rule to matching AST', () => {
     const engine = new RuleEngine('US');
 
+    // Use an idempotent rule that reaches fixpoint
     const rule = {
-      name: 'double-number',
-      description: 'Double all numbers',
+      name: 'make-positive',
+      description: 'Convert negative numbers to positive',
       priority: 100,
-      match: (node) => isType(node, 'number'),
-      transform: (node) => ({ ...node, value: node.value * 2 })
+      match: (node) => isType(node, 'number') && node.value < 0,
+      transform: (node) => ({ ...node, value: Math.abs(node.value) })
     };
 
     engine.addRule(rule);
 
-    const ast = { type: 'number', value: 5 };
+    const ast = { type: 'number', value: -5 };
     const result = engine.canonicalize(ast);
 
-    expect(result.ast.value).toBe(10);
-    expect(result.appliedRules.length).toBeGreaterThan(0);
+    expect(result.ast.value).toBe(5);
+    expect(result.appliedRules.length).toBe(1); // Should apply exactly once
+    expect(result.iterations).toBe(2); // One pass to apply, one to confirm fixpoint
   });
 
   test('should apply rules until fixpoint', () => {

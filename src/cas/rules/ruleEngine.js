@@ -48,28 +48,45 @@ export class RuleEngine {
 
   /**
    * Apply all rules to an AST until fixpoint (no more changes)
+   * Uses rule-level fixpoint detection to prevent infinite loops
    */
   canonicalize(ast, maxIterations = 100) {
     this.appliedRules = [];
     let current = JSON.parse(JSON.stringify(ast)); // Deep clone
     let iteration = 0;
-    let changed = true;
 
-    while (changed && iteration < maxIterations) {
-      changed = false;
+    // Track rules that have reached fixpoint (no changes in last iteration)
+    const rulesAtFixpoint = new Set();
+
+    while (rulesAtFixpoint.size < this.rules.length && iteration < maxIterations) {
       iteration++;
+      let anyRuleChanged = false;
 
       for (const rule of this.rules) {
+        // Skip if this rule has already reached fixpoint
+        if (rulesAtFixpoint.has(rule.name)) {
+          continue;
+        }
+
         const result = this.applyRuleRecursively(current, rule);
+
         if (result.changed) {
           current = result.ast;
-          changed = true;
+          anyRuleChanged = true;
           this.appliedRules.push({
             iteration,
             rule: rule.name,
             description: rule.description
           });
+        } else {
+          // No change means this rule reached fixpoint
+          rulesAtFixpoint.add(rule.name);
         }
+      }
+
+      // If no rules changed in this iteration, we've reached overall fixpoint
+      if (!anyRuleChanged) {
+        break;
       }
     }
 
@@ -80,7 +97,8 @@ export class RuleEngine {
     return {
       ast: current,
       iterations: iteration,
-      appliedRules: this.appliedRules
+      appliedRules: this.appliedRules,
+      converged: iteration < maxIterations && rulesAtFixpoint.size === this.rules.length
     };
   }
 
