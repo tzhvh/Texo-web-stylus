@@ -49,7 +49,7 @@ export default function App() {
           </Routes>
         </main>
         <footer className="bg-white border-t p-4 text-center text-sm text-gray-500">
-          Texo OCR model under AGPL from Sicheng Mao
+          WIP
         </footer>
       </div>
     </BrowserRouter>

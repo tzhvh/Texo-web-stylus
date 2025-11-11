@@ -1,182 +1,191 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { BlockMath } from 'react-katex'
-import 'katex/dist/katex.min.css'
+import React, { useState, useEffect, useRef } from "react";
+import { BlockMath } from "react-katex";
+import "katex/dist/katex.min.css";
 
 // Web Worker
-import OCRWorker from '../workers/ocrWorker?worker'
+import OCRWorker from "../workers/ocrWorker?worker";
 
 // Constants
 const RemoteSource = {
   global: {
-    modelName: 'alephpi/FormulaNet',
+    modelName: "alephpi/FormulaNet",
     env_config: {
-      remoteHost: 'https://huggingface.co/',
-      remotePathTemplate: '{model}/resolve/{revision}'
-    }
+      remoteHost: "https://huggingface.co/",
+      remotePathTemplate: "{model}/resolve/{revision}",
+    },
   },
   cn: {
-    modelName: 'alephpi/FormulaNet',
+    modelName: "alephpi/FormulaNet",
     env_config: {
-      remoteHost: 'https://gh.llkk.cc/https://raw.githubusercontent.com/',
-      remotePathTemplate: 'alephpi/Texo-web/refs/heads/master/models/model/'
-    }
-  }
-}
+      remoteHost: "https://gh.llkk.cc/https://raw.githubusercontent.com/",
+      remotePathTemplate: "alephpi/Texo-web/refs/heads/master/models/model/",
+    },
+  },
+};
 
 export default function OCRPage() {
-  const [latex, setLatex] = useState('')
-  const [imagePreview, setImagePreview] = useState(null)
-  const [isReady, setIsReady] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [progress, setProgress] = useState({})
-  const [loadingMessage, setLoadingMessage] = useState('Initializing model...')
-  const workerRef = useRef(null)
-  const fileInputRef = useRef(null)
+  const [latex, setLatex] = useState("");
+  const [imagePreview, setImagePreview] = useState(null);
+  const [isReady, setIsReady] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState({});
+  const [loadingMessage, setLoadingMessage] = useState("Initializing model...");
+  const workerRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Initialize worker
   useEffect(() => {
-    const worker = new OCRWorker()
-    workerRef.current = worker
+    const worker = new OCRWorker();
+    workerRef.current = worker;
 
     worker.onmessage = (e) => {
-      const { type, ...data } = e.data
-      if (type === 'ready') {
-        setIsReady(true)
-        setIsLoading(false)
-        setLoadingMessage('Model loaded successfully!')
-        console.log('Model loaded and ready')
-      } else if (type === 'progress') {
-        const percent = data.total ? Math.round((data.loaded / data.total) * 100) : 0
-        setProgress(prev => ({
+      const { type, ...data } = e.data;
+      if (type === "ready") {
+        setIsReady(true);
+        setIsLoading(false);
+        setLoadingMessage("Model loaded successfully!");
+        console.log("Model loaded and ready");
+      } else if (type === "progress") {
+        const percent = data.total
+          ? Math.round((data.loaded / data.total) * 100)
+          : 0;
+        setProgress((prev) => ({
           ...prev,
-          [data.file]: { loaded: data.loaded, total: data.total, percent }
-        }))
-        setLoadingMessage(`Loading ${data.file}: ${percent}%`)
-      } else if (type === 'result') {
-        setLatex(data.output)
-        setIsLoading(false)
-        console.log(`Recognition completed in ${data.time}s`)
-      } else if (type === 'error') {
-        console.error('Worker error:', data.error)
-        alert('Error: ' + data.error)
-        setIsLoading(false)
+          [data.file]: { loaded: data.loaded, total: data.total, percent },
+        }));
+        setLoadingMessage(`Loading ${data.file}: ${percent}%`);
+      } else if (type === "result") {
+        setLatex(data.output);
+        setIsLoading(false);
+        console.log(`Recognition completed in ${data.time}s`);
+      } else if (type === "error") {
+        console.error("Worker error:", data.error);
+        alert("Error: " + data.error);
+        setIsLoading(false);
       }
-    }
+    };
 
     worker.onerror = (error) => {
-      console.error('Worker error:', error)
-      alert('Worker error: ' + error.message)
-      setIsLoading(false)
-    }
+      console.error("Worker error:", error);
+      alert("Worker error: " + error.message);
+      setIsLoading(false);
+    };
 
     // Try loading model
     const loadModel = async () => {
-      setIsLoading(true)
-      let source = RemoteSource.global
+      setIsLoading(true);
+      let source = RemoteSource.global;
       try {
-        const res = await fetch('https://huggingface.co/alephpi/FormulaNet/resolve/main/config.json', {
-          method: 'HEAD'
-        })
-        if (!res.ok) throw new Error('Cannot reach Hugging Face')
+        const res = await fetch(
+          "https://huggingface.co/alephpi/FormulaNet/resolve/main/config.json",
+          {
+            method: "HEAD",
+          },
+        );
+        if (!res.ok) throw new Error("Cannot reach Hugging Face");
       } catch {
-        console.log('Using CN mirror')
-        source = RemoteSource.cn
+        console.log("Using CN mirror");
+        source = RemoteSource.cn;
       }
-      worker.postMessage({ action: 'init', modelConfig: source })
-    }
+      worker.postMessage({ action: "init", modelConfig: source });
+    };
 
-    loadModel()
+    loadModel();
 
     return () => {
-      worker.terminate()
+      worker.terminate();
       if (imagePreview) {
-        URL.revokeObjectURL(imagePreview)
+        URL.revokeObjectURL(imagePreview);
       }
-    }
-  }, [])
+    };
+  }, []);
 
   const handleFile = (file) => {
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      alert('Please upload an image file')
-      return
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("Please upload an image file");
+      return;
     }
 
     // Clean up previous preview
     if (imagePreview) {
-      URL.revokeObjectURL(imagePreview)
+      URL.revokeObjectURL(imagePreview);
     }
 
-    const url = URL.createObjectURL(file)
-    setImagePreview(url)
-    setIsLoading(true)
+    const url = URL.createObjectURL(file);
+    setImagePreview(url);
+    setIsLoading(true);
 
     if (!isReady) {
-      alert('Model is still loading, please wait...')
-      setIsLoading(false)
-      return
+      alert("Model is still loading, please wait...");
+      setIsLoading(false);
+      return;
     }
 
     workerRef.current.postMessage({
-      action: 'predict',
+      action: "predict",
       image: file,
-      key: 'predict'
-    })
-  }
+      key: "predict",
+    });
+  };
 
   const onFileChange = (e) => {
-    const file = e.target.files?.[0]
-    if (file) handleFile(file)
-  }
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  };
 
   const onPaste = (e) => {
-    const items = e.clipboardData?.items
-    if (!items) return
+    const items = e.clipboardData?.items;
+    if (!items) return;
 
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.startsWith('image/')) {
-        const file = items[i].getAsFile()
-        if (file) handleFile(file)
-        break
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) handleFile(file);
+        break;
       }
     }
-  }
+  };
 
   const onDrop = (e) => {
-    e.preventDefault()
-    const file = e.dataTransfer?.files[0]
-    if (file) handleFile(file)
-  }
+    e.preventDefault();
+    const file = e.dataTransfer?.files[0];
+    if (file) handleFile(file);
+  };
 
   const onDragOver = (e) => {
-    e.preventDefault()
-  }
+    e.preventDefault();
+  };
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(latex)
-      .then(() => alert('LaTeX copied to clipboard!'))
-      .catch(err => alert('Failed to copy: ' + err.message))
-  }
+    navigator.clipboard
+      .writeText(latex)
+      .then(() => alert("LaTeX copied to clipboard!"))
+      .catch((err) => alert("Failed to copy: " + err.message));
+  };
 
   const loadExampleImage = () => {
-    fetch('/test_img/单行公式.png')
-      .then(r => {
-        if (!r.ok) throw new Error('Example image not found')
-        return r.blob()
+    fetch("/test_img/单行公式.png")
+      .then((r) => {
+        if (!r.ok) throw new Error("Example image not found");
+        return r.blob();
       })
-      .then(b => handleFile(new File([b], 'test.png', { type: 'image/png' })))
-      .catch(err => {
-        console.error('Failed to load example:', err)
-        alert('Example image not available')
-      })
-  }
+      .then((b) => handleFile(new File([b], "test.png", { type: "image/png" })))
+      .catch((err) => {
+        console.error("Failed to load example:", err);
+        alert("Example image not available");
+      });
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-800">LaTeX OCR Recognition</h1>
+        <h1 className="text-3xl font-bold text-gray-800">
+          LaTeX OCR Recognition
+        </h1>
         <p className="text-gray-600 mt-2">
-          Upload or paste an image containing mathematical formulas to convert them to LaTeX
+          Upload or paste an image containing mathematical formulas to convert
+          them to LaTeX. Texo OCR model under AGPL from Sicheng Mao
         </p>
       </div>
 
@@ -192,7 +201,9 @@ export default function OCRPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Upload Section */}
         <div className="border rounded-lg p-6 bg-white shadow-sm">
-          <h2 className="text-xl font-semibold mb-4 text-gray-700">Upload Image</h2>
+          <h2 className="text-xl font-semibold mb-4 text-gray-700">
+            Upload Image
+          </h2>
           <div
             className="border-2 border-dashed border-gray-300 rounded-lg w-full h-80 flex items-center justify-center cursor-pointer hover:border-blue-400 transition-colors bg-gray-50"
             onClick={() => fileInputRef.current?.click()}
@@ -247,9 +258,9 @@ export default function OCRPage() {
             </button>
             <button
               onClick={() => {
-                setImagePreview(null)
-                setLatex('')
-                if (fileInputRef.current) fileInputRef.current.value = ''
+                setImagePreview(null);
+                setLatex("");
+                if (fileInputRef.current) fileInputRef.current.value = "";
               }}
               className="px-4 py-2 text-sm bg-gray-200 hover:bg-gray-300 rounded transition"
             >
@@ -267,20 +278,26 @@ export default function OCRPage() {
         {/* Output Section */}
         <div className="space-y-6">
           <div className="border rounded-lg p-6 bg-white shadow-sm">
-            <h2 className="text-xl font-semibold mb-4 text-gray-700">Preview</h2>
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">
+              Preview
+            </h2>
             <div className="min-h-[100px] p-4 bg-gray-50 rounded border">
               {latex ? (
                 <div className="overflow-x-auto">
                   <BlockMath math={latex} />
                 </div>
               ) : (
-                <p className="text-gray-500 text-center">LaTeX preview will appear here</p>
+                <p className="text-gray-500 text-center">
+                  LaTeX preview will appear here
+                </p>
               )}
             </div>
           </div>
 
           <div className="border rounded-lg p-6 bg-white shadow-sm">
-            <h2 className="text-xl font-semibold mb-4 text-gray-700">LaTeX Code</h2>
+            <h2 className="text-xl font-semibold mb-4 text-gray-700">
+              LaTeX Code
+            </h2>
             <textarea
               value={latex}
               onChange={(e) => setLatex(e.target.value)}
@@ -297,7 +314,7 @@ export default function OCRPage() {
                 Copy to Clipboard
               </button>
               <button
-                onClick={() => setLatex('')}
+                onClick={() => setLatex("")}
                 className="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded transition"
               >
                 Clear
@@ -307,5 +324,5 @@ export default function OCRPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }
