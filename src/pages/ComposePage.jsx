@@ -30,6 +30,7 @@ import { BlockMath } from "react-katex";
 import {
   checkEquivalence,
   checkMultipleLines,
+  EquivalenceConfig,
 } from "../cas/equivalenceChecker.js";
 import {
   createSpatialMapping,
@@ -270,7 +271,10 @@ export default function ComposePage() {
           result.cached = true;
         } else {
           // Perform equivalence check with debug flag
-          result = checkEquivalence(prevLatex, currLatex, { debug: debugMode });
+          result = checkEquivalence(prevLatex, currLatex, {
+            ...EquivalenceConfig,
+            debug: debugMode
+          });
 
           // Cache the result
           await cacheCanonicalForm(cacheKey, result.canonical1 || "", {
