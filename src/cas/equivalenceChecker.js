@@ -122,12 +122,27 @@ function astToString(ast, config = EquivalenceConfig) {
  */
 export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
   const startTime = performance.now();
+  const debug = config.debug || false;
+
+  if (debug) {
+    console.log('[EquivalenceChecker] Starting check');
+    console.log('[EquivalenceChecker] Input 1:', latex1);
+    console.log('[EquivalenceChecker] Input 2:', latex2);
+  }
 
   // Step 1: Parse LaTeX to AST
   const parsed1 = parseLatex(latex1);
   const parsed2 = parseLatex(latex2);
 
+  if (debug) {
+    console.log('[EquivalenceChecker] Parsed 1:', parsed1);
+    console.log('[EquivalenceChecker] Parsed 2:', parsed2);
+  }
+
   if (!parsed1.success || !parsed2.success) {
+    if (debug) {
+      console.error('[EquivalenceChecker] Parse error:', parsed1.error || parsed2.error);
+    }
     return {
       equivalent: false,
       method: 'parse-error',
@@ -140,19 +155,42 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
   const ast1 = simplifyKatexAst(parsed1.ast);
   const ast2 = simplifyKatexAst(parsed2.ast);
 
+  if (debug) {
+    console.log('[EquivalenceChecker] Simplified AST 1:', JSON.stringify(ast1, null, 2));
+    console.log('[EquivalenceChecker] Simplified AST 2:', JSON.stringify(ast2, null, 2));
+  }
+
   // Step 3: Canonicalize both expressions
   const engine = createRuleEngine(config.region);
 
   const canonical1 = engine.canonicalize(ast1, config.maxCanonicalizationIterations);
   const canonical2 = engine.canonicalize(ast2, config.maxCanonicalizationIterations);
 
+  if (debug) {
+    console.log('[EquivalenceChecker] Canonical 1 iterations:', canonical1.iterations);
+    console.log('[EquivalenceChecker] Canonical 1 applied rules:', canonical1.appliedRules);
+    console.log('[EquivalenceChecker] Canonical 1 AST:', JSON.stringify(canonical1.ast, null, 2));
+    console.log('[EquivalenceChecker] Canonical 2 iterations:', canonical2.iterations);
+    console.log('[EquivalenceChecker] Canonical 2 applied rules:', canonical2.appliedRules);
+    console.log('[EquivalenceChecker] Canonical 2 AST:', JSON.stringify(canonical2.ast, null, 2));
+  }
+
   // Step 4: Compare canonical forms (string comparison)
   const str1 = astToString(canonical1.ast, config);
   const str2 = astToString(canonical2.ast, config);
 
+  if (debug) {
+    console.log('[EquivalenceChecker] Canonical string 1:', str1);
+    console.log('[EquivalenceChecker] Canonical string 2:', str2);
+    console.log('[EquivalenceChecker] Strings match:', str1 === str2);
+  }
+
   const fastCheckTime = performance.now() - startTime;
 
   if (str1 === str2) {
+    if (debug) {
+      console.log('[EquivalenceChecker] ✓ Canonicalization succeeded');
+    }
     return {
       equivalent: true,
       method: 'canonicalization',
@@ -168,8 +206,15 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
 
   // Step 5: If canonicalization fails, try Algebrite (if enabled)
   if (config.useAlgebrite) {
+    if (debug) {
+      console.log('[EquivalenceChecker] Canonicalization failed, trying Algebrite...');
+    }
     try {
-      const algebraicCheck = checkWithAlgebrite(latex1, latex2, config.algebriteTimeout);
+      const algebraicCheck = checkWithAlgebrite(latex1, latex2, config.algebriteTimeout, debug);
+
+      if (debug) {
+        console.log('[EquivalenceChecker] Algebrite result:', algebraicCheck);
+      }
 
       return {
         equivalent: algebraicCheck.equivalent,
@@ -180,6 +225,9 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
         time: performance.now() - startTime
       };
     } catch (error) {
+      if (debug) {
+        console.error('[EquivalenceChecker] Algebrite error:', error);
+      }
       return {
         equivalent: false,
         method: 'algebrite-error',
@@ -192,6 +240,9 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
   }
 
   // Step 6: Unable to determine equivalence
+  if (debug) {
+    console.log('[EquivalenceChecker] ✗ All methods failed');
+  }
   return {
     equivalent: false,
     method: 'canonicalization-failed',
@@ -206,9 +257,10 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
  * @param {string} latex1 - First LaTeX expression
  * @param {string} latex2 - Second LaTeX expression
  * @param {number} timeout - Timeout in milliseconds
+ * @param {boolean} debug - Enable debug logging
  * @returns {Object} - { equivalent: boolean, method: string }
  */
-function checkWithAlgebrite(latex1, latex2, timeout = 2000) {
+function checkWithAlgebrite(latex1, latex2, timeout = 2000, debug = false) {
   const startTime = performance.now();
 
   try {
@@ -216,41 +268,81 @@ function checkWithAlgebrite(latex1, latex2, timeout = 2000) {
     const expr1 = latexToAlgebrite(latex1);
     const expr2 = latexToAlgebrite(latex2);
 
+    if (debug) {
+      console.log('[Algebrite] Original LaTeX 1:', latex1);
+      console.log('[Algebrite] Converted expr 1:', expr1);
+      console.log('[Algebrite] Original LaTeX 2:', latex2);
+      console.log('[Algebrite] Converted expr 2:', expr2);
+    }
+
     // Check if difference simplifies to zero
-    const difference = Algebrite.run(`simplify(${expr1} - (${expr2}))`);
+    const differenceExpr = `simplify(${expr1} - (${expr2}))`;
+    if (debug) {
+      console.log('[Algebrite] Running:', differenceExpr);
+    }
+    const difference = Algebrite.run(differenceExpr);
+    if (debug) {
+      console.log('[Algebrite] Difference result:', difference);
+    }
     const isZero = difference === '0' || difference === '0.0';
 
     if (isZero) {
+      if (debug) {
+        console.log('[Algebrite] ✓ Difference is zero');
+      }
       return {
         equivalent: true,
         method: 'algebrite-difference',
         difference: '0',
+        expr1,
+        expr2,
         time: performance.now() - startTime
       };
     }
 
     // Try expanding and simplifying both
+    if (debug) {
+      console.log('[Algebrite] Trying simplify...');
+    }
     const simplified1 = Algebrite.run(`simplify(${expr1})`);
     const simplified2 = Algebrite.run(`simplify(${expr2})`);
 
+    if (debug) {
+      console.log('[Algebrite] Simplified 1:', simplified1);
+      console.log('[Algebrite] Simplified 2:', simplified2);
+    }
+
     if (simplified1 === simplified2) {
+      if (debug) {
+        console.log('[Algebrite] ✓ Simplified forms match');
+      }
       return {
         equivalent: true,
         method: 'algebrite-simplify',
         simplified: simplified1,
+        expr1,
+        expr2,
         time: performance.now() - startTime
       };
     }
 
+    if (debug) {
+      console.log('[Algebrite] ✗ Not equivalent');
+    }
     return {
       equivalent: false,
       method: 'algebrite-not-equivalent',
       expr1: simplified1,
       expr2: simplified2,
+      originalExpr1: expr1,
+      originalExpr2: expr2,
       time: performance.now() - startTime
     };
 
   } catch (error) {
+    if (debug) {
+      console.error('[Algebrite] Error:', error);
+    }
     throw new Error(`Algebrite error: ${error.message}`);
   }
 }

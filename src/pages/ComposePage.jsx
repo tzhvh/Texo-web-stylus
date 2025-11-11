@@ -120,6 +120,7 @@ export default function ComposePage() {
   const [cacheStats, setCacheStats] = useState(null);
   const debounceTimerRef = useRef(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [debugMode, setDebugMode] = useState(false);
 
   // Initialize ProseMirror editor
   useEffect(() => {
@@ -268,8 +269,8 @@ export default function ComposePage() {
           result = cached.result;
           result.cached = true;
         } else {
-          // Perform equivalence check
-          result = checkEquivalence(prevLatex, currLatex);
+          // Perform equivalence check with debug flag
+          result = checkEquivalence(prevLatex, currLatex, { debug: debugMode });
 
           // Cache the result
           await cacheCanonicalForm(cacheKey, result.canonical1 || "", {
@@ -479,7 +480,16 @@ export default function ComposePage() {
         <div className="lg:col-span-2 border rounded-lg p-6 bg-white shadow-sm">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-700">Math Editor</h2>
-            <div className="flex gap-2">
+            <div className="flex gap-2 items-center">
+              <label className="flex items-center gap-1 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={debugMode}
+                  onChange={(e) => setDebugMode(e.target.checked)}
+                  className="rounded"
+                />
+                Debug
+              </label>
               <button
                 onClick={() => setShowHelp(!showHelp)}
                 className="px-3 py-1 text-sm bg-gray-200 hover:bg-gray-300 rounded transition"
