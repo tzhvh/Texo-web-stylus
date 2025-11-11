@@ -6,7 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:equivalence": "vitest run src/utils/__tests__/equivalenceChecker.test.js",
+    "test:manual": "node src/cas/__tests__/equivalence.test.manual.js",
+    "test:all": "pnpm test:equivalence && pnpm test:manual",
+    "test:all:nice": "node run-all-tests.js",
+    "test:unified": "node run-all-tests.js"
   },
   "dependencies": {
     "@benrbray/prosemirror-math": "^1.0.0",
@@ -32,8 +39,10 @@
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "jsdom": "^25.0.1",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
   }
 }
