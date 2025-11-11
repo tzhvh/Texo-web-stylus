@@ -40,8 +40,18 @@ export async function getCachedCanonicalForm(latex) {
   const result = await workspaceGetCachedCanonical(latex, 7);
   if (result) {
     await logDiagnostic('debug', 'cas', `Cache hit for: ${latex.substring(0, 50)}...`);
+
+    // Flatten the structure for backward compatibility
+    // Old format: { latex, canonical, timestamp, ...metadata }
+    // New format: { workspaceId, latex, canonical, timestamp, metadata }
+    return {
+      latex: result.latex,
+      canonical: result.canonical,
+      timestamp: result.timestamp,
+      ...result.metadata  // Spread metadata at top level for compatibility
+    };
   }
-  return result;
+  return null;
 }
 
 /**
