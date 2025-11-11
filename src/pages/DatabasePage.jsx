@@ -30,6 +30,12 @@ export default function DatabasePage() {
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [newWorkspaceDesc, setNewWorkspaceDesc] = useState('');
 
+  // Log filter states
+  const [logLevelFilter, setLogLevelFilter] = useState('');
+  const [logSourceFilter, setLogSourceFilter] = useState('');
+  const [logTagFilter, setLogTagFilter] = useState('');
+  const [logLimit, setLogLimit] = useState(100);
+
   useEffect(() => {
     initializeDatabase();
   }, []);
@@ -75,10 +81,44 @@ export default function DatabasePage() {
 
   const loadLogs = async () => {
     try {
-      const diagnosticLogs = await getDiagnosticLogs({ limit: 50 });
+      const filters = {
+        limit: logLimit,
+        level: logLevelFilter || null,
+        source: logSourceFilter || null,
+        tags: logTagFilter ? [logTagFilter] : null
+      };
+      const diagnosticLogs = await getDiagnosticLogs(filters);
       setLogs(diagnosticLogs);
     } catch (error) {
       console.error('Failed to load logs:', error);
+    }
+  };
+
+  // Reload logs when filters change
+  useEffect(() => {
+    if (currentWorkspaceId && activeTab === 'logs') {
+      loadLogs();
+    }
+  }, [logLevelFilter, logSourceFilter, logTagFilter, logLimit, activeTab]);
+
+  const handleExportLogsToClipboard = async () => {
+    try {
+      const logText = logs.map(log => {
+        const timestamp = new Date(log.timestamp).toISOString();
+        const perfMs = log.perfTimestamp || 0;
+        const meta = Object.keys(log.metadata || {}).length > 0
+          ? '\n  ' + JSON.stringify(log.metadata, null, 2).split('\n').join('\n  ')
+          : '';
+        const tags = log.tags && log.tags.length > 0 ? ` [${log.tags.join(', ')}]` : '';
+
+        return `[${timestamp}] [${perfMs}ms] [${log.level.toUpperCase()}] [${log.source}]${tags}\n${log.message}${meta}`;
+      }).join('\n\n' + '='.repeat(80) + '\n\n');
+
+      await navigator.clipboard.writeText(logText);
+      alert(`✓ Copied ${logs.length} log entries to clipboard`);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      alert(`Failed to copy to clipboard: ${error.message}`);
     }
   };
 
@@ -468,41 +508,172 @@ export default function DatabasePage() {
 
         {/* Diagnostic Logs Tab */}
         {activeTab === 'logs' && (
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-semibold">Diagnostic Logs</h2>
-              <button
-                onClick={loadLogs}
-                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-              >
-                Refresh Logs
-              </button>
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">Diagnostic Logs</h2>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleExportLogsToClipboard}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    disabled={logs.length === 0}
+                  >
+                    📋 Copy to Clipboard
+                  </button>
+                  <button
+                    onClick={loadLogs}
+                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Filters */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 p-4 bg-gray-50 rounded-lg">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Level
+                  </label>
+                  <select
+                    value={logLevelFilter}
+                    onChange={(e) => setLogLevelFilter(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="">All Levels</option>
+                    <option value="debug">Debug</option>
+                    <option value="info">Info</option>
+                    <option value="warn">Warn</option>
+                    <option value="error">Error</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Source
+                  </label>
+                  <input
+                    type="text"
+                    value={logSourceFilter}
+                    onChange={(e) => setLogSourceFilter(e.target.value)}
+                    placeholder="e.g. EquivalenceChecker"
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Tag
+                  </label>
+                  <input
+                    type="text"
+                    value={logTagFilter}
+                    onChange={(e) => setLogTagFilter(e.target.value)}
+                    placeholder="e.g. equivalence"
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Limit
+                  </label>
+                  <select
+                    value={logLimit}
+                    onChange={(e) => setLogLimit(Number(e.target.value))}
+                    className="w-full px-3 py-2 border border-gray-300 rounded text-sm"
+                  >
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="500">500</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Log Count */}
+              <div className="mb-3 text-sm text-gray-600">
+                Showing {logs.length} {logs.length === 1 ? 'entry' : 'entries'}
+                {(logLevelFilter || logSourceFilter || logTagFilter) && ' (filtered)'}
+              </div>
+
+              {/* Logs List */}
+              <div className="space-y-2 max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                {logs.length === 0 ? (
+                  <div className="text-gray-500 text-center py-8">
+                    No logs match the current filters
+                  </div>
+                ) : (
+                  logs.map((log) => (
+                    <div
+                      key={log.id}
+                      className={`border-l-4 pl-3 py-2 ${
+                        log.level === 'error'
+                          ? 'border-red-500 bg-red-50'
+                          : log.level === 'warn'
+                          ? 'border-yellow-500 bg-yellow-50'
+                          : log.level === 'info'
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-gray-300 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-start gap-2 flex-wrap">
+                        <span className={`font-semibold text-xs ${getLevelColor(log.level)}`}>
+                          [{log.level.toUpperCase()}]
+                        </span>
+                        <span className="text-xs text-gray-500">[{log.source || log.category}]</span>
+                        {log.perfTimestamp !== undefined && (
+                          <span className="text-xs text-purple-600 font-mono">
+                            [{log.perfTimestamp}ms]
+                          </span>
+                        )}
+                        {log.tags && log.tags.length > 0 && (
+                          <span className="text-xs text-blue-600">
+                            {log.tags.map(tag => `#${tag}`).join(' ')}
+                          </span>
+                        )}
+                        <span className="text-sm flex-1">{log.message}</span>
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          {formatTimestamp(log.timestamp)}
+                        </span>
+                      </div>
+                      {Object.keys(log.metadata || {}).length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
+                            Metadata ({Object.keys(log.metadata).length} fields)
+                          </summary>
+                          <pre className="text-xs text-gray-600 mt-1 ml-4 overflow-x-auto bg-white p-2 rounded border border-gray-200">
+                            {JSON.stringify(log.metadata, null, 2)}
+                          </pre>
+                        </details>
+                      )}
+                      {log.stackTrace && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-red-600 cursor-pointer hover:text-red-800">
+                            Stack Trace
+                          </summary>
+                          <pre className="text-xs text-red-600 mt-1 ml-4 overflow-x-auto bg-white p-2 rounded border border-red-200">
+                            {log.stackTrace}
+                          </pre>
+                        </details>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
-            <div className="space-y-2 max-h-96 overflow-y-auto">
-              {logs.length === 0 ? (
-                <div className="text-gray-500 text-center py-8">No logs available</div>
-              ) : (
-                logs.map((log) => (
-                  <div key={log.id} className="border-l-4 border-gray-300 pl-4 py-2">
-                    <div className="flex items-start gap-2">
-                      <span className={`font-semibold text-sm ${getLevelColor(log.level)}`}>
-                        [{log.level.toUpperCase()}]
-                      </span>
-                      <span className="text-sm text-gray-500">[{log.category}]</span>
-                      <span className="text-sm flex-1">{log.message}</span>
-                      <span className="text-xs text-gray-400">
-                        {formatTimestamp(log.timestamp)}
-                      </span>
-                    </div>
-                    {Object.keys(log.metadata || {}).length > 0 && (
-                      <pre className="text-xs text-gray-600 mt-1 ml-6 overflow-x-auto">
-                        {JSON.stringify(log.metadata, null, 2)}
-                      </pre>
-                    )}
-                  </div>
-                ))
-              )}
+            {/* Log Helper Info */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="font-semibold text-blue-900 mb-2">Log Filtering Tips</h3>
+              <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
+                <li><strong>Level:</strong> Filter by severity (debug, info, warn, error)</li>
+                <li><strong>Source:</strong> Filter by component (e.g., EquivalenceChecker, Algebrite)</li>
+                <li><strong>Tag:</strong> Filter by category tags (e.g., equivalence, parse, algebrite)</li>
+                <li><strong>Performance timestamps:</strong> Shown in purple as [Xms] from page load</li>
+                <li><strong>Metadata:</strong> Click to expand detailed information</li>
+                <li><strong>Copy to Clipboard:</strong> Export visible logs as formatted text</li>
+              </ul>
             </div>
           </div>
         )}
