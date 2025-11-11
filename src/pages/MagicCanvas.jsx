@@ -76,20 +76,31 @@ function MagicCanvas() {
     markDirty,
   } = useCanvasPersistence("unified-canvas-doc");
 
+  Logger.debug("MagicCanvas", "Component beginning to mount");
+
   // Initialize engines
   useEffect(() => {
     Logger.info("MagicCanvas", "Initializing");
 
-    tilingEngineRef.current = new TilingEngine(ROW_HEIGHT);
-    latexAssemblerRef.current = new RestorativeLatexAssembler();
-    workerPoolRef.current = new OCRWorkerPool(2);
+    try {
+      tilingEngineRef.current = new TilingEngine(ROW_HEIGHT);
+      latexAssemblerRef.current = new RestorativeLatexAssembler();
+      workerPoolRef.current = new OCRWorkerPool(2);
 
-    // Initialize worker pool
-    workerPoolRef.current.initialize(modelConfig).catch((err) => {
-      Logger.error("MagicCanvas", "Worker pool initialization failed", err);
-    });
+      Logger.debug("MagicCanvas", "Engines created successfully", {
+        modelConfig: modelConfig.name
+      });
+
+      // Initialize worker pool
+      workerPoolRef.current.initialize(modelConfig).catch((err) => {
+        Logger.error("MagicCanvas", "Worker pool initialization failed", err);
+      });
+    } catch (error) {
+      Logger.error("MagicCanvas", "Error initializing engines", error);
+    }
 
     return () => {
+      Logger.debug("MagicCanvas", "Cleaning up engines");
       if (workerPoolRef.current) {
         workerPoolRef.current.terminate();
       }
@@ -135,12 +146,10 @@ function MagicCanvas() {
         seed: i,
         version: 1,
         versionNonce: i,
-        isDeleted: false,
         groupIds: [],
         boundElements: null,
         updated: Date.now(),
         link: null,
-        locked: true,
       });
     }
 
@@ -154,11 +163,15 @@ function MagicCanvas() {
     (elements, appState) => {
       if (!elements) return;
 
-      // Filter out row dividers
-      const contentElements = elements.filter((el) => !el.isRowDivider);
+      try {
+        // Filter out row dividers
+        const contentElements = elements.filter((el) => !el.isRowDivider);
 
-      // Update row assignments
-      updateRows(contentElements);
+        // Update row assignments
+        updateRows(contentElements);
+      } catch (error) {
+        Logger.error("MagicCanvas", "Error handling scene change", error);
+      }
     },
     [updateRows],
   );
@@ -187,7 +200,15 @@ function MagicCanvas() {
         updateOCRStatus(rowId, "processing", { progress: 0 });
 
         // Get row elements
-        const allElements = excalidrawAPI.getSceneElements();
+        let allElements;
+        try {
+          allElements = excalidrawAPI.getSceneElements();
+        } catch (error) {
+          Logger.error("MagicCanvas", "Error getting scene elements", error);
+          updateOCRStatus(rowId, "error", { error: "Could not retrieve elements" });
+          return;
+        }
+        
         const rowElements = getRowElements(rowId, allElements);
 
         if (rowElements.length === 0) {
@@ -220,7 +241,14 @@ function MagicCanvas() {
           const tile = tiles[i];
 
           // Render tile to blob
-          const blob = await renderTile(tile, excalidrawAPI);
+          let blob;
+          try {
+            blob = await renderTile(tile, excalidrawAPI);
+          } catch (error) {
+            Logger.error("MagicCanvas", `Error rendering tile ${i} for row ${rowId}`, error);
+            updateOCRStatus(rowId, "error", { error: `Tile rendering failed: ${error.message}` });
+            return;
+          }
           tile.blob = blob;
 
           setProgress({
@@ -233,17 +261,23 @@ function MagicCanvas() {
         // Process tiles with OCR worker pool
         updateOCRStatus(rowId, "processing", { progress: 0.3, tiles });
 
-        await workerPoolRef.current.processTiles(tiles, (progress) => {
-          updateOCRStatus(rowId, "processing", {
-            progress: 0.3 + (progress.percentage * 0.5) / 100,
-            tiles,
+        try {
+          await workerPoolRef.current.processTiles(tiles, (progress) => {
+            updateOCRStatus(rowId, "processing", {
+              progress: 0.3 + (progress.percentage * 0.5) / 100,
+              tiles,
+            });
+            setProgress({
+              completed: progress.completed,
+              total: progress.total,
+              phase: "ocr",
+            });
           });
-          setProgress({
-            completed: progress.completed,
-            total: progress.total,
-            phase: "ocr",
-          });
-        });
+        } catch (error) {
+          Logger.error("MagicCanvas", `Error processing tiles for row ${rowId}`, error);
+          updateOCRStatus(rowId, "error", { error: `OCR processing failed: ${error.message}` });
+          return;
+        }
 
         Logger.info("MagicCanvas", `OCR complete for row ${rowId}`);
 
@@ -282,34 +316,100 @@ function MagicCanvas() {
    * Render tile to blob using Excalidraw's export
    */
   const renderTile = async (tile, api) => {
-    // Transform elements to tile coordinate system
-    const transformedElements = tile.elements.map((el) => ({
-      ...el,
-      x: (el.x - tile.bounds.minX) * tile.scale + tile.padding.x,
-      y: (el.y - tile.bounds.minY) * tile.scale + tile.padding.y,
-      width: (el.width || 0) * tile.scale,
-      height: (el.height || 0) * tile.scale,
-      strokeWidth: (el.strokeWidth || 2) * tile.scale,
-      points: el.points
-        ? el.points.map((p) => [p[0] * tile.scale, p[1] * tile.scale])
-        : undefined,
-    }));
-
-    const blob = await exportToBlob({
-      elements: transformedElements,
-      appState: {
-        exportBackground: true,
-        viewBackgroundColor: modelConfig.paddingColor || "#FFFFFF",
-      },
-      files: api.getFiles(),
-      getDimensions: () => ({
-        width: tile.outputWidth,
-        height: tile.outputHeight,
-      }),
-      exportPadding: 0,
+    Logger.debug("MagicCanvas", "Starting tile render", {
+      tileId: tile.id,
+      elementCount: tile.elements ? tile.elements.length : 0,
+      scale: tile.scale,
+      outputWidth: tile.outputWidth,
+      outputHeight: tile.outputHeight
     });
+    
+    try {
+      if (!tile || !tile.elements) {
+        Logger.error("MagicCanvas", "Invalid tile data for rendering", { tile });
+        throw new Error("Invalid tile data");
+      }
 
-    return blob;
+      // Transform elements to tile coordinate system
+      const transformedElements = tile.elements.map((el, index) => {
+        try {
+          Logger.debug("MagicCanvas", `Transforming element ${index}`, {
+            originalX: el.x,
+            originalY: el.y,
+            boundsMinX: tile.bounds.minX,
+            boundsMinY: tile.bounds.minY,
+            scale: tile.scale,
+            paddingX: tile.padding.x,
+            paddingY: tile.padding.y
+          });
+          
+          return {
+            ...el,
+            x: (el.x - tile.bounds.minX) * tile.scale + tile.padding.x,
+            y: (el.y - tile.bounds.minY) * tile.scale + tile.padding.y,
+            width: (el.width || 0) * tile.scale,
+            height: (el.height || 0) * tile.scale,
+            strokeWidth: (el.strokeWidth || 2) * tile.scale,
+            points: el.points
+              ? el.points.map((p) => [p[0] * tile.scale, p[1] * tile.scale])
+              : undefined,
+          };
+        } catch (error) {
+          Logger.error("MagicCanvas", `Error transforming element ${index} for tile`, error, { element: el });
+          throw error;
+        }
+      });
+
+      Logger.debug("MagicCanvas", "Elements transformed successfully", {
+        originalElementCount: tile.elements.length,
+        transformedElementCount: transformedElements.length
+      });
+
+      let files;
+      try {
+        files = api.getFiles();
+        Logger.debug("MagicCanvas", "Successfully retrieved files from API", {
+          fileCount: Object.keys(files).length
+        });
+      } catch (error) {
+        Logger.error("MagicCanvas", "Error getting files from API for export", error);
+        files = {};
+      }
+
+      Logger.debug("MagicCanvas", "About to export to blob", {
+        elementCount: transformedElements.length,
+        backgroundColor: modelConfig.paddingColor || "#FFFFFF",
+        outputWidth: tile.outputWidth,
+        outputHeight: tile.outputHeight
+      });
+
+      const blob = await exportToBlob({
+        elements: transformedElements,
+        appState: {
+          exportBackground: true,
+          viewBackgroundColor: modelConfig.paddingColor || "#FFFFFF",
+        },
+        files,
+        getDimensions: () => ({
+          width: tile.outputWidth,
+          height: tile.outputHeight,
+        }),
+        exportPadding: 0,
+      });
+
+      Logger.debug("MagicCanvas", "Successfully rendered tile to blob", {
+        tileSize: blob.size,
+        tileType: blob.type
+      });
+
+      return blob;
+    } catch (error) {
+      Logger.error("MagicCanvas", "Error rendering tile", error, {
+        tileId: tile?.id,
+        elementCount: tile?.elements ? tile.elements.length : 0
+      });
+      throw error;
+    }
   };
 
   /**
@@ -334,37 +434,57 @@ function MagicCanvas() {
   const handleSave = useCallback(async () => {
     if (!excalidrawAPI) return;
 
-    const elements = excalidrawAPI.getSceneElements();
-    const appState = excalidrawAPI.getAppState();
-    const files = excalidrawAPI.getFiles();
-    const rowData = getAllRows().reduce((acc, row) => {
-      acc[row.id] = row;
-      return acc;
-    }, {});
+    try {
+      let elements, appState, files;
+      
+      try {
+        elements = excalidrawAPI.getSceneElements();
+        appState = excalidrawAPI.getAppState();
+        files = excalidrawAPI.getFiles();
+      } catch (apiError) {
+        Logger.error("MagicCanvas", "Error accessing Excalidraw API for save", apiError);
+        return;
+      }
+      
+      const rowData = getAllRows().reduce((acc, row) => {
+        acc[row.id] = row;
+        return acc;
+      }, {});
 
-    await saveCanvas({
-      elements,
-      appState,
-      files,
-      rowData,
-    });
+      await saveCanvas({
+        elements,
+        appState,
+        files,
+        rowData,
+      });
+    } catch (error) {
+      Logger.error("MagicCanvas", "Error saving canvas", error);
+    }
   }, [excalidrawAPI, getAllRows, saveCanvas]);
 
   /**
    * Load canvas
    */
   const handleLoad = useCallback(async () => {
-    const data = await loadCanvas();
+    try {
+      const data = await loadCanvas();
 
-    if (data && excalidrawAPI) {
-      excalidrawAPI.updateScene({
-        elements: data.elements,
-        appState: data.appState,
-      });
+      if (data && excalidrawAPI) {
+        try {
+          excalidrawAPI.updateScene({
+            elements: data.elements,
+            appState: data.appState,
+          });
 
-      // TODO: Load row data
+          // TODO: Load row data
 
-      Logger.info("MagicCanvas", "Canvas loaded");
+          Logger.info("MagicCanvas", "Canvas loaded");
+        } catch (error) {
+          Logger.error("MagicCanvas", "Error updating scene from loaded data", error);
+        }
+      }
+    } catch (error) {
+      Logger.error("MagicCanvas", "Error loading canvas", error);
     }
   }, [excalidrawAPI, loadCanvas]);
 
@@ -374,20 +494,32 @@ function MagicCanvas() {
   const handleExport = useCallback(async () => {
     if (!excalidrawAPI) return;
 
-    const elements = excalidrawAPI.getSceneElements();
-    const appState = excalidrawAPI.getAppState();
-    const files = excalidrawAPI.getFiles();
-    const rowData = getAllRows().reduce((acc, row) => {
-      acc[row.id] = row;
-      return acc;
-    }, {});
+    try {
+      let elements, appState, files;
+      
+      try {
+        elements = excalidrawAPI.getSceneElements();
+        appState = excalidrawAPI.getAppState();
+        files = excalidrawAPI.getFiles();
+      } catch (apiError) {
+        Logger.error("MagicCanvas", "Error accessing Excalidraw API for export", apiError);
+        return;
+      }
+      
+      const rowData = getAllRows().reduce((acc, row) => {
+        acc[row.id] = row;
+        return acc;
+      }, {});
 
-    await exportCanvas({
-      elements,
-      appState,
-      files,
-      rowData,
-    });
+      await exportCanvas({
+        elements,
+        appState,
+        files,
+        rowData,
+      });
+    } catch (error) {
+      Logger.error("MagicCanvas", "Error exporting canvas", error);
+    }
   }, [excalidrawAPI, getAllRows, exportCanvas]);
 
   /**
@@ -406,12 +538,42 @@ function MagicCanvas() {
    * Only runs once on mount to avoid infinite loops
    */
   useEffect(() => {
+    Logger.debug("MagicCanvas", "Divider initialization effect triggered", {
+      hasAPI: !!excalidrawAPI,
+      dividersInitialized: dividersInitializedRef.current
+    });
+    
     if (!excalidrawAPI || dividersInitializedRef.current) return;
 
-    // Wait a tick for Excalidraw to fully initialize
-    const timer = setTimeout(() => {
-      const appState = excalidrawAPI.getAppState();
-      if (!appState) return;
+    // Wait longer for Excalidraw to fully initialize
+    const timer = setTimeout(async () => {
+      Logger.debug("MagicCanvas", "Attempting to initialize row dividers after delay");
+      
+      // Try to get appState with retry mechanism
+      let appState = null;
+      let attempts = 0;
+      const maxAttempts = 10;
+      
+      while (attempts < maxAttempts) {
+        try {
+          appState = excalidrawAPI.getAppState();
+          if (appState) {
+            Logger.debug("MagicCanvas", `Successfully got appState on attempt ${attempts + 1}`);
+            break;
+          } else {
+            Logger.warn("MagicCanvas", `Attempt ${attempts + 1}: AppState is null`);
+          }
+        } catch (error) {
+          Logger.warn("MagicCanvas", `Attempt ${attempts + 1} to get appState failed`, error);
+        }
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (!appState) {
+        Logger.error("MagicCanvas", "Could not get appState after multiple attempts");
+        return;
+      }
 
       const viewport = {
         x: appState.scrollX || 0,
@@ -420,18 +582,32 @@ function MagicCanvas() {
         height: appState.height || window.innerHeight,
       };
 
+      Logger.debug("MagicCanvas", "Generating row dividers with viewport", viewport);
+
       const dividers = generateRowDividers(viewport);
 
       Logger.debug(
         "MagicCanvas",
-        `Initializing ${dividers.length} row dividers`,
+        `Generated ${dividers.length} row dividers`,
       );
-      excalidrawAPI.updateScene({
-        elements: dividers,
-      });
-
-      dividersInitializedRef.current = true;
-    }, 100);
+      
+      if (dividers.length === 0) {
+        Logger.warn("MagicCanvas", "No row dividers were generated, skipping scene update");
+        dividersInitializedRef.current = true;
+        return;
+      }
+      
+      try {
+        Logger.debug("MagicCanvas", "Updating scene with row dividers");
+        excalidrawAPI.updateScene({
+          elements: dividers,
+        });
+        Logger.info("MagicCanvas", "Successfully updated scene with row dividers");
+        dividersInitializedRef.current = true;
+      } catch (error) {
+        Logger.error("MagicCanvas", "Failed to update scene with dividers", error);
+      }
+    }, 500); // Wait longer initially
 
     return () => clearTimeout(timer);
   }, [excalidrawAPI, generateRowDividers]);
@@ -465,45 +641,119 @@ function MagicCanvas() {
    * Render row overlays (LaTeX, status icons, etc.)
    */
   const renderRowOverlays = useCallback(() => {
-    if (!excalidrawAPI) return null;
+    Logger.debug("MagicCanvas", "Rendering row overlays", {
+      hasExcalidrawAPI: !!excalidrawAPI,
+      rowSize: rows.size,
+      selectedRow: selectedRow
+    });
+    
+    if (!excalidrawAPI) {
+      Logger.warn("MagicCanvas", "No Excalidraw API available for overlays");
+      return null;
+    }
 
-    const appState = excalidrawAPI.getAppState();
-    const viewport = {
-      x: appState.scrollX,
-      y: appState.scrollY,
+    let appState;
+    try {
+      appState = excalidrawAPI.getAppState();
+      if (!appState) {
+        Logger.warn("MagicCanvas", "No appState available for overlays");
+        return null;
+      }
+    } catch (error) {
+      Logger.warn("MagicCanvas", "Could not get appState for overlays", error);
+      return null;
+    }
+
+    Logger.debug("MagicCanvas", "Got appState for overlays", {
+      scrollX: appState.scrollX,
+      scrollY: appState.scrollY,
       width: appState.width,
       height: appState.height,
+      zoomValue: appState.zoom?.value
+    });
+
+    const viewport = {
+      x: appState.scrollX || 0,
+      y: appState.scrollY || 0,
+      width: appState.width || window.innerWidth,
+      height: appState.height || window.innerHeight,
     };
+
+    Logger.debug("MagicCanvas", "Calculating visible rows", {
+      viewport,
+      totalRows: rows.size
+    });
 
     const visibleRows = Array.from(rows.values()).filter((row) => {
       const rowTop = row.y;
       const rowBottom = row.y + row.height;
-      return rowBottom >= viewport.y && rowTop <= viewport.y + viewport.height;
+      const isVisible = rowBottom >= viewport.y && rowTop <= viewport.y + viewport.height;
+      
+      Logger.debug("MagicCanvas", "Row visibility check", {
+        rowId: row.id,
+        rowTop,
+        rowBottom,
+        viewportY: viewport.y,
+        viewportHeight: viewport.height,
+        isVisible
+      });
+      
+      return isVisible;
     });
+
+    Logger.debug("MagicCanvas", "Found visible rows", {
+      visibleRowCount: visibleRows.length,
+      visibleRowIds: visibleRows.map(row => row.id)
+    });
+
+    if (visibleRows.length === 0) {
+      return <div className="row-overlays" />; // Return empty container
+    }
 
     return (
       <div className="row-overlays">
-        {visibleRows.map((row) => (
-          <RowOverlay
-            key={row.id}
-            row={row}
-            viewport={viewport}
-            zoom={appState.zoom.value || 1}
-            selected={selectedRow === row.id}
-            onClick={() => handleRowClick(row.id)}
-            debugMode={debugMode}
-          />
-        ))}
+        {visibleRows.map((row) => {
+          Logger.debug("MagicCanvas", "Rendering RowOverlay", {
+            rowId: row.id,
+            zoom: appState.zoom.value || 1,
+            isSelected: selectedRow === row.id
+          });
+          
+          return (
+            <RowOverlay
+              key={row.id}
+              row={row}
+              viewport={viewport}
+              zoom={appState.zoom.value || 1}
+              selected={selectedRow === row.id}
+              onClick={() => handleRowClick(row.id)}
+              debugMode={debugMode}
+            />
+          );
+        })}
       </div>
     );
   }, [excalidrawAPI, rows, selectedRow, handleRowClick, debugMode]);
+
+  // Effect to log component renders
+  useEffect(() => {
+    Logger.debug("MagicCanvas", "Component rendered", {
+      hasExcalidrawAPI: !!excalidrawAPI,
+      rowsSize: rows.size,
+      isProcessing,
+      dividersInitialized: dividersInitializedRef.current
+    });
+  }); // No dependencies to log on every render
 
   return (
     <div className="unified-canvas">
       {/* Excalidraw Canvas */}
       <div className="canvas-container">
         <Excalidraw
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
+          excalidrawAPI={(api) => {
+            Logger.debug("MagicCanvas", "Excalidraw API callback triggered", { hasAPI: !!api });
+            setExcalidrawAPI(api);
+          }}
           onChange={handleSceneChange}
           initialData={{
             appState: {
