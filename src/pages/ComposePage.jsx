@@ -84,6 +84,83 @@ const mathSchema = new Schema({
   },
 });
 
+// Custom command for Ctrl+M to insert inline math (with selection wrapping)
+const inlineMathCtrlMCmd = (state, dispatch) => {
+  const { from, to } = state.selection;
+  const hasSelection = from !== to;
+
+  if (dispatch) {
+    let tr = state.tr;
+
+    if (hasSelection) {
+      // Get selected text
+      const selectedText = state.doc.textBetween(from, to);
+
+      // Delete selection and insert math node with content
+      const mathNode = mathSchema.nodes.math_inline.create(null, [
+        mathSchema.text(selectedText),
+      ]);
+      tr = tr.delete(from, to).insert(from, mathNode);
+      tr.setSelection(state.selection.constructor.near(tr.doc.resolve(from + 1)));
+    } else {
+      // No selection - insert empty math node with cursor inside
+      const mathNode = mathSchema.nodes.math_inline.create(null, [
+        mathSchema.text(""),
+      ]);
+      tr = tr.insert(from, mathNode);
+      tr.setSelection(state.selection.constructor.near(tr.doc.resolve(from + 1)));
+    }
+
+    dispatch(tr);
+  }
+
+  return true;
+};
+
+// Custom command to create block math on Enter after $$
+const blockMathOnEnterCmd = (state, dispatch) => {
+  const { $from } = state.selection;
+  const pos = $from.pos;
+
+  // Get text before cursor in the current node
+  if ($from.parent.type.name !== "paragraph") {
+    return false;
+  }
+
+  // Check if we have text before cursor
+  const textBefore = $from.parent.textContent.slice(0, $from.parentOffset);
+
+  // Check if the text ends with $$
+  if (!textBefore.endsWith("$$")) {
+    return false;
+  }
+
+  // Create the math_display node
+  const mathNode = mathSchema.nodes.math_display.create(null, [
+    mathSchema.text(""),
+  ]);
+
+  if (dispatch) {
+    // Get the position of the $$ in the text
+    const dollarPos = textBefore.lastIndexOf("$$");
+    const nodeStart = $from.start();
+    const deleteFrom = nodeStart + dollarPos;
+    const deleteTo = pos;
+
+    // Delete the $$ and create math node
+    const tr = state.tr
+      .delete(deleteFrom, deleteTo)
+      .insert(deleteFrom, mathNode);
+
+    // Set selection inside the math node
+    tr.setSelection(state.selection.constructor.near(tr.doc.resolve(deleteFrom + 1)));
+
+    dispatch(tr);
+  }
+
+  return true;
+};
+
 // Create a plugin key for the validation plugin
 const validationPluginKey = new PluginKey("validation");
 
@@ -179,6 +256,8 @@ export default function ComposePage() {
       mathPlugin,
       keymap({
         "Mod-Space": insertMathCmd(mathSchema.nodes.math_inline),
+        "Mod-m": inlineMathCtrlMCmd,
+        Enter: chainCommands(blockMathOnEnterCmd, baseKeymap.Enter),
         Backspace: chainCommands(
           deleteSelection,
           mathBackspaceCmd,
@@ -506,7 +585,7 @@ export default function ComposePage() {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto h-screen flex flex-col">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-800">Math CAS Checker</h1>
         <p className="text-gray-600 mt-2">
@@ -515,9 +594,9 @@ export default function ComposePage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
         {/* Editor Section */}
-        <div className="lg:col-span-2 border rounded-lg p-6 bg-white shadow-sm">
+        <div className="lg:col-span-2 border rounded-lg p-6 bg-white shadow-sm flex flex-col">
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-700">Math Editor</h2>
             <div className="flex gap-3 items-center">
@@ -604,6 +683,9 @@ export default function ComposePage() {
                   followed by space for block math
                 </li>
                 <li>
+                  • Type <code className="bg-blue-100 px-1 rounded">$$</code> and press Enter for block math
+                </li>
+                <li>
                   • Type{" "}
                   <code className="bg-blue-100 px-1 rounded">$formula$</code>{" "}
                   for inline math
@@ -614,6 +696,13 @@ export default function ComposePage() {
                     Ctrl/Cmd+Space
                   </code>{" "}
                   to insert inline math
+                </li>
+                <li>
+                  • Press{" "}
+                  <code className="bg-blue-100 px-1 rounded">
+                    Ctrl/Cmd+M
+                  </code>{" "}
+                  to insert inline math (with selection support)
                 </li>
                 <li>
                   • Each display equation ($$...$$) on a new line is checked
@@ -627,7 +716,8 @@ export default function ComposePage() {
           {/* ProseMirror Editor Container */}
           <div
             ref={editorRef}
-            className="border rounded-lg p-4 min-h-[400px] focus-within:ring-2 focus-within:ring-blue-500 prose max-w-none"
+            onClick={() => viewRef.current?.focus()}
+            className="flex-1 border rounded-lg p-4 focus-within:ring-2 focus-within:ring-blue-500 prose max-w-none overflow-auto cursor-text"
             style={{
               background: "#fafafa",
               fontFamily: "ui-monospace, monospace",
@@ -651,7 +741,7 @@ export default function ComposePage() {
         </div>
 
         {/* Validation Results Sidebar */}
-        <div className="border rounded-lg p-6 bg-white shadow-sm">
+        <div className="border rounded-lg p-6 bg-white shadow-sm flex flex-col overflow-hidden">
           <h2 className="text-xl font-semibold mb-4 text-gray-700">
             Validation Results
           </h2>
@@ -662,7 +752,7 @@ export default function ComposePage() {
               results.
             </p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-3 flex-1 overflow-y-auto">
               {validationResults.map((result, index) => (
                 <div
                   key={index}
