@@ -12,6 +12,8 @@ import {
   baseKeymap,
 } from "prosemirror-commands";
 import { history, redo, undo } from "prosemirror-history";
+import { Decoration, DecorationSet } from "prosemirror-view";
+import { Plugin, PluginKey } from "prosemirror-state";
 import {
   mathPlugin,
   mathBackspaceCmd,
@@ -76,6 +78,39 @@ const mathSchema = new Schema({
   },
 });
 
+// Create a plugin key for the validation plugin
+const validationPluginKey = new PluginKey("validation");
+
+// Validation plugin for creating decorations
+const createValidationPlugin = () => {
+  return new Plugin({
+    key: validationPluginKey,
+    state: {
+      init() {
+        return DecorationSet.empty;
+      },
+      apply(tr, oldSet) {
+        // Check for new decoration set in transaction metadata
+        const newSet = tr.getMeta(validationPluginKey);
+        if (newSet !== undefined) {
+          return newSet;
+        }
+
+        // Re-map decorations through transactions
+        if (tr.docChanged) {
+          return oldSet.map(tr.mapping, tr.doc);
+        }
+        return oldSet;
+      },
+    },
+    props: {
+      decorations(state) {
+        return this.getState(state);
+      },
+    },
+  });
+};
+
 export default function ComposePage() {
   const editorRef = useRef(null);
   const viewRef = useRef(null);
@@ -100,6 +135,9 @@ export default function ComposePage() {
       mathSchema.nodes.math_display,
     );
 
+    // Create validation plugin instance
+    const validationPlugin = createValidationPlugin();
+
     // Create plugins
     const plugins = [
       history(),
@@ -118,6 +156,7 @@ export default function ComposePage() {
       }),
       keymap(baseKeymap),
       inputRules({ rules: [inlineMathInputRule, blockMathInputRule] }),
+      validationPlugin,
     ];
 
     // Create editor state
@@ -202,11 +241,10 @@ export default function ComposePage() {
 
     try {
       // Extract just the display math lines (one equation per line)
-      const displayLines = lines
-        .filter((line) => line.type === "display")
-        .map((line) => line.latex);
+      const displayLines = lines.filter((line) => line.type === "display");
+      const displayLatex = displayLines.map((line) => line.latex);
 
-      if (displayLines.length < 2) {
+      if (displayLatex.length < 2) {
         setValidationResults([]);
         setIsValidating(false);
         return;
@@ -216,8 +254,10 @@ export default function ComposePage() {
       const results = [];
 
       for (let i = 1; i < displayLines.length; i++) {
-        const prevLatex = displayLines[i - 1];
-        const currLatex = displayLines[i];
+        const prevLine = displayLines[i - 1];
+        const currLine = displayLines[i];
+        const prevLatex = prevLine.latex;
+        const currLatex = currLine.latex;
 
         // Check cache first
         const cacheKey = `${prevLatex}|${currLatex}`;
@@ -254,6 +294,8 @@ export default function ComposePage() {
           error: result.error,
           mapping,
           cached: result.cached || false,
+          nodePos: currLine.pos, // Position of the current node
+          prevNodePos: prevLine.pos, // Position of the previous node
         });
       }
 
@@ -275,6 +317,54 @@ export default function ComposePage() {
       console.error("Error fetching cache stats:", error);
     }
   };
+
+  // Apply decorations when validation results change
+  useEffect(() => {
+    if (!viewRef.current) return;
+
+    const view = viewRef.current;
+    const { state } = view;
+
+    // Create decorations for validation results
+    const decorations = [];
+
+    validationResults.forEach((result) => {
+      // Highlight both the current and previous nodes
+      const positions = [result.nodePos, result.prevNodePos];
+
+      positions.forEach((pos) => {
+        if (pos !== undefined) {
+          // Find the node at this position
+          const $pos = state.doc.resolve(pos);
+          const node = $pos.nodeAfter;
+
+          if (
+            node &&
+            (node.type.name === "math_display" ||
+              node.type.name === "math_inline")
+          ) {
+            // Apply the appropriate class based on equivalence
+            const className = result.equivalent
+              ? "bg-green-50 border-green-300 border rounded inline-block"
+              : "bg-red-50 border-red-300 border rounded inline-block";
+
+            decorations.push(
+              Decoration.node(pos, pos + node.nodeSize, {
+                class: className,
+              }),
+            );
+          }
+        }
+      });
+    });
+
+    // Create new decoration set
+    const newDecorationSet = DecorationSet.create(state.doc, decorations);
+
+    // Create transaction to update the validation plugin state
+    const tr = state.tr.setMeta(validationPluginKey, newDecorationSet);
+    view.dispatch(tr);
+  }, [validationResults]);
 
   // Insert sample equations with direct node creation
   const insertSample = () => {
