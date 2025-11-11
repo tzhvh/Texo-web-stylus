@@ -89,18 +89,71 @@ export async function initWorkspaceDB() {
 }
 
 /**
- * Ensure default workspace exists
+ * Default session state schema with preset values
+ */
+const DEFAULT_SESSION_STATE = {
+  debugMode: true,                    // Enable debug logging by default
+  showHelp: false,                    // Help panel collapsed by default
+  validationEnabled: true,            // Auto-validation enabled
+  cacheEnabled: true,                 // CAS cache enabled
+  validationDelay: 500,               // Debounce delay in ms
+  maxCanonicalizationIterations: 100, // Max iterations for rule engine
+  useAlgebrite: true,                 // Enable Algebrite fallback
+  algebriteTimeout: 2000,             // Algebrite timeout in ms
+  region: 'US',                       // Math notation region
+  floatTolerance: 1e-6,               // Floating point comparison tolerance
+  theme: 'light',                     // UI theme
+  editorFontSize: 16,                 // Editor font size in px
+  validationHighlights: true,         // Show inline validation highlights
+};
+
+/**
+ * Ensure default workspace exists with preset session state
  */
 async function ensureDefaultWorkspace() {
   const workspace = await getWorkspace(DEFAULT_WORKSPACE);
   if (!workspace) {
+    // Create default workspace
     await createWorkspace({
       id: DEFAULT_WORKSPACE,
       name: 'Default Workspace',
-      description: 'Default workspace for all sessions',
-      createdAt: Date.now()
+      description: 'Default workspace for all sessions with preset configuration',
+      createdAt: Date.now(),
+      metadata: {
+        version: DB_VERSION,
+        isDefault: true
+      }
+    });
+
+    // Initialize default session state values
+    console.log('[WorkspaceDB] Initializing default session state with preset values');
+    for (const [key, value] of Object.entries(DEFAULT_SESSION_STATE)) {
+      await saveSessionState(key, value);
+    }
+
+    // Log initialization
+    await logDiagnostic('info', 'workspace', 'Default workspace created with preset session state', {
+      sessionState: DEFAULT_SESSION_STATE
     });
   }
+}
+
+/**
+ * Export default session state schema for reference
+ */
+export { DEFAULT_SESSION_STATE };
+
+/**
+ * Reset session state to default values for current workspace
+ */
+export async function resetSessionState() {
+  console.log('[WorkspaceDB] Resetting session state to defaults');
+  for (const [key, value] of Object.entries(DEFAULT_SESSION_STATE)) {
+    await saveSessionState(key, value);
+  }
+  await logDiagnostic('info', 'workspace', 'Session state reset to defaults', {
+    sessionState: DEFAULT_SESSION_STATE
+  });
 }
 
 /**

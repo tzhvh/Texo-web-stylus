@@ -42,6 +42,10 @@ import {
   cacheCanonicalForm,
   getCacheStats,
 } from "../utils/indexedDBCache.js";
+import {
+  saveSessionState,
+  loadSessionState,
+} from "../utils/workspaceDB.js";
 
 // ProseMirror Schema with math nodes
 const mathSchema = new Schema({
@@ -121,7 +125,23 @@ export default function ComposePage() {
   const [cacheStats, setCacheStats] = useState(null);
   const debounceTimerRef = useRef(null);
   const [showHelp, setShowHelp] = useState(false);
-  const [debugMode, setDebugMode] = useState(false);
+  const [debugMode, setDebugMode] = useState(true); // Default to true
+
+  // Load debug mode from session state on mount
+  useEffect(() => {
+    const loadDebugSetting = async () => {
+      const savedDebug = await loadSessionState('debugMode');
+      if (savedDebug !== null) {
+        setDebugMode(savedDebug);
+      }
+    };
+    loadDebugSetting();
+  }, []);
+
+  // Save debug mode to session state when it changes
+  useEffect(() => {
+    saveSessionState('debugMode', debugMode);
+  }, [debugMode]);
 
   // Initialize ProseMirror editor
   useEffect(() => {
