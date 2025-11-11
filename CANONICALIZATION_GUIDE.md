@@ -363,6 +363,106 @@ x^2          → x^2
 
 ---
 
+## Force Recheck Mode
+
+Users can bypass canonicalization and force Algebrite usage through the composer UI.
+
+### Configuration
+
+**Flag**: `forceAlgebrite: boolean`
+- **Default**: `false`
+- **When enabled**: Skips rule engine entirely, uses Algebrite directly
+- **Side effects**: Also bypasses result caching
+
+**Configuration locations**:
+- `src/cas/equivalenceChecker.js` - `EquivalenceConfig.forceAlgebrite`
+- `src/utils/workspaceDB.js` - `DEFAULT_SESSION_STATE.forceAlgebrite`
+
+### How It Works
+
+```javascript
+// Normal flow:
+Parse → Canonicalize → Compare strings → If fail, try Algebrite
+
+// Force Algebrite flow:
+Parse → Skip to Algebrite directly
+```
+
+**Implementation** (`src/cas/equivalenceChecker.js`, lines 176-204):
+```javascript
+if (config.forceAlgebrite) {
+  Logger.debug('Force Algebrite mode - skipping canonicalization');
+
+  const algebraicCheck = checkWithAlgebrite(latex1, latex2, ...);
+  return {
+    ...algebraicCheck,
+    forced: true,  // Indicates forced mode
+    time: performance.now() - startTime
+  };
+}
+```
+
+### UI Controls
+
+**Location**: `src/pages/ComposePage.jsx`
+
+**Toggle Checkbox**:
+- Appears in composer header next to Debug toggle
+- Orange styling when active
+- Shows warning banner when enabled
+
+**Visual Indicators**:
+- **Banner**: "⚠️ Force Algebrite Mode Active - Cache disabled, using slower but comprehensive CAS engine"
+- **Method badge**: Results show `forced: true` flag
+- **Color coding**: Orange theme for forced mode vs. green for debug mode
+
+### Use Cases
+
+1. **Debugging Canonicalization Rules**
+   - Verify that rules produce correct results
+   - Compare fast path vs. Algebrite behavior
+   - Identify when canonicalization fails incorrectly
+
+2. **Verifying Complex Expressions**
+   - Double-check results on critical comparisons
+   - Use comprehensive CAS when accuracy is paramount
+   - Bypass potential rule bugs
+
+3. **Testing Algebrite Behavior**
+   - See how Algebrite handles specific expressions
+   - Measure performance differences
+   - Test fallback reliability
+
+4. **Clearing Stale Cache**
+   - Force fresh computation
+   - Avoid cached bugs from previous versions
+   - Re-validate after rule changes
+
+### Performance Impact
+
+| Mode | Average Time | Method |
+|------|--------------|--------|
+| **Normal** (canonicalization) | 1-50ms | Fast path |
+| **Forced** (Algebrite only) | 50-500ms | Slow path |
+
+**Note**: Force mode is 10-50x slower, intended for verification and debugging only.
+
+### Configuration Example
+
+```javascript
+// Force Algebrite for specific checks
+result = checkEquivalence('2x + 3x', '5x', {
+  ...EquivalenceConfig,
+  forceAlgebrite: true  // Skip canonicalization
+});
+
+// Result will have forced: true flag
+console.log(result.forced);  // true
+console.log(result.method);  // 'algebrite-difference' or 'algebrite-simplify'
+```
+
+---
+
 ## Adding New Rules
 
 To add a new canonicalization rule:
