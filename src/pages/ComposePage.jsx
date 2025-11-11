@@ -26,6 +26,7 @@ import {
 } from "@benrbray/prosemirror-math";
 import "@benrbray/prosemirror-math/dist/prosemirror-math.css";
 import "katex/dist/katex.min.css";
+import katex from "katex";
 import { BlockMath } from "react-katex";
 import {
   checkEquivalence,
@@ -117,6 +118,85 @@ const createValidationPlugin = () => {
   });
 };
 
+// Create a plugin key for the LaTeX error plugin
+const latexErrorPluginKey = new PluginKey("latexError");
+
+// LaTeX Error checking plugin - automatically checks on document changes
+const createLatexErrorPlugin = () => {
+  return new Plugin({
+    key: latexErrorPluginKey,
+    state: {
+      init(config, state) {
+        // Initialize with error checking
+        return checkLatexErrorsForState(state);
+      },
+      apply(tr, oldState, oldEditorState, newEditorState) {
+        // If document changed, recheck errors
+        if (tr.docChanged) {
+          return checkLatexErrorsForState(newEditorState);
+        }
+
+        // Otherwise, just remap decorations
+        return {
+          decorations: oldState.decorations.map(tr.mapping, tr.doc),
+          errors: oldState.errors,
+        };
+      },
+    },
+    props: {
+      decorations(state) {
+        return this.getState(state).decorations;
+      },
+    },
+  });
+};
+
+// Helper function to check LaTeX errors for a given state
+const checkLatexErrorsForState = (state) => {
+  const decorations = [];
+  const errors = {};
+
+  state.doc.descendants((node, pos) => {
+    if (node.type.name === "math_display" || node.type.name === "math_inline") {
+      const content = node.textContent;
+      const validation = validateLatex(content);
+
+      if (!validation.valid) {
+        // Add error decoration
+        decorations.push(
+          Decoration.node(pos, pos + node.nodeSize, {
+            class: "math-node-error",
+            title: validation.error, // Tooltip with error message
+          })
+        );
+
+        // Store error message
+        errors[pos] = validation.error;
+      }
+    }
+  });
+
+  return {
+    decorations: DecorationSet.create(state.doc, decorations),
+    errors: errors,
+  };
+};
+
+// Helper function to validate LaTeX syntax
+const validateLatex = (latex) => {
+  if (!latex || !latex.trim()) {
+    return { valid: true, error: null };
+  }
+
+  try {
+    // Try to parse with KaTeX
+    katex.__parse(latex);
+    return { valid: true, error: null };
+  } catch (e) {
+    return { valid: false, error: e.message };
+  }
+};
+
 export default function ComposePage() {
   const editorRef = useRef(null);
   const viewRef = useRef(null);
@@ -160,6 +240,44 @@ export default function ComposePage() {
   useEffect(() => {
     if (!editorRef.current || viewRef.current) return;
 
+    // Enhanced insert math command that wraps selected text
+    const enhancedInsertMathCmd = (nodeType) => (state, dispatch) => {
+      const { selection, schema } = state;
+      const { $from, $to } = selection;
+
+      // Check if we can insert inline math at this position
+      if (!$from.parent.canReplaceWith($from.index(), $to.index(), nodeType)) {
+        return false;
+      }
+
+      if (dispatch) {
+        // If text is selected, wrap it in math node
+        if (!selection.empty) {
+          const selectedText = state.doc.textBetween($from.pos, $to.pos, " ");
+          const mathNode = nodeType.create(null, schema.text(selectedText));
+          const tr = state.tr.replaceSelectionWith(mathNode);
+
+          // Position cursor at the end of the math node
+          const resolvedPos = tr.doc.resolve($from.pos + mathNode.nodeSize);
+          tr.setSelection(state.selection.constructor.near(resolvedPos));
+
+          dispatch(tr);
+        } else {
+          // No selection, create empty math node and position cursor inside
+          const mathNode = nodeType.create(null, schema.text(""));
+          const tr = state.tr.replaceSelectionWith(mathNode);
+
+          // Position cursor inside the math node (after the opening tag)
+          const resolvedPos = tr.doc.resolve($from.pos + 1);
+          tr.setSelection(state.selection.constructor.near(resolvedPos));
+
+          dispatch(tr);
+        }
+      }
+
+      return true;
+    };
+
     // Create input rules
     const inlineMathInputRule = makeInlineMathInputRule(
       REGEX_INLINE_MATH_DOLLARS,
@@ -173,12 +291,15 @@ export default function ComposePage() {
     // Create validation plugin instance
     const validationPlugin = createValidationPlugin();
 
+    // Create LaTeX error plugin instance
+    const latexErrorPlugin = createLatexErrorPlugin();
+
     // Create plugins
     const plugins = [
       history(),
       mathPlugin,
       keymap({
-        "Mod-Space": insertMathCmd(mathSchema.nodes.math_inline),
+        "Mod-Space": enhancedInsertMathCmd(mathSchema.nodes.math_inline),
         Backspace: chainCommands(
           deleteSelection,
           mathBackspaceCmd,
@@ -192,6 +313,7 @@ export default function ComposePage() {
       keymap(baseKeymap),
       inputRules({ rules: [inlineMathInputRule, blockMathInputRule] }),
       validationPlugin,
+      latexErrorPlugin,
     ];
 
     // Create editor state
@@ -487,6 +609,27 @@ export default function ComposePage() {
     setValidationResults([]);
   };
 
+  // Handle container click to focus editor
+  const handleContainerClick = (e) => {
+    if (!viewRef.current) return;
+
+    // Only focus if clicking on the container itself, not child elements
+    if (e.target === e.currentTarget) {
+      const view = viewRef.current;
+      const { state } = view;
+
+      // Focus the editor
+      view.focus();
+
+      // Move cursor to the end of the document
+      const endPos = state.doc.content.size;
+      const tr = state.tr.setSelection(
+        state.selection.constructor.near(state.doc.resolve(endPos))
+      );
+      view.dispatch(tr);
+    }
+  };
+
   // Get status icon for validation result
   const getStatusIcon = (result) => {
     if (result.equivalent) {
@@ -613,7 +756,16 @@ export default function ComposePage() {
                   <code className="bg-blue-100 px-1 rounded">
                     Ctrl/Cmd+Space
                   </code>{" "}
-                  to insert inline math
+                  to insert inline math (or wrap selected text)
+                </li>
+                <li>
+                  • Click anywhere in the grey editor area to focus and start typing
+                </li>
+                <li>
+                  • Math nodes are highlighted: <span className="text-blue-600">blue for inline</span>, <span className="text-purple-600">purple for block</span>
+                </li>
+                <li>
+                  • <span className="text-red-600">Red highlighting</span> indicates invalid LaTeX syntax (hover for error details)
                 </li>
                 <li>
                   • Each display equation ($$...$$) on a new line is checked
@@ -627,11 +779,12 @@ export default function ComposePage() {
           {/* ProseMirror Editor Container */}
           <div
             ref={editorRef}
-            className="border rounded-lg p-4 min-h-[400px] focus-within:ring-2 focus-within:ring-blue-500 prose max-w-none"
+            className="border rounded-lg p-4 min-h-[400px] focus-within:ring-2 focus-within:ring-blue-500 prose max-w-none cursor-text"
             style={{
               background: "#fafafa",
               fontFamily: "ui-monospace, monospace",
             }}
+            onClick={handleContainerClick}
           />
 
           {/* Validation Status */}

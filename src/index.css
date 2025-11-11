@@ -15,3 +15,80 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* ProseMirror Math Node Styling */
+/* Inline math nodes - subtle blue tint */
+math-inline.math-node {
+  background: rgba(59, 130, 246, 0.08);
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  display: inline-block;
+  margin: 0 2px;
+  transition: all 0.15s ease;
+  font-family: 'KaTeX_Math', 'Times New Roman', serif;
+  cursor: pointer;
+}
+
+/* Inline math on hover */
+math-inline.math-node:hover {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+/* Inline math when selected/focused */
+math-inline.ProseMirror-selectednode {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.4);
+  outline: 2px solid rgba(59, 130, 246, 0.2);
+  outline-offset: 1px;
+}
+
+/* Block math nodes - subtle purple tint */
+math-display.math-node {
+  background: rgba(139, 92, 246, 0.05);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  display: block;
+  margin: 8px 0;
+  transition: all 0.15s ease;
+  font-family: 'KaTeX_Math', 'Times New Roman', serif;
+  cursor: pointer;
+}
+
+/* Block math on hover */
+math-display.math-node:hover {
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.25);
+}
+
+/* Block math when selected/focused */
+math-display.ProseMirror-selectednode {
+  background: rgba(139, 92, 246, 0.1);
+  border-color: rgba(139, 92, 246, 0.4);
+  outline: 2px solid rgba(139, 92, 246, 0.2);
+  outline-offset: 1px;
+}
+
+/* Empty math nodes - show placeholder styling */
+math-inline.math-node:empty::before,
+math-display.math-node:empty::before {
+  content: 'Enter LaTeX...';
+  color: rgba(107, 114, 128, 0.5);
+  font-style: italic;
+  font-family: system-ui, sans-serif;
+}
+
+/* Math nodes with errors (to be used with error handling) */
+math-inline.math-node-error,
+math-display.math-node-error {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+math-inline.math-node-error:hover,
+math-display.math-node-error:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+}
