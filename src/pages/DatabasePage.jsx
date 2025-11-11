@@ -36,6 +36,9 @@ export default function DatabasePage() {
   const [logTagFilter, setLogTagFilter] = useState('');
   const [logLimit, setLogLimit] = useState(100);
 
+  // Log selection states
+  const [selectedLogIds, setSelectedLogIds] = useState(new Set());
+
   useEffect(() => {
     initializeDatabase();
   }, []);
@@ -103,7 +106,11 @@ export default function DatabasePage() {
 
   const handleExportLogsToClipboard = async () => {
     try {
-      const logText = logs.map(log => {
+      const logsToExport = selectedLogIds.size > 0
+        ? logs.filter(log => selectedLogIds.has(log.id))
+        : logs;
+
+      const logText = logsToExport.map(log => {
         const timestamp = new Date(log.timestamp).toISOString();
         const perfMs = log.perfTimestamp || 0;
         const meta = Object.keys(log.metadata || {}).length > 0
@@ -115,11 +122,58 @@ export default function DatabasePage() {
       }).join('\n\n' + '='.repeat(80) + '\n\n');
 
       await navigator.clipboard.writeText(logText);
-      alert(`✓ Copied ${logs.length} log entries to clipboard`);
+      alert(`✓ Copied ${logsToExport.length} log entries to clipboard`);
     } catch (error) {
       console.error('Failed to copy to clipboard:', error);
       alert(`Failed to copy to clipboard: ${error.message}`);
     }
+  };
+
+  // Log selection handlers
+  const handleToggleLogSelection = (logId) => {
+    setSelectedLogIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(logId)) {
+        newSet.delete(logId);
+      } else {
+        newSet.add(logId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllLogs = () => {
+    setSelectedLogIds(new Set(logs.map(log => log.id)));
+  };
+
+  const handleSelectNoneLogs = () => {
+    setSelectedLogIds(new Set());
+  };
+
+  const handleInvertSelection = () => {
+    setSelectedLogIds(prev => {
+      const newSet = new Set();
+      logs.forEach(log => {
+        if (!prev.has(log.id)) {
+          newSet.add(log.id);
+        }
+      });
+      return newSet;
+    });
+  };
+
+  const handleApplyFiltersToSelection = () => {
+    // Select only logs that match current filters
+    const matchingLogs = logs.filter(log => {
+      const levelMatch = !logLevelFilter || log.level === logLevelFilter;
+      const sourceMatch = !logSourceFilter || (log.source && log.source.toLowerCase().includes(logSourceFilter.toLowerCase()));
+      const tagMatch = !logTagFilter || (log.tags && log.tags.some(tag => tag.toLowerCase().includes(logTagFilter.toLowerCase())));
+
+      return levelMatch && sourceMatch && tagMatch;
+    });
+
+    setSelectedLogIds(new Set(matchingLogs.map(log => log.id)));
+    alert(`✓ Selected ${matchingLogs.length} logs matching current filters`);
   };
 
   const loadStorageInfo = async () => {
@@ -518,13 +572,52 @@ export default function DatabasePage() {
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     disabled={logs.length === 0}
                   >
-                    📋 Copy to Clipboard
+                    📋 Copy {selectedLogIds.size > 0 ? `Selected (${selectedLogIds.size})` : 'All'}
                   </button>
                   <button
                     onClick={loadLogs}
                     className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
                   >
                     Refresh
+                  </button>
+                </div>
+              </div>
+
+              {/* Bulk Selection Controls */}
+              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-gray-700">
+                      Selection: {selectedLogIds.size} / {logs.length}
+                    </span>
+                    <button
+                      onClick={handleSelectAllLogs}
+                      className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                      disabled={logs.length === 0}
+                    >
+                      Select All
+                    </button>
+                    <button
+                      onClick={handleSelectNoneLogs}
+                      className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
+                      disabled={selectedLogIds.size === 0}
+                    >
+                      Select None
+                    </button>
+                    <button
+                      onClick={handleInvertSelection}
+                      className="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700"
+                      disabled={logs.length === 0}
+                    >
+                      Invert
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleApplyFiltersToSelection}
+                    className="px-4 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 font-medium"
+                    disabled={logs.length === 0}
+                  >
+                    ✓ Apply Filters to Selection
                   </button>
                 </div>
               </div>
@@ -615,48 +708,63 @@ export default function DatabasePage() {
                           : log.level === 'info'
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-300 bg-gray-50'
+                      } ${
+                        selectedLogIds.has(log.id) ? 'ring-2 ring-blue-400' : ''
                       }`}
                     >
-                      <div className="flex items-start gap-2 flex-wrap">
-                        <span className={`font-semibold text-xs ${getLevelColor(log.level)}`}>
-                          [{log.level.toUpperCase()}]
-                        </span>
-                        <span className="text-xs text-gray-500">[{log.source || log.category}]</span>
-                        {log.perfTimestamp !== undefined && (
-                          <span className="text-xs text-purple-600 font-mono">
-                            [{log.perfTimestamp}ms]
-                          </span>
-                        )}
-                        {log.tags && log.tags.length > 0 && (
-                          <span className="text-xs text-blue-600">
-                            {log.tags.map(tag => `#${tag}`).join(' ')}
-                          </span>
-                        )}
-                        <span className="text-sm flex-1">{log.message}</span>
-                        <span className="text-xs text-gray-400 whitespace-nowrap">
-                          {formatTimestamp(log.timestamp)}
-                        </span>
+                      <div className="flex items-start gap-2">
+                        {/* Checkbox */}
+                        <input
+                          type="checkbox"
+                          checked={selectedLogIds.has(log.id)}
+                          onChange={() => handleToggleLogSelection(log.id)}
+                          className="mt-1 w-4 h-4 text-blue-600 rounded focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                        />
+
+                        {/* Log content */}
+                        <div className="flex-1">
+                          <div className="flex items-start gap-2 flex-wrap">
+                            <span className={`font-semibold text-xs ${getLevelColor(log.level)}`}>
+                              [{log.level.toUpperCase()}]
+                            </span>
+                            <span className="text-xs text-gray-500">[{log.source || log.category}]</span>
+                            {log.perfTimestamp !== undefined && (
+                              <span className="text-xs text-purple-600 font-mono">
+                                [{log.perfTimestamp}ms]
+                              </span>
+                            )}
+                            {log.tags && log.tags.length > 0 && (
+                              <span className="text-xs text-blue-600">
+                                {log.tags.map(tag => `#${tag}`).join(' ')}
+                              </span>
+                            )}
+                            <span className="text-sm flex-1">{log.message}</span>
+                            <span className="text-xs text-gray-400 whitespace-nowrap">
+                              {formatTimestamp(log.timestamp)}
+                            </span>
+                          </div>
+                          {Object.keys(log.metadata || {}).length > 0 && (
+                            <details className="mt-2">
+                              <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
+                                Metadata ({Object.keys(log.metadata).length} fields)
+                              </summary>
+                              <pre className="text-xs text-gray-600 mt-1 ml-4 overflow-x-auto bg-white p-2 rounded border border-gray-200">
+                                {JSON.stringify(log.metadata, null, 2)}
+                              </pre>
+                            </details>
+                          )}
+                          {log.stackTrace && (
+                            <details className="mt-2">
+                              <summary className="text-xs text-red-600 cursor-pointer hover:text-red-800">
+                                Stack Trace
+                              </summary>
+                              <pre className="text-xs text-red-600 mt-1 ml-4 overflow-x-auto bg-white p-2 rounded border border-red-200">
+                                {log.stackTrace}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
                       </div>
-                      {Object.keys(log.metadata || {}).length > 0 && (
-                        <details className="mt-2">
-                          <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
-                            Metadata ({Object.keys(log.metadata).length} fields)
-                          </summary>
-                          <pre className="text-xs text-gray-600 mt-1 ml-4 overflow-x-auto bg-white p-2 rounded border border-gray-200">
-                            {JSON.stringify(log.metadata, null, 2)}
-                          </pre>
-                        </details>
-                      )}
-                      {log.stackTrace && (
-                        <details className="mt-2">
-                          <summary className="text-xs text-red-600 cursor-pointer hover:text-red-800">
-                            Stack Trace
-                          </summary>
-                          <pre className="text-xs text-red-600 mt-1 ml-4 overflow-x-auto bg-white p-2 rounded border border-red-200">
-                            {log.stackTrace}
-                          </pre>
-                        </details>
-                      )}
                     </div>
                   ))
                 )}
@@ -665,14 +773,17 @@ export default function DatabasePage() {
 
             {/* Log Helper Info */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-900 mb-2">Log Filtering Tips</h3>
+              <h3 className="font-semibold text-blue-900 mb-2">Log Filtering & Selection Tips</h3>
               <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
                 <li><strong>Level:</strong> Filter by severity (debug, info, warn, error)</li>
                 <li><strong>Source:</strong> Filter by component (e.g., EquivalenceChecker, Algebrite)</li>
                 <li><strong>Tag:</strong> Filter by category tags (e.g., equivalence, parse, algebrite)</li>
+                <li><strong>Apply Filters to Selection:</strong> Select only logs matching current filter criteria</li>
+                <li><strong>Checkboxes:</strong> Select individual logs or use bulk controls (All/None/Invert)</li>
+                <li><strong>Selected logs:</strong> Have a blue ring highlight and count shown in selection bar</li>
+                <li><strong>Copy to Clipboard:</strong> Exports selected logs if any, otherwise all visible logs</li>
                 <li><strong>Performance timestamps:</strong> Shown in purple as [Xms] from page load</li>
                 <li><strong>Metadata:</strong> Click to expand detailed information</li>
-                <li><strong>Copy to Clipboard:</strong> Export visible logs as formatted text</li>
               </ul>
             </div>
           </div>
