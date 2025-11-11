@@ -107,14 +107,17 @@ function UnifiedCanvas() {
 
     for (let i = startRow; i <= endRow + 1; i++) {
       const y = i * ROW_HEIGHT;
+      const lineWidth = viewport.width + 1000;
 
       dividers.push({
         id: `row-divider-${i}`,
         type: 'line',
         x: viewport.x - 500, // Extend beyond viewport
         y,
-        width: viewport.width + 1000,
-        height: 2,
+        width: lineWidth,
+        height: 0,
+        // Required for Excalidraw line elements
+        points: [[0, 0], [lineWidth, 0]], // Horizontal line
         strokeColor: ROW_COLOR,
         backgroundColor: 'transparent',
         strokeWidth: 1,
@@ -122,7 +125,18 @@ function UnifiedCanvas() {
         opacity: ROW_DIVIDER_OPACITY,
         locked: true,
         isRowDivider: true,
-        isDeleted: false
+        isDeleted: false,
+        roughness: 0,
+        roundness: null,
+        seed: i,
+        version: 1,
+        versionNonce: i,
+        isDeleted: false,
+        groupIds: [],
+        boundElements: null,
+        updated: Date.now(),
+        link: null,
+        locked: true
       });
     }
 
@@ -364,6 +378,42 @@ function UnifiedCanvas() {
   }, [selectRow]);
 
   /**
+   * Generate and inject row dividers when viewport changes
+   */
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+
+    const appState = excalidrawAPI.getAppState();
+    if (!appState) return;
+
+    const viewport = {
+      x: appState.scrollX || 0,
+      y: appState.scrollY || 0,
+      width: appState.width || 0,
+      height: appState.height || 0
+    };
+
+    const dividers = generateRowDividers(viewport);
+    const currentElements = excalidrawAPI.getSceneElements();
+
+    // Check if we need to add new dividers
+    const existingDividerIds = new Set(
+      currentElements
+        .filter(el => el.isRowDivider)
+        .map(el => el.id)
+    );
+
+    const newDividers = dividers.filter(d => !existingDividerIds.has(d.id));
+
+    if (newDividers.length > 0) {
+      Logger.debug('UnifiedCanvas', `Adding ${newDividers.length} new row dividers`);
+      excalidrawAPI.updateScene({
+        elements: [...currentElements, ...newDividers]
+      });
+    }
+  }, [excalidrawAPI, generateRowDividers]);
+
+  /**
    * Keyboard shortcuts
    */
   useEffect(() => {
@@ -451,41 +501,10 @@ function UnifiedCanvas() {
               clearCanvas: false
             }
           }}
-        >
-          {/* Render row dividers */}
-          {excalidrawAPI && (() => {
-            const appState = excalidrawAPI.getAppState();
-            if (!appState) return null;
-
-            const viewport = {
-              x: appState.scrollX || 0,
-              y: appState.scrollY || 0,
-              width: appState.width || 0,
-              height: appState.height || 0
-            };
-
-            const dividers = generateRowDividers(viewport);
-
-            // Add dividers to scene (non-intrusive)
-            const currentElements = excalidrawAPI.getSceneElements();
-            const existingDividerIds = new Set(
-              currentElements
-                .filter(el => el.isRowDivider)
-                .map(el => el.id)
-            );
-
-            const newDividers = dividers.filter(d => !existingDividerIds.has(d.id));
-
-            if (newDividers.length > 0) {
-              excalidrawAPI.updateScene({
-                elements: [...currentElements, ...newDividers]
-              });
-            }
-
-            return null;
-          })()}
-        </Excalidraw>
+        />
       </div>
+
+      {/* Row dividers are injected via useEffect (see line 383) */}
 
       {/* Row overlays */}
       {renderRowOverlays()}
