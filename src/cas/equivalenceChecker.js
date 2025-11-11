@@ -9,6 +9,7 @@ import { parseLatex, simplifyKatexAst } from './katexParser.js';
 import { RuleEngine } from './rules/ruleEngine.js';
 import { getAlgebraRules } from './rules/algebraRules.js';
 import { getTrigRules } from './rules/trigRules.js';
+import Logger from '../utils/logger.js';
 
 // Floating-point tolerance for approximations
 const FLOAT_TOLERANCE = 1e-6;
@@ -122,16 +123,40 @@ function astToString(ast, config = EquivalenceConfig) {
  */
 export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
   const startTime = performance.now();
+  const debug = config.debug || false;
+
+  if (debug) {
+    Logger.debug('EquivalenceChecker', 'Starting equivalence check', {
+      input1: latex1,
+      input2: latex2
+    }, ['equivalence', 'check-start']);
+  }
 
   // Step 1: Parse LaTeX to AST
   const parsed1 = parseLatex(latex1);
   const parsed2 = parseLatex(latex2);
 
+  if (debug) {
+    Logger.debug('EquivalenceChecker', 'LaTeX parsed to AST', {
+      parsed1Success: parsed1.success,
+      parsed2Success: parsed2.success,
+      parsed1Error: parsed1.error,
+      parsed2Error: parsed2.error
+    }, ['equivalence', 'parse']);
+  }
+
   if (!parsed1.success || !parsed2.success) {
+    const error = parsed1.error || parsed2.error;
+    Logger.error('EquivalenceChecker', 'Parse error', {
+      error,
+      latex1,
+      latex2
+    }, ['equivalence', 'parse-error']);
+
     return {
       equivalent: false,
       method: 'parse-error',
-      error: parsed1.error || parsed2.error,
+      error,
       time: performance.now() - startTime
     };
   }
@@ -140,19 +165,50 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
   const ast1 = simplifyKatexAst(parsed1.ast);
   const ast2 = simplifyKatexAst(parsed2.ast);
 
+  if (debug) {
+    Logger.debug('EquivalenceChecker', 'AST simplified', {
+      ast1: JSON.stringify(ast1),
+      ast2: JSON.stringify(ast2)
+    }, ['equivalence', 'simplify']);
+  }
+
   // Step 3: Canonicalize both expressions
   const engine = createRuleEngine(config.region);
 
   const canonical1 = engine.canonicalize(ast1, config.maxCanonicalizationIterations);
   const canonical2 = engine.canonicalize(ast2, config.maxCanonicalizationIterations);
 
+  if (debug) {
+    Logger.debug('EquivalenceChecker', 'Canonicalization complete', {
+      expr1Iterations: canonical1.iterations,
+      expr1AppliedRules: canonical1.appliedRules,
+      expr1AST: JSON.stringify(canonical1.ast),
+      expr2Iterations: canonical2.iterations,
+      expr2AppliedRules: canonical2.appliedRules,
+      expr2AST: JSON.stringify(canonical2.ast)
+    }, ['equivalence', 'canonicalize']);
+  }
+
   // Step 4: Compare canonical forms (string comparison)
   const str1 = astToString(canonical1.ast, config);
   const str2 = astToString(canonical2.ast, config);
 
+  if (debug) {
+    Logger.debug('EquivalenceChecker', 'Canonical string comparison', {
+      canonical1: str1,
+      canonical2: str2,
+      match: str1 === str2
+    }, ['equivalence', 'compare']);
+  }
+
   const fastCheckTime = performance.now() - startTime;
 
   if (str1 === str2) {
+    Logger.info('EquivalenceChecker', '✓ Canonicalization succeeded', {
+      method: 'canonicalization',
+      time: fastCheckTime
+    }, ['equivalence', 'success']);
+
     return {
       equivalent: true,
       method: 'canonicalization',
@@ -168,8 +224,16 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
 
   // Step 5: If canonicalization fails, try Algebrite (if enabled)
   if (config.useAlgebrite) {
+    Logger.debug('EquivalenceChecker', 'Canonicalization failed, trying Algebrite', {}, ['equivalence', 'algebrite-fallback']);
+
     try {
-      const algebraicCheck = checkWithAlgebrite(latex1, latex2, config.algebriteTimeout);
+      const algebraicCheck = checkWithAlgebrite(latex1, latex2, config.algebriteTimeout, debug);
+
+      if (debug) {
+        Logger.debug('EquivalenceChecker', 'Algebrite check complete', {
+          result: algebraicCheck
+        }, ['equivalence', 'algebrite-result']);
+      }
 
       return {
         equivalent: algebraicCheck.equivalent,
@@ -180,6 +244,11 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
         time: performance.now() - startTime
       };
     } catch (error) {
+      Logger.error('EquivalenceChecker', 'Algebrite error', {
+        error: error.message,
+        stack: error.stack
+      }, ['equivalence', 'algebrite-error']);
+
       return {
         equivalent: false,
         method: 'algebrite-error',
@@ -192,6 +261,11 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
   }
 
   // Step 6: Unable to determine equivalence
+  Logger.warn('EquivalenceChecker', '✗ All methods failed', {
+    canonical1: str1,
+    canonical2: str2
+  }, ['equivalence', 'failed']);
+
   return {
     equivalent: false,
     method: 'canonicalization-failed',
@@ -206,9 +280,10 @@ export function checkEquivalence(latex1, latex2, config = EquivalenceConfig) {
  * @param {string} latex1 - First LaTeX expression
  * @param {string} latex2 - Second LaTeX expression
  * @param {number} timeout - Timeout in milliseconds
+ * @param {boolean} debug - Enable debug logging
  * @returns {Object} - { equivalent: boolean, method: string }
  */
-function checkWithAlgebrite(latex1, latex2, timeout = 2000) {
+function checkWithAlgebrite(latex1, latex2, timeout = 2000, debug = false) {
   const startTime = performance.now();
 
   try {
@@ -216,41 +291,97 @@ function checkWithAlgebrite(latex1, latex2, timeout = 2000) {
     const expr1 = latexToAlgebrite(latex1);
     const expr2 = latexToAlgebrite(latex2);
 
+    if (debug) {
+      Logger.debug('Algebrite', 'LaTeX converted to Algebrite syntax', {
+        latex1,
+        expr1,
+        latex2,
+        expr2
+      }, ['algebrite', 'convert']);
+    }
+
     // Check if difference simplifies to zero
-    const difference = Algebrite.run(`simplify(${expr1} - (${expr2}))`);
+    const differenceExpr = `simplify(${expr1} - (${expr2}))`;
+
+    Logger.debug('Algebrite', 'Computing difference', {
+      expression: differenceExpr
+    }, ['algebrite', 'difference']);
+
+    const difference = Algebrite.run(differenceExpr);
+
+    Logger.debug('Algebrite', 'Difference computed', {
+      result: difference,
+      isZero: difference === '0' || difference === '0.0'
+    }, ['algebrite', 'difference-result']);
+
     const isZero = difference === '0' || difference === '0.0';
 
     if (isZero) {
+      Logger.info('Algebrite', '✓ Difference is zero - expressions are equivalent', {
+        time: performance.now() - startTime
+      }, ['algebrite', 'success']);
+
       return {
         equivalent: true,
         method: 'algebrite-difference',
         difference: '0',
+        expr1,
+        expr2,
         time: performance.now() - startTime
       };
     }
 
     // Try expanding and simplifying both
+    Logger.debug('Algebrite', 'Trying individual simplification', {}, ['algebrite', 'simplify']);
+
     const simplified1 = Algebrite.run(`simplify(${expr1})`);
     const simplified2 = Algebrite.run(`simplify(${expr2})`);
 
+    Logger.debug('Algebrite', 'Simplification complete', {
+      simplified1,
+      simplified2,
+      match: simplified1 === simplified2
+    }, ['algebrite', 'simplify-result']);
+
     if (simplified1 === simplified2) {
+      Logger.info('Algebrite', '✓ Simplified forms match', {
+        simplified: simplified1,
+        time: performance.now() - startTime
+      }, ['algebrite', 'success']);
+
       return {
         equivalent: true,
         method: 'algebrite-simplify',
         simplified: simplified1,
+        expr1,
+        expr2,
         time: performance.now() - startTime
       };
     }
+
+    Logger.warn('Algebrite', '✗ Not equivalent', {
+      simplified1,
+      simplified2
+    }, ['algebrite', 'not-equivalent']);
 
     return {
       equivalent: false,
       method: 'algebrite-not-equivalent',
       expr1: simplified1,
       expr2: simplified2,
+      originalExpr1: expr1,
+      originalExpr2: expr2,
       time: performance.now() - startTime
     };
 
   } catch (error) {
+    Logger.error('Algebrite', 'Computation error', {
+      error: error.message,
+      stack: error.stack,
+      latex1,
+      latex2
+    }, ['algebrite', 'error']);
+
     throw new Error(`Algebrite error: ${error.message}`);
   }
 }
@@ -260,10 +391,31 @@ function checkWithAlgebrite(latex1, latex2, timeout = 2000) {
  * Note: This is a basic conversion. For production, use a proper LaTeX parser.
  */
 function latexToAlgebrite(latex) {
-  return latex
+  let result = latex;
+
+  // Handle Unicode superscripts (⁰¹²³⁴⁵⁶⁷⁸⁹)
+  const superscripts = {
+    '⁰': '0', '¹': '1', '²': '2', '³': '3', '⁴': '4',
+    '⁵': '5', '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9'
+  };
+
+  // Replace Unicode superscripts with ^{n}
+  for (const [unicode, digit] of Object.entries(superscripts)) {
+    result = result.replace(new RegExp(unicode, 'g'), `**${digit}`);
+  }
+
+  // Handle Unicode math symbols
+  result = result
+    .replace(/·/g, '*')          // Unicode middle dot (U+00B7)
+    .replace(/×/g, '*')          // Unicode multiplication sign (U+00D7)
+    .replace(/÷/g, '/')          // Unicode division sign (U+00F7)
+
+    // Handle LaTeX commands
     .replace(/\\frac\{([^}]+)\}\{([^}]+)\}/g, '($1)/($2)')
     .replace(/\\sqrt\{([^}]+)\}/g, 'sqrt($1)')
-    .replace(/\^/g, '**')
+    .replace(/\\sqrt\[([^\]]+)\]\{([^}]+)\}/g, '($2)**(1/($1))')  // nth root
+    .replace(/\^{([^}]+)}/g, '**($1)')     // ^{...}
+    .replace(/\^(\w)/g, '**$1')             // ^x
     .replace(/\\cdot/g, '*')
     .replace(/\\times/g, '*')
     .replace(/\\sin/g, 'sin')
@@ -276,9 +428,32 @@ function latexToAlgebrite(latex) {
     .replace(/\\right\)/g, ')')
     .replace(/\\left\[/g, '[')
     .replace(/\\right\]/g, ']')
+    .replace(/\\left\|/g, 'abs(')
+    .replace(/\\right\|/g, ')')
+
+    // Handle remaining braces
     .replace(/\{/g, '(')
     .replace(/\}/g, ')')
-    .replace(/\$/g, '');
+
+    // Clean up
+    .replace(/\$/g, '')
+    .replace(/\\,/g, '')         // thin space
+    .replace(/\\ /g, '');         // space
+
+  // Handle implicit multiplication (e.g., "4x" -> "4*x", "2(x+1)" -> "2*(x+1)")
+  result = result
+    // Number followed by letter
+    .replace(/(\d)([a-zA-Z])/g, '$1*$2')
+    // Number followed by opening paren
+    .replace(/(\d)\(/g, '$1*(')
+    // Closing paren followed by number
+    .replace(/\)(\d)/g, ')*$1')
+    // Closing paren followed by letter
+    .replace(/\)([a-zA-Z])/g, ')*$1')
+    // Letter followed by opening paren
+    .replace(/([a-zA-Z])\(/g, '$1*(');
+
+  return result;
 }
 
 /**

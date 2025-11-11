@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
 import OCRPage from "./pages/OCRPage";
 import SketchPage from "./pages/SketchPage";
 import ComposePage from "./pages/ComposePage";
+import DatabasePage from "./pages/DatabasePage";
 
 export default function App() {
   return (
@@ -31,6 +32,12 @@ export default function App() {
             >
               Compose
             </Link>
+            <Link
+              to="/database"
+              className="text-gray-700 hover:text-blue-600 font-medium transition"
+            >
+              Database
+            </Link>
           </nav>
         </header>
         <main className="flex-grow">
@@ -38,6 +45,7 @@ export default function App() {
             <Route path="/ocr" element={<OCRPage />} />
             <Route path="/" element={<SketchPage />} />
             <Route path="/compose" element={<ComposePage />} />
+            <Route path="/database" element={<DatabasePage />} />
           </Routes>
         </main>
         <footer className="bg-white border-t p-4 text-center text-sm text-gray-500">
