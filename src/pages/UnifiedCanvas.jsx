@@ -6,6 +6,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Excalidraw, exportToBlob } from '@excalidraw/excalidraw';
 import { useRowSystem } from '../hooks/useRowSystem';
+import { useAutoValidation } from '../hooks/useAutoValidation';
+import { useCanvasPersistence } from '../hooks/useCanvasPersistence';
 import { TilingEngine } from '../utils/ocrTiling';
 import { RestorativeLatexAssembler } from '../utils/latexAssembly';
 import { OCRWorkerPool } from '../workers/ocrWorkerPool';
@@ -48,6 +50,30 @@ function UnifiedCanvas() {
 
   // Debug mode
   const [debugMode, setDebugMode] = useState(false);
+
+  // Auto-validation
+  const [autoValidationEnabled, setAutoValidationEnabled] = useState(true);
+  const { validateAll, validateSingleRow, isValidating } = useAutoValidation({
+    rows,
+    updateValidationStatus,
+    enabled: autoValidationEnabled,
+    config: {
+      region: 'US',
+      useAlgebrite: true,
+      debug: debugMode
+    }
+  });
+
+  // Canvas persistence
+  const {
+    saveCanvas,
+    loadCanvas,
+    exportCanvas,
+    isSaving,
+    lastSaved,
+    hasUnsavedChanges,
+    markDirty
+  } = useCanvasPersistence('unified-canvas-doc');
 
   // Initialize engines
   useEffect(() => {
@@ -268,6 +294,68 @@ function UnifiedCanvas() {
   }, [getAllRows, processRow]);
 
   /**
+   * Save canvas
+   */
+  const handleSave = useCallback(async () => {
+    if (!excalidrawAPI) return;
+
+    const elements = excalidrawAPI.getSceneElements();
+    const appState = excalidrawAPI.getAppState();
+    const files = excalidrawAPI.getFiles();
+    const rowData = getAllRows().reduce((acc, row) => {
+      acc[row.id] = row;
+      return acc;
+    }, {});
+
+    await saveCanvas({
+      elements,
+      appState,
+      files,
+      rowData
+    });
+  }, [excalidrawAPI, getAllRows, saveCanvas]);
+
+  /**
+   * Load canvas
+   */
+  const handleLoad = useCallback(async () => {
+    const data = await loadCanvas();
+
+    if (data && excalidrawAPI) {
+      excalidrawAPI.updateScene({
+        elements: data.elements,
+        appState: data.appState
+      });
+
+      // TODO: Load row data
+
+      Logger.info('UnifiedCanvas', 'Canvas loaded');
+    }
+  }, [excalidrawAPI, loadCanvas]);
+
+  /**
+   * Export canvas
+   */
+  const handleExport = useCallback(async () => {
+    if (!excalidrawAPI) return;
+
+    const elements = excalidrawAPI.getSceneElements();
+    const appState = excalidrawAPI.getAppState();
+    const files = excalidrawAPI.getFiles();
+    const rowData = getAllRows().reduce((acc, row) => {
+      acc[row.id] = row;
+      return acc;
+    }, {});
+
+    await exportCanvas({
+      elements,
+      appState,
+      files,
+      rowData
+    });
+  }, [excalidrawAPI, getAllRows, exportCanvas]);
+
+  /**
    * Handle row click (selection)
    */
   const handleRowClick = useCallback((rowId) => {
@@ -358,8 +446,9 @@ function UnifiedCanvas() {
           UIOptions={{
             canvasActions: {
               loadScene: false,
-              saveAsImage: true,
-              export: true
+              saveAsImage: false,
+              export: false,
+              clearCanvas: false
             }
           }}
         >
@@ -428,6 +517,45 @@ function UnifiedCanvas() {
           Debug: {debugMode ? 'ON' : 'OFF'}
         </button>
 
+        <button
+          onClick={validateAll}
+          disabled={isValidating || rows.size < 2}
+          className="btn btn-success"
+        >
+          {isValidating ? 'Validating...' : 'Validate All'}
+        </button>
+
+        <button
+          onClick={() => setAutoValidationEnabled(!autoValidationEnabled)}
+          className="btn btn-outline"
+        >
+          Auto-Validate: {autoValidationEnabled ? 'ON' : 'OFF'}
+        </button>
+
+        <div style={{ borderLeft: '1px solid #e5e7eb', height: '24px', margin: '0 4px' }} />
+
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="btn btn-outline"
+        >
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
+
+        <button
+          onClick={handleLoad}
+          className="btn btn-outline"
+        >
+          Load
+        </button>
+
+        <button
+          onClick={handleExport}
+          className="btn btn-outline"
+        >
+          Export
+        </button>
+
         <div className="toolbar-info">
           <span>{rows.size} rows</span>
           {isProcessing && (
@@ -446,6 +574,10 @@ function UnifiedCanvas() {
         <span>Row height: {ROW_HEIGHT}px</span>
         <span>Model: {modelConfig.name}</span>
         {selectedRow !== null && <span>Selected: Row {selectedRow}</span>}
+        {lastSaved && (
+          <span>Last saved: {new Date(lastSaved).toLocaleTimeString()}</span>
+        )}
+        {hasUnsavedChanges && <span style={{ color: '#f59e0b' }}>● Unsaved changes</span>}
       </div>
     </div>
   );
@@ -469,8 +601,11 @@ function RowOverlay({ row, viewport, zoom, selected, onClick, debugMode }) {
     pointerEvents: 'none'
   };
 
+  // Add validation class
+  const validationClass = row.validationStatus !== 'unchecked' ? `validation-${row.validationStatus}` : '';
+
   return (
-    <div className={`row-overlay ${selected ? 'selected' : ''}`} style={style}>
+    <div className={`row-overlay ${selected ? 'selected' : ''} ${validationClass}`} style={style}>
       {/* Row number */}
       <div className="row-number">{row.id}</div>
 

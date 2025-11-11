@@ -42,6 +42,28 @@
   border-color: rgba(59, 130, 246, 0.3);
 }
 
+/* Validation Visual Feedback */
+.row-overlay.validation-valid {
+  background: rgba(34, 197, 94, 0.08);  /* green tint */
+  border-left: 4px solid #22c55e;
+}
+
+.row-overlay.validation-invalid {
+  background: rgba(239, 68, 68, 0.08);  /* red tint */
+  border-left: 4px solid #ef4444;
+}
+
+.row-overlay.validation-error {
+  background: rgba(245, 158, 11, 0.08);  /* amber tint */
+  border-left: 4px solid #f59e0b;
+}
+
+.row-overlay.validation-validating {
+  background: rgba(59, 130, 246, 0.08);  /* blue tint */
+  border-left: 4px solid #3b82f6;
+  animation: pulse 2s ease-in-out infinite;
+}
+
 .row-number {
   position: absolute;
   top: 4px;
@@ -220,6 +242,15 @@
 
 .unified-toolbar .btn-secondary:hover:not(:disabled) {
   background: #7c3aed;
+}
+
+.unified-toolbar .btn-success {
+  background: #22c55e;
+  color: white;
+}
+
+.unified-toolbar .btn-success:hover:not(:disabled) {
+  background: #16a34a;
 }
 
 .unified-toolbar .btn-outline {
