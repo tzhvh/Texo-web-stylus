@@ -1,0 +1,119 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1</storyId>
+    <title>Create Magic Canvas Page and Routing</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-13</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>/home/mser/Documents/cla/w/Texo-web-stylus/docs/sprint-artifacts/1-1-create-magic-canvas-page-and-routing.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>As a user</asA>
+    <iWant>I want to access Magic Canvas from the main navigation</iWant>
+    <soThat>So that I can start using the new mathematical note-taking feature</soThat>
+    <tasks>- [ ] Create MagicCanvas.jsx page component (AC: #1, #2)
+  - [ ] Set up basic React component structure
+  - [ ] Implement basic layout matching other Texo pages
+  - [ ] Add page metadata with appropriate title
+- [ ] Update App.jsx with route (AC: #1, #3)
+  - [ ] Add route: &lt;Route path="/magic-canvas" element={&lt;MagicCanvas /&gt;} /&gt;
+  - [ ] Use React.lazy() for code splitting
+  - [ ] Add loading fallback
+- [ ] Add navigation link (AC: #3)
+  - [ ] Add "Magic Canvas" link to main navigation
+  - [ ] Implement active state highlighting
+  - [ ] Ensure link navigates to `/magic-canvas`
+- [ ] Verify lazy loading (AC: #4)
+  - [ ] Confirm page is not included in main bundle
+  - [ ] Test loading performance
+- [ ] Test page functionality (AC: #2, #5)
+  - [ ] Verify page renders without errors
+  - [ ] Check console for warnings/errors
+  - [ ] Confirm metadata is correctly set</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Given I am on any Texo page, When I click "Magic Canvas" in the navigation menu, Then I am routed to `/magic-canvas` and see the Magic Canvas page
+2. The page renders without errors or console warnings
+3. The navigation item is highlighted as active when on Magic Canvas
+4. The page is lazy-loaded (not in main bundle) to minimize initial load impact
+5. Page metadata includes appropriate title ("Magic Canvas - Texo")</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <artifact>
+        <path>docs/PRD.md</path>
+        <title>Magic Canvas - Product Requirements Document</title>
+        <section>Web Application Specific Requirements</section>
+        <snippet>File Structure (New Components): src/pages/MagicCanvas.jsx - Main page component</snippet>
+      </artifact>
+      <artifact>
+        <path>docs/architecture.md</path>
+        <title>Magic Canvas - Decision Architecture</title>
+        <section>Epic to Architecture Mapping</section>
+        <snippet>Epic 1: MagicCanvas.jsx - Main page, embeds Excalidraw, hosts row lines overlay</snippet>
+      </artifact>
+      <artifact>
+        <path>docs/epics.md</path>
+        <title>Texo-web-stylus - Epic Breakdown</title>
+        <section>Story 1.1: Create Magic Canvas Page and Routing</section>
+        <snippet>As a user, I want to access Magic Canvas from the main navigation, So that I can start using the new mathematical note-taking feature.</snippet>
+      </artifact>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/App.jsx</path>
+        <kind>component</kind>
+        <symbol>AppContent</symbol>
+        <lines>1-70</lines>
+        <reason>Reference for routing patterns and navigation structure</reason>
+      </artifact>
+      <artifact>
+        <path>src/pages/SketchPage.jsx</path>
+        <kind>component</kind>
+        <symbol>SketchPage</symbol>
+        <lines>1-439</lines>
+        <reason>Reference for page structure, Excalidraw integration patterns</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <dependency>
+        <type>javascript</type>
+        <name>react</name>
+        <version>*</version>
+      </dependency>
+      <dependency>
+        <type>javascript</type>
+        <name>react-router-dom</name>
+        <version>*</version>
+      </dependency>
+      <dependency>
+        <type>javascript</type>
+        <name>@excalidraw/excalidraw</name>
+        <version>*</version>
+      </dependency>
+    </dependencies>
+  </artifacts>
+
+  <constraints>Reuse existing Texo page structure patterns (see SketchPage.jsx, ComposePage.jsx). Use React.lazy() and Suspense for code splitting. Follow existing navigation patterns for active state highlighting. Ensure consistent styling with Tailwind classes following existing patterns. Page should be minimal for MVP - just the foundation for subsequent stories.</constraints>
+  <interfaces>
+    <interface>
+      <name>App.jsx Routing</name>
+      <kind>React Router Route</kind>
+      <signature>&lt;Route path="/magic-canvas" element={&lt;MagicCanvas /&gt;} /&gt;</signature>
+      <path>src/App.jsx</path>
+    </interface>
+    <interface>
+      <name>Navigation Link</name>
+      <kind>React Link Component</kind>
+      <signature>&lt;Link to="/magic-canvas" className="..."&gt;Magic Canvas&lt;/Link&gt;</signature>
+      <path>src/App.jsx</path>
+    </interface>
+  </interfaces>
+  <tests>
+    <standards>Follow existing Texo page testing patterns. Unit test component rendering, integration test routing functionality.</standards>
+    <locations>src/pages/*, tests/*</locations>
+    <ideas>Test 1: Verify MagicCanvas component renders without errors. Test 2: Verify /magic-canvas route renders MagicCanvas component. Test 3: Verify navigation link correctly routes to /magic-canvas. Test 4: Verify page metadata is correctly set. Test 5: Verify lazy loading works as expected (not in main bundle).</ideas>
+  </tests>
+</story-context>
