@@ -105,12 +105,10 @@ function MagicCanvas() {
         seed: i,
         version: 1,
         versionNonce: i,
-        isDeleted: false,
         groupIds: [],
         boundElements: null,
         updated: Date.now(),
         link: null,
-        locked: true,
       });
     }
 

@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useDocument, useDocumentOperations } from './useDocument';
-import { checkEquivalence } from '../utils/equivalenceChecker';
+import { checkEquivalence } from '../cas/equivalenceChecker';
 
 export function useDocumentValidation(options = {}) {
   const {

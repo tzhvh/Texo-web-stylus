@@ -10,7 +10,6 @@ import { useDocument, useDocumentOperations } from './useDocument';
 import { TilingEngine } from '../utils/ocrTiling';
 import { OCRWorkerPool } from '../workers/ocrWorkerPool';
 import { RestorativeLatexAssembler } from '../utils/latexAssembly';
-import { getOCRModels } from '../config/ocrModels';
 
 export function useDocumentOCR() {
   const { document } = useDocument();
