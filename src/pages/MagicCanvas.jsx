@@ -10,7 +10,6 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
 import {
   useDocument,
   useDocumentOperations,
@@ -22,11 +21,16 @@ import { useDocumentOCR } from "../hooks/useDocumentOCR";
 import { useDocumentValidation } from "../hooks/useDocumentValidation";
 import { getActiveModelConfig } from "../config/ocrModels";
 import Logger from "../utils/logger";
+
+// Extracted components
+import { CanvasContainer } from "../components/MagicCanvas/CanvasContainer";
+import { CanvasToolbar } from "../components/MagicCanvas/CanvasToolbar";
+import { StatusBar } from "../components/MagicCanvas/StatusBar";
+import { RowOverlayMemo } from "../components/MagicCanvas/RowOverlay";
+
 import "./MagicCanvas.css";
 
 const ROW_HEIGHT = 384; // Match model input size
-const ROW_COLOR = "#e5e7eb"; // gray-200
-const ROW_DIVIDER_OPACITY = 30;
 
 function MagicCanvas() {
   // Excalidraw API
@@ -50,73 +54,8 @@ function MagicCanvas() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [debugMode, setDebugMode] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [toolbarPosition, setToolbarPosition] = useState({ x: 20, y: 20 });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-
-  // Drag handlers for the toolbar
-  const handleDragStart = useCallback((e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const rect = e.currentTarget.getBoundingClientRect();
-    const offsetX = e.clientX - rect.left;
-    const offsetY = e.clientY - rect.top;
-    
-    setDragOffset({ x: offsetX, y: offsetY });
-    setIsDragging(true);
-  }, []);
-
-  const handleDrag = useCallback((e) => {
-    if (!isDragging) return;
-    
-    const newX = e.clientX - dragOffset.x;
-    const newY = e.clientY - dragOffset.y;
-    
-    setToolbarPosition({
-      x: Math.max(0, Math.min(newX, window.innerWidth - 300)), // 300 is approximate toolbar width
-      y: Math.max(0, Math.min(newY, window.innerHeight - 100))  // 100 is approximate toolbar height
-    });
-  }, [isDragging, dragOffset]);
-
-  const handleDragEnd = useCallback(() => {
-    setIsDragging(false);
-    // Save position to localStorage when drag ends
-    localStorage.setItem('toolbarPosition', JSON.stringify(toolbarPosition));
-  }, [toolbarPosition]);
-
-  // Add global mouse event listeners for drag functionality
-  useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleDrag);
-      window.addEventListener('mouseup', handleDragEnd);
-      
-      return () => {
-        window.removeEventListener('mousemove', handleDrag);
-        window.removeEventListener('mouseup', handleDragEnd);
-      };
-    }
-  }, [isDragging, handleDrag, handleDragEnd]);
-
-  // Initialize toolbar position from localStorage or default
-  useEffect(() => {
-    const savedPosition = localStorage.getItem('toolbarPosition');
-    if (savedPosition) {
-      try {
-        const parsedPosition = JSON.parse(savedPosition);
-        setToolbarPosition(parsedPosition);
-      } catch (error) {
-        // If there's an error parsing, use default position
-        setToolbarPosition({ x: 20, y: 20 });
-      }
-    } else {
-      // Set default position for first-time users
-      setToolbarPosition({ x: 20, y: 20 });
-    }
-  }, []);
 
   // Refs
-  const dividersInitializedRef = useRef(false);
   const previousElementsRef = useRef([]);
 
   // Model config
@@ -125,7 +64,7 @@ function MagicCanvas() {
   // Cleanup on unmount and initialize element tracking
   useEffect(() => {
     Logger.info("MagicCanvas", "Initializing document-driven canvas");
-    
+
     // Initialize previous elements tracking from store
     previousElementsRef.current = [...store.getDocument().elements];
 
@@ -135,75 +74,35 @@ function MagicCanvas() {
   }, [cancelProcessing, store]);
 
   /**
-   * Generate ruled lines for rows
-   */
-  const generateRowDividers = useCallback((viewport) => {
-    if (!viewport) return [];
-
-    const dividers = [];
-    const startRow = Math.floor(viewport.y / ROW_HEIGHT);
-    const endRow = Math.ceil((viewport.y + viewport.height) / ROW_HEIGHT);
-
-    for (let i = startRow; i <= endRow + 1; i++) {
-      const y = i * ROW_HEIGHT;
-      const lineWidth = viewport.width + 1000;
-
-      dividers.push({
-        id: `row-divider-${i}`,
-        type: "line",
-        x: viewport.x - 500, // Extend beyond viewport
-        y,
-        width: lineWidth,
-        height: 0,
-        // Required for Excalidraw line elements
-        points: [
-          [0, 0],
-          [lineWidth, 0],
-        ], // Horizontal line
-        strokeColor: ROW_COLOR,
-        backgroundColor: "transparent",
-        strokeWidth: 1,
-        strokeStyle: "solid",
-        opacity: ROW_DIVIDER_OPACITY,
-        locked: true,
-        isRowDivider: true,
-        isDeleted: false,
-        roughness: 0,
-        roundness: null,
-        seed: i,
-        version: 1,
-        versionNonce: i,
-        groupIds: [],
-        boundElements: null,
-        updated: Date.now(),
-        link: null,
-      });
-    }
-
-    return dividers;
-  }, []);
-
-  /**
    * Check if elements have actually changed using a stable comparison
    */
-  const haveElementsChanged = useCallback((newElements) => {
+  const elementsChanged = useCallback((newElements) => {
     const prevElements = previousElementsRef.current;
-    
+
+    // Quick length check
     if (newElements.length !== prevElements.length) {
       return true;
     }
-    
-    const prevElementMap = new Map(prevElements.map(el => [el.id, el.version || 0]));
-    
-    return newElements.some(el => {
-      const prevVersion = prevElementMap.get(el.id);
-      return prevVersion === undefined || prevVersion !== (el.version || 0);
-    });
+
+    // Deep comparison of element IDs and versions
+    for (let i = 0; i < newElements.length; i++) {
+      const newEl = newElements[i];
+      const prevEl = prevElements[i];
+
+      if (
+        newEl.id !== prevEl.id ||
+        newEl.version !== prevEl.version ||
+        newEl.isDeleted !== prevEl.isDeleted
+      ) {
+        return true;
+      }
+    }
+
+    return false;
   }, []);
 
   /**
    * Handle scene change - update element assignments and canvas state
-   * Only triggers when elements actually change, not on scroll/zoom
    */
   const handleSceneChange = useCallback(
     (elements, appState) => {
@@ -212,20 +111,16 @@ function MagicCanvas() {
       // Filter out row dividers
       const contentElements = elements.filter((el) => !el.isRowDivider);
 
-      // Only update if elements have actually changed
-      if (haveElementsChanged(contentElements)) {
-        Logger.debug("MagicCanvas", "Elements changed, updating document", {
-          oldCount: previousElementsRef.current.length,
-          newCount: contentElements.length,
-        });
-        
-        // Update the ref to track current elements
-        previousElementsRef.current = contentElements;
-        
+      // Only update if elements actually changed
+      if (elementsChanged(contentElements)) {
+        // Update document with new elements and assignments
         ops.assignElements(contentElements);
+
+        // Update previous elements ref
+        previousElementsRef.current = contentElements;
       }
     },
-    [ops, haveElementsChanged]
+    [ops, elementsChanged],
   );
 
   /**
@@ -331,41 +226,6 @@ function MagicCanvas() {
   );
 
   /**
-   * Generate and inject row dividers when API is ready
-   * Only runs once on mount to avoid infinite loops
-   */
-  useEffect(() => {
-    if (!excalidrawAPI || dividersInitializedRef.current) return;
-
-    // Wait a tick for Excalidraw to fully initialize
-    const timer = setTimeout(() => {
-      const appState = excalidrawAPI.getAppState();
-      if (!appState) return;
-
-      const viewport = {
-        x: appState.scrollX || 0,
-        y: appState.scrollY || 0,
-        width: appState.width || window.innerWidth,
-        height: appState.height || window.innerHeight,
-      };
-
-      const dividers = generateRowDividers(viewport);
-
-      Logger.debug(
-        "MagicCanvas",
-        `Initializing ${dividers.length} row dividers`,
-      );
-      excalidrawAPI.updateScene({
-        elements: dividers,
-      });
-
-      dividersInitializedRef.current = true;
-    }, 100);
-
-    return () => clearTimeout(timer);
-  }, [excalidrawAPI, generateRowDividers]);
-
-  /**
    * Keyboard shortcuts
    */
   useEffect(() => {
@@ -459,285 +319,49 @@ function MagicCanvas() {
 
   return (
     <div className="unified-canvas">
-      {/* Excalidraw Canvas */}
-      <div className="canvas-container">
-        <Excalidraw
-          excalidrawAPI={(api) => setExcalidrawAPI(api)}
-          onChange={handleSceneChange}
-          initialData={{
-            appState: {
-              viewBackgroundColor: "#ffffff",
-              currentItemStrokeColor: "#000000",
-              currentItemStrokeWidth: 2,
-              currentItemRoughness: 0, // Smooth lines for better OCR
-              gridSize: null,
-              zoom: { value: 1 },
-            },
-            elements: [],
-          }}
-          UIOptions={{
-            canvasActions: {
-              loadScene: false,
-              saveAsImage: false,
-              export: false,
-              clearCanvas: false,
-            },
-          }}
-        />
-      </div>
-
-      {/* Row dividers are injected once on mount via useEffect (see line 385) */}
+      {/* Canvas with Excalidraw and row dividers */}
+      <CanvasContainer
+        rowHeight={ROW_HEIGHT}
+        onExcalidrawReady={setExcalidrawAPI}
+        onSceneChange={handleSceneChange}
+      />
 
       {/* Row overlays */}
       {rowOverlays}
 
       {/* Toolbar */}
-      <div 
-        className={`unified-toolbar draggable ${isDragging ? 'dragging' : ''}`}
-        style={{ 
-          left: `${toolbarPosition.x}px`, 
-          top: `${toolbarPosition.y}px`,
-          position: 'fixed'
-        }}
-      >
-        {/* Drag handle */}
-        <div 
-          className="toolbar-drag-handle"
-          onMouseDown={handleDragStart}
-        />
-        
-        {/* Processing controls */}
-        <button
-          onClick={handleProcessAllRows}
-          disabled={isProcessing}
-          className="btn btn-primary"
-        >
-          {isProcessing ? "Processing..." : "Process All Rows"}
-        </button>
-
-        {selectedRow !== null && (
-          <button
-            onClick={() => handleProcessRow(selectedRow)}
-            disabled={isProcessing}
-            className="btn btn-secondary"
-          >
-            Process Row {selectedRow}
-          </button>
-        )}
-
-        <div
-          style={{
-            borderLeft: "1px solid #e5e7eb",
-            height: "24px",
-            margin: "0 8px",
-          }}
-        />
-
-        {/* Validation controls */}
-        <button
-          onClick={validateAllRows}
-          disabled={isProcessing || stats.rowCount < 2}
-          className="btn btn-success"
-        >
-          Validate All
-        </button>
-
-        <button
-          onClick={clearAllValidations}
-          disabled={isProcessing}
-          className="btn btn-outline"
-        >
-          Clear Validations
-        </button>
-
-        <div
-          style={{
-            borderLeft: "1px solid #e5e7eb",
-            height: "24px",
-            margin: "0 8px",
-          }}
-        />
-
-        {/* History controls */}
-        <button
-          onClick={undo}
-          disabled={!canUndo}
-          className="btn btn-outline"
-          title="Undo (Ctrl+Z)"
-        >
-          ↶ Undo
-        </button>
-
-        <button
-          onClick={redo}
-          disabled={!canRedo}
-          className="btn btn-outline"
-          title="Redo (Ctrl+Shift+Z)"
-        >
-          ↷ Redo
-        </button>
-
-        <div
-          style={{
-            borderLeft: "1px solid #e5e7eb",
-            height: "24px",
-            margin: "0 8px",
-          }}
-        />
-
-        {/* File controls */}
-        <button
-          onClick={handleSave}
-          disabled={!hasUnsavedChanges}
-          className="btn btn-outline"
-          title="Save (Ctrl+S)"
-        >
-          Save
-        </button>
-
-        <button onClick={handleExport} className="btn btn-outline">
-          Export
-        </button>
-
-        <div
-          style={{
-            borderLeft: "1px solid #e5e7eb",
-            height: "24px",
-            margin: "0 8px",
-          }}
-        />
-
-        {/* Debug mode */}
-        <button
-          onClick={() => setDebugMode(!debugMode)}
-          className="btn btn-outline"
-        >
-          Debug: {debugMode ? "ON" : "OFF"}
-        </button>
-
-        {/* Info */}
-        <div className="toolbar-info">
-          <span>{stats.rowCount} rows</span>
-          <span>Version: {stats.version}</span>
-          {stats.ocrCompleteCount > 0 && (
-            <span>OCR: {stats.ocrCompleteCount}/{stats.rowCount}</span>
-          )}
-          {stats.validationCompleteCount > 0 && (
-            <span>Valid: {stats.validationCompleteCount}</span>
-          )}
-        </div>
-      </div>
+      <CanvasToolbar
+        isProcessing={isProcessing}
+        selectedRow={selectedRow}
+        onProcessAll={handleProcessAllRows}
+        onProcessRow={handleProcessRow}
+        onValidateAll={validateAllRows}
+        onClearValidations={clearAllValidations}
+        canValidate={stats.rowCount >= 2}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
+        hasUnsavedChanges={hasUnsavedChanges}
+        onSave={handleSave}
+        onExport={handleExport}
+        debugMode={debugMode}
+        onToggleDebug={() => setDebugMode(!debugMode)}
+        stats={stats}
+      />
 
       {/* Status bar */}
-      <div className="status-bar">
-        <span>Row height: {ROW_HEIGHT}px</span>
-        <span>Model: {modelConfig.name}</span>
-        <span>Document: {document.id.substring(0, 8)}...</span>
-        {selectedRow !== null && <span>Selected: Row {selectedRow}</span>}
-        {lastSaved && (
-          <span>Saved: {new Date(lastSaved).toLocaleTimeString()}</span>
-        )}
-        {hasUnsavedChanges && (
-          <span style={{ color: "#f59e0b" }}>● Unsaved</span>
-        )}
-        {stats.historySize > 1 && (
-          <span>History: {stats.historySize}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Row Overlay Component
- * Displays row status, LaTeX, and debug info
- */
-function RowOverlay({ row, viewport, zoom, selected, onClick, debugMode }) {
-  const canvasY = row.y * zoom + viewport.y;
-  const canvasHeight = row.height * zoom;
-
-  // Position overlay at row
-  const style = {
-    position: "absolute",
-    top: `${canvasY}px`,
-    left: `${viewport.x}px`,
-    width: `${viewport.width}px`,
-    height: `${canvasHeight}px`,
-    pointerEvents: "none",
-  };
-
-  // Add validation class
-  const validationClass =
-    row.validationStatus !== "unchecked"
-      ? `validation-${row.validationStatus}`
-      : "";
-
-  const handleClick = useCallback(() => {
-    onClick(row.id);
-  }, [onClick, row.id]);
-
-  return (
-    <div
-      className={`row-overlay ${selected ? "selected" : ""} ${validationClass}`}
-      style={style}
-    >
-      {/* Row number */}
-      <div className="row-number">{row.id}</div>
-
-      {/* OCR Status */}
-      {row.ocrStatus !== "pending" && (
-        <div className={`ocr-status status-${row.ocrStatus}`}>
-          {row.ocrStatus === "processing" &&
-            `Processing... ${(row.ocrProgress * 100).toFixed(0)}%`}
-          {row.ocrStatus === "complete" && "✓ OCR Complete"}
-          {row.ocrStatus === "error" && "✗ OCR Error"}
-        </div>
-      )}
-
-      {/* LaTeX output */}
-      {row.latex && (
-        <div className="row-latex">
-          {row.latex.substring(0, 100)}
-          {row.latex.length > 100 ? "..." : ""}
-        </div>
-      )}
-
-      {/* Validation status */}
-      {row.validationStatus !== "unchecked" && (
-        <div className={`validation-status status-${row.validationStatus}`}>
-          {row.validationStatus === "valid" && "✓"}
-          {row.validationStatus === "invalid" && "✗"}
-          {row.validationStatus === "error" && "⚠️"}
-        </div>
-      )}
-
-      {/* Debug info */}
-      {debugMode && (
-        <div className="row-debug">
-          <div>Elements: {row.elementIds.size}</div>
-          <div>Tiles: {row.tiles?.length || 0}</div>
-          {row.tiles && row.tiles.length > 0 && (
-            <div>
-              Tile dims:{" "}
-              {row.tiles
-                .map((t) => `${t.logicalWidth}x${t.logicalHeight}`)
-                .join(", ")}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Click handler */}
-      <div
-        className="row-clickable"
-        style={{ pointerEvents: "all", cursor: "pointer" }}
-        onClick={handleClick}
+      <StatusBar
+        rowHeight={ROW_HEIGHT}
+        modelName={modelConfig.name}
+        documentId={document.id}
+        selectedRow={selectedRow}
+        lastSaved={lastSaved}
+        hasUnsavedChanges={hasUnsavedChanges}
+        historySize={stats.historySize}
       />
     </div>
   );
 }
-
-// Memoized version to prevent re-renders
-const RowOverlayMemo = React.memo(RowOverlay);
 
 export default MagicCanvas;
