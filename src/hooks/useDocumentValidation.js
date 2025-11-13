@@ -149,10 +149,22 @@ export function useDocumentValidation(options = {}) {
         return;
       }
 
-      // Validate all rows that need it
-      validateAllRows().then(() => {
+      // Validate all rows that need it - use the callback directly to avoid dependency issues
+      (async () => {
+        // Sort by ID to validate in order
+        const sortedRows = rowsNeedingValidation.sort((a, b) => a.id - b.id);
+        
+        for (const row of sortedRows) {
+          if (row.id === 0) continue; // Skip first row
+          try {
+            await validateRow(row.id);
+          } catch (error) {
+            // Errors are already handled in validateRow
+          }
+        }
+        
         lastProcessedVersionRef.current = document.version;
-      });
+      })();
     }, debounceMs);
 
     return () => {
@@ -160,7 +172,7 @@ export function useDocumentValidation(options = {}) {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [document, autoValidate, debounceMs, validateAllRows]);
+  }, [document.version, autoValidate, debounceMs, validateRow]);
 
   /**
    * Clear validation results for a row

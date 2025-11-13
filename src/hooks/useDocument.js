@@ -16,13 +16,11 @@ import { getDefaultStore } from '../models/DocumentStore';
  *   const row = document.getRow(0);
  */
 export function useDocument() {
-  const storeRef = useRef(getDefaultStore());
-  const [document, setDocument] = useState(() => storeRef.current.getDocument());
+  const store = useMemo(() => getDefaultStore(), []);
+  const [document, setDocument] = useState(() => store.getDocument());
   const [, forceUpdate] = useState(0);
 
   useEffect(() => {
-    const store = storeRef.current;
-
     // Subscribe to document changes
     const unsubscribe = store.subscribe(event => {
       if (
@@ -42,11 +40,11 @@ export function useDocument() {
     });
 
     return unsubscribe;
-  }, []);
+  }, [store]);
 
   return {
     document,
-    store: storeRef.current,
+    store,
   };
 }
 
@@ -282,7 +280,7 @@ export function useAllRows() {
  */
 export function useDocumentStats() {
   const { store } = useDocument();
-  const [stats, setStats] = useState(store.getStats());
+  const [stats, setStats] = useState(() => store.getStats());
 
   useEffect(() => {
     const unsubscribe = store.subscribe(() => {

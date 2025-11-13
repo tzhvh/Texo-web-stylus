@@ -9,7 +9,7 @@
  * - Persistence is handled by DocumentStore
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
 import {
   useDocument,
@@ -50,21 +50,89 @@ function MagicCanvas() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [debugMode, setDebugMode] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [toolbarPosition, setToolbarPosition] = useState({ x: 20, y: 20 });
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  // Drag handlers for the toolbar
+  const handleDragStart = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const offsetX = e.clientX - rect.left;
+    const offsetY = e.clientY - rect.top;
+    
+    setDragOffset({ x: offsetX, y: offsetY });
+    setIsDragging(true);
+  }, []);
+
+  const handleDrag = useCallback((e) => {
+    if (!isDragging) return;
+    
+    const newX = e.clientX - dragOffset.x;
+    const newY = e.clientY - dragOffset.y;
+    
+    setToolbarPosition({
+      x: Math.max(0, Math.min(newX, window.innerWidth - 300)), // 300 is approximate toolbar width
+      y: Math.max(0, Math.min(newY, window.innerHeight - 100))  // 100 is approximate toolbar height
+    });
+  }, [isDragging, dragOffset]);
+
+  const handleDragEnd = useCallback(() => {
+    setIsDragging(false);
+    // Save position to localStorage when drag ends
+    localStorage.setItem('toolbarPosition', JSON.stringify(toolbarPosition));
+  }, [toolbarPosition]);
+
+  // Add global mouse event listeners for drag functionality
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleDrag);
+      window.addEventListener('mouseup', handleDragEnd);
+      
+      return () => {
+        window.removeEventListener('mousemove', handleDrag);
+        window.removeEventListener('mouseup', handleDragEnd);
+      };
+    }
+  }, [isDragging, handleDrag, handleDragEnd]);
+
+  // Initialize toolbar position from localStorage or default
+  useEffect(() => {
+    const savedPosition = localStorage.getItem('toolbarPosition');
+    if (savedPosition) {
+      try {
+        const parsedPosition = JSON.parse(savedPosition);
+        setToolbarPosition(parsedPosition);
+      } catch (error) {
+        // If there's an error parsing, use default position
+        setToolbarPosition({ x: 20, y: 20 });
+      }
+    } else {
+      // Set default position for first-time users
+      setToolbarPosition({ x: 20, y: 20 });
+    }
+  }, []);
 
   // Refs
   const dividersInitializedRef = useRef(false);
+  const previousElementsRef = useRef([]);
 
   // Model config
   const modelConfig = getActiveModelConfig();
 
-  // Cleanup on unmount
+  // Cleanup on unmount and initialize element tracking
   useEffect(() => {
     Logger.info("MagicCanvas", "Initializing document-driven canvas");
+    
+    // Initialize previous elements tracking from store
+    previousElementsRef.current = [...store.getDocument().elements];
 
     return () => {
       cancelProcessing();
     };
-  }, [cancelProcessing]);
+  }, [cancelProcessing, store]);
 
   /**
    * Generate ruled lines for rows
@@ -116,7 +184,26 @@ function MagicCanvas() {
   }, []);
 
   /**
+   * Check if elements have actually changed using a stable comparison
+   */
+  const haveElementsChanged = useCallback((newElements) => {
+    const prevElements = previousElementsRef.current;
+    
+    if (newElements.length !== prevElements.length) {
+      return true;
+    }
+    
+    const prevElementMap = new Map(prevElements.map(el => [el.id, el.version || 0]));
+    
+    return newElements.some(el => {
+      const prevVersion = prevElementMap.get(el.id);
+      return prevVersion === undefined || prevVersion !== (el.version || 0);
+    });
+  }, []);
+
+  /**
    * Handle scene change - update element assignments and canvas state
+   * Only triggers when elements actually change, not on scroll/zoom
    */
   const handleSceneChange = useCallback(
     (elements, appState) => {
@@ -125,10 +212,20 @@ function MagicCanvas() {
       // Filter out row dividers
       const contentElements = elements.filter((el) => !el.isRowDivider);
 
-      // Update document with new elements and assignments
-      ops.assignElements(contentElements);
+      // Only update if elements have actually changed
+      if (haveElementsChanged(contentElements)) {
+        Logger.debug("MagicCanvas", "Elements changed, updating document", {
+          oldCount: previousElementsRef.current.length,
+          newCount: contentElements.length,
+        });
+        
+        // Update the ref to track current elements
+        previousElementsRef.current = contentElements;
+        
+        ops.assignElements(contentElements);
+      }
     },
-    [ops],
+    [ops, haveElementsChanged]
   );
 
   /**
@@ -319,41 +416,46 @@ function MagicCanvas() {
 
   /**
    * Render row overlays (LaTeX, status icons, etc.)
+   * Uses useMemo to avoid re-renders when document changes
+   * Only depends on specific document properties that affect rendering
    */
-  const renderRowOverlays = useCallback(() => {
+  const rowOverlays = useMemo(() => {
     if (!excalidrawAPI) return null;
 
     const appState = excalidrawAPI.getAppState();
     const viewport = {
-      x: appState.scrollX,
-      y: appState.scrollY,
-      width: appState.width,
-      height: appState.height,
+      x: appState.scrollX || 0,
+      y: appState.scrollY || 0,
+      width: appState.width || window.innerWidth,
+      height: appState.height || window.innerHeight,
     };
 
-    const allRows = document.getAllRows();
+    // Get rows using the store directly to avoid full document re-renders
+    const allRows = store.getDocument().getAllRows();
     const visibleRows = allRows.filter((row) => {
       const rowTop = row.y;
       const rowBottom = row.y + row.height;
       return rowBottom >= viewport.y && rowTop <= viewport.y + viewport.height;
     });
 
+    const zoom = appState.zoom?.value || 1;
+
     return (
       <div className="row-overlays">
         {visibleRows.map((row) => (
-          <RowOverlay
+          <RowOverlayMemo
             key={row.id}
             row={row}
             viewport={viewport}
-            zoom={appState.zoom.value || 1}
+            zoom={zoom}
             selected={selectedRow === row.id}
-            onClick={() => handleRowClick(row.id)}
+            onClick={handleRowClick}
             debugMode={debugMode}
           />
         ))}
       </div>
     );
-  }, [excalidrawAPI, document, selectedRow, handleRowClick, debugMode]);
+  }, [excalidrawAPI, store, selectedRow, handleRowClick, debugMode]);
 
   return (
     <div className="unified-canvas">
@@ -387,10 +489,23 @@ function MagicCanvas() {
       {/* Row dividers are injected once on mount via useEffect (see line 385) */}
 
       {/* Row overlays */}
-      {renderRowOverlays()}
+      {rowOverlays}
 
       {/* Toolbar */}
-      <div className="unified-toolbar">
+      <div 
+        className={`unified-toolbar draggable ${isDragging ? 'dragging' : ''}`}
+        style={{ 
+          left: `${toolbarPosition.x}px`, 
+          top: `${toolbarPosition.y}px`,
+          position: 'fixed'
+        }}
+      >
+        {/* Drag handle */}
+        <div 
+          className="toolbar-drag-handle"
+          onMouseDown={handleDragStart}
+        />
+        
         {/* Processing controls */}
         <button
           onClick={handleProcessAllRows}
@@ -557,6 +672,10 @@ function RowOverlay({ row, viewport, zoom, selected, onClick, debugMode }) {
       ? `validation-${row.validationStatus}`
       : "";
 
+  const handleClick = useCallback(() => {
+    onClick(row.id);
+  }, [onClick, row.id]);
+
   return (
     <div
       className={`row-overlay ${selected ? "selected" : ""} ${validationClass}`}
@@ -612,10 +731,13 @@ function RowOverlay({ row, viewport, zoom, selected, onClick, debugMode }) {
       <div
         className="row-clickable"
         style={{ pointerEvents: "all", cursor: "pointer" }}
-        onClick={onClick}
+        onClick={handleClick}
       />
     </div>
   );
 }
+
+// Memoized version to prevent re-renders
+const RowOverlayMemo = React.memo(RowOverlay);
 
 export default MagicCanvas;
