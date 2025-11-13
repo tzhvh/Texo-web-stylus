@@ -197,9 +197,6 @@
 /* Toolbar */
 .unified-toolbar {
   position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -208,6 +205,40 @@
   border-radius: 8px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   z-index: 200;
+  min-width: 300px;
+}
+
+.unified-toolbar.draggable {
+  position: fixed;
+  cursor: move;
+}
+
+.toolbar-drag-handle {
+  width: 12px;
+  height: 24px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  margin-right: 8px;
+  margin-left: -8px;
+  cursor: move;
+  padding: 0 4px;
+}
+
+.toolbar-drag-handle::before,
+.toolbar-drag-handle::after {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 3px;
+  background-color: #9ca3af;
+  border-radius: 50%;
+}
+
+/* Style for when dragging */
+.unified-toolbar.dragging {
+  cursor: grabbing;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
 }
 
 .unified-toolbar button {
