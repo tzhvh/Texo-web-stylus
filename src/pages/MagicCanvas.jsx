@@ -1,16 +1,25 @@
 /**
- * Unified Canvas Page
+ * Unified Canvas Page (Document-Driven Architecture)
  * Full-screen sketching surface with ruled lines, OCR tiles, and sequential CAS validation
+ *
+ * This component now uses a document-driven architecture where:
+ * - All state is stored in an immutable MagicCanvasDocument
+ * - Changes are applied through document operations
+ * - History is automatically tracked for undo/redo
+ * - Persistence is handled by DocumentStore
  */
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Excalidraw, exportToBlob } from "@excalidraw/excalidraw";
-import { useRowSystem } from "../hooks/useRowSystem";
-import { useAutoValidation } from "../hooks/useAutoValidation";
-import { useCanvasPersistence } from "../hooks/useCanvasPersistence";
-import { TilingEngine } from "../utils/ocrTiling";
-import { RestorativeLatexAssembler } from "../utils/latexAssembly";
-import { OCRWorkerPool } from "../workers/ocrWorkerPool";
+import {
+  useDocument,
+  useDocumentOperations,
+  useDocumentHistory,
+  useDocumentPersistence,
+  useDocumentStats,
+} from "../hooks/useDocument";
+import { useDocumentOCR } from "../hooks/useDocumentOCR";
+import { useDocumentValidation } from "../hooks/useDocumentValidation";
 import { getActiveModelConfig } from "../config/ocrModels";
 import Logger from "../utils/logger";
 import "./MagicCanvas.css";
@@ -23,78 +32,39 @@ function MagicCanvas() {
   // Excalidraw API
   const [excalidrawAPI, setExcalidrawAPI] = useState(null);
 
-  // Row system
-  const {
-    rows,
-    selectedRow,
-    updateRows,
-    getRowElements,
-    selectRow,
-    updateOCRStatus,
-    updateValidationStatus,
-    getAllRows,
-  } = useRowSystem(ROW_HEIGHT);
+  // Document-driven state
+  const { document, store } = useDocument();
+  const ops = useDocumentOperations();
+  const { canUndo, canRedo, undo, redo } = useDocumentHistory();
+  const { save, hasUnsavedChanges, lastSaved } = useDocumentPersistence();
+  const stats = useDocumentStats();
 
-  // OCR & Processing
+  // Document operations
+  const { processRow, processAllRows, cancelProcessing } = useDocumentOCR();
+  const { validateAllRows, clearAllValidations } = useDocumentValidation({
+    autoValidate: true,
+    debounceMs: 500,
+  });
+
+  // UI state (not part of document)
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [debugMode, setDebugMode] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [processingRowId, setProcessingRowId] = useState(null);
-  const [progress, setProgress] = useState({ completed: 0, total: 0 });
 
-  // Engines
-  const tilingEngineRef = useRef(null);
-  const latexAssemblerRef = useRef(null);
-  const workerPoolRef = useRef(null);
+  // Refs
   const dividersInitializedRef = useRef(false);
 
   // Model config
   const modelConfig = getActiveModelConfig();
 
-  // Debug mode
-  const [debugMode, setDebugMode] = useState(false);
-
-  // Auto-validation
-  const [autoValidationEnabled, setAutoValidationEnabled] = useState(true);
-  const { validateAll, validateSingleRow, isValidating } = useAutoValidation({
-    rows,
-    updateValidationStatus,
-    enabled: autoValidationEnabled,
-    config: {
-      region: "US",
-      useAlgebrite: true,
-      debug: debugMode,
-    },
-  });
-
-  // Canvas persistence
-  const {
-    saveCanvas,
-    loadCanvas,
-    exportCanvas,
-    isSaving,
-    lastSaved,
-    hasUnsavedChanges,
-    markDirty,
-  } = useCanvasPersistence("unified-canvas-doc");
-
-  // Initialize engines
+  // Cleanup on unmount
   useEffect(() => {
-    Logger.info("MagicCanvas", "Initializing");
-
-    tilingEngineRef.current = new TilingEngine(ROW_HEIGHT);
-    latexAssemblerRef.current = new RestorativeLatexAssembler();
-    workerPoolRef.current = new OCRWorkerPool(2);
-
-    // Initialize worker pool
-    workerPoolRef.current.initialize(modelConfig).catch((err) => {
-      Logger.error("MagicCanvas", "Worker pool initialization failed", err);
-    });
+    Logger.info("MagicCanvas", "Initializing document-driven canvas");
 
     return () => {
-      if (workerPoolRef.current) {
-        workerPoolRef.current.terminate();
-      }
+      cancelProcessing();
     };
-  }, [modelConfig]);
+  }, [cancelProcessing]);
 
   /**
    * Generate ruled lines for rows
@@ -148,7 +118,7 @@ function MagicCanvas() {
   }, []);
 
   /**
-   * Handle scene change - update row assignments
+   * Handle scene change - update element assignments and canvas state
    */
   const handleSceneChange = useCallback(
     (elements, appState) => {
@@ -157,248 +127,112 @@ function MagicCanvas() {
       // Filter out row dividers
       const contentElements = elements.filter((el) => !el.isRowDivider);
 
-      // Update row assignments
-      updateRows(contentElements);
+      // Update document with new elements and assignments
+      ops.assignElements(contentElements);
     },
-    [updateRows],
+    [ops],
   );
 
   /**
-   * Process a specific row with OCR
+   * Handle processing a single row
    */
-  const processRow = useCallback(
+  const handleProcessRow = useCallback(
     async (rowId) => {
-      if (
-        !excalidrawAPI ||
-        !tilingEngineRef.current ||
-        !workerPoolRef.current
-      ) {
-        Logger.warn("MagicCanvas", "Not ready to process row", { rowId });
+      if (!excalidrawAPI) {
+        Logger.warn("MagicCanvas", "Excalidraw API not ready");
         return;
       }
 
       setIsProcessing(true);
-      setProcessingRowId(rowId);
-
       try {
-        Logger.info("MagicCanvas", `Processing row ${rowId}`);
-
-        // Update status
-        updateOCRStatus(rowId, "processing", { progress: 0 });
-
-        // Get row elements
-        const allElements = excalidrawAPI.getSceneElements();
-        const rowElements = getRowElements(rowId, allElements);
-
-        if (rowElements.length === 0) {
-          Logger.warn("MagicCanvas", `Row ${rowId} is empty`);
-          updateOCRStatus(rowId, "complete", { latex: "", tiles: [] });
-          return;
-        }
-
-        // Generate tiles
-        const tiles = await tilingEngineRef.current.generateRowTiles(
-          rowId,
-          rowElements,
-          10000, // Canvas width
-        );
-
-        Logger.info(
-          "MagicCanvas",
-          `Generated ${tiles.length} tiles for row ${rowId}`,
-        );
-
-        if (tiles.length === 0) {
-          updateOCRStatus(rowId, "complete", { latex: "", tiles: [] });
-          return;
-        }
-
-        // Render tiles to blobs
-        setProgress({ completed: 0, total: tiles.length });
-
-        for (let i = 0; i < tiles.length; i++) {
-          const tile = tiles[i];
-
-          // Render tile to blob
-          const blob = await renderTile(tile, excalidrawAPI);
-          tile.blob = blob;
-
-          setProgress({
-            completed: i + 1,
-            total: tiles.length,
-            phase: "rendering",
-          });
-        }
-
-        // Process tiles with OCR worker pool
-        updateOCRStatus(rowId, "processing", { progress: 0.3, tiles });
-
-        await workerPoolRef.current.processTiles(tiles, (progress) => {
-          updateOCRStatus(rowId, "processing", {
-            progress: 0.3 + (progress.percentage * 0.5) / 100,
-            tiles,
-          });
-          setProgress({
-            completed: progress.completed,
-            total: progress.total,
-            phase: "ocr",
-          });
-        });
-
-        Logger.info("MagicCanvas", `OCR complete for row ${rowId}`);
-
-        // Assemble LaTeX from tiles
-        updateOCRStatus(rowId, "processing", { progress: 0.8 });
-
-        const assemblyResult = latexAssemblerRef.current.assembleTiles(tiles);
-
-        Logger.info("MagicCanvas", `Assembly complete for row ${rowId}`, {
-          latex: assemblyResult.latex,
-          confidence: assemblyResult.confidence,
-          repairs: assemblyResult.repairs.length,
-        });
-
-        // Update row with results
-        updateOCRStatus(rowId, "complete", {
-          latex: assemblyResult.latex,
-          tiles,
-          confidence: assemblyResult.confidence,
-          repairs: assemblyResult.repairs,
-          progress: 1.0,
-        });
+        await processRow(rowId, excalidrawAPI);
+        Logger.info("MagicCanvas", `Row ${rowId} processed successfully`);
       } catch (error) {
-        Logger.error("MagicCanvas", `Error processing row ${rowId}`, error);
-        updateOCRStatus(rowId, "error", { error: error.message });
+        Logger.error("MagicCanvas", `Failed to process row ${rowId}`, error);
       } finally {
         setIsProcessing(false);
-        setProcessingRowId(null);
-        setProgress({ completed: 0, total: 0 });
       }
     },
-    [excalidrawAPI, getRowElements, updateOCRStatus],
+    [excalidrawAPI, processRow]
   );
 
   /**
-   * Render tile to blob using Excalidraw's export
+   * Handle processing all rows
    */
-  const renderTile = async (tile, api) => {
-    // Transform elements to tile coordinate system
-    const transformedElements = tile.elements.map((el) => ({
-      ...el,
-      x: (el.x - tile.bounds.minX) * tile.scale + tile.padding.x,
-      y: (el.y - tile.bounds.minY) * tile.scale + tile.padding.y,
-      width: (el.width || 0) * tile.scale,
-      height: (el.height || 0) * tile.scale,
-      strokeWidth: (el.strokeWidth || 2) * tile.scale,
-      points: el.points
-        ? el.points.map((p) => [p[0] * tile.scale, p[1] * tile.scale])
-        : undefined,
-    }));
-
-    const blob = await exportToBlob({
-      elements: transformedElements,
-      appState: {
-        exportBackground: true,
-        viewBackgroundColor: modelConfig.paddingColor || "#FFFFFF",
-      },
-      files: api.getFiles(),
-      getDimensions: () => ({
-        width: tile.outputWidth,
-        height: tile.outputHeight,
-      }),
-      exportPadding: 0,
-    });
-
-    return blob;
-  };
-
-  /**
-   * Process all rows with content
-   */
-  const processAllRows = useCallback(async () => {
-    const allRows = getAllRows();
-    const rowsWithContent = allRows.filter((row) => row.elementIds.size > 0);
-
-    Logger.info("MagicCanvas", `Processing ${rowsWithContent.length} rows`);
-
-    for (const row of rowsWithContent) {
-      await processRow(row.id);
+  const handleProcessAllRows = useCallback(async () => {
+    if (!excalidrawAPI) {
+      Logger.warn("MagicCanvas", "Excalidraw API not ready");
+      return;
     }
 
-    Logger.info("MagicCanvas", "All rows processed");
-  }, [getAllRows, processRow]);
-
-  /**
-   * Save canvas
-   */
-  const handleSave = useCallback(async () => {
-    if (!excalidrawAPI) return;
-
-    const elements = excalidrawAPI.getSceneElements();
-    const appState = excalidrawAPI.getAppState();
-    const files = excalidrawAPI.getFiles();
-    const rowData = getAllRows().reduce((acc, row) => {
-      acc[row.id] = row;
-      return acc;
-    }, {});
-
-    await saveCanvas({
-      elements,
-      appState,
-      files,
-      rowData,
-    });
-  }, [excalidrawAPI, getAllRows, saveCanvas]);
-
-  /**
-   * Load canvas
-   */
-  const handleLoad = useCallback(async () => {
-    const data = await loadCanvas();
-
-    if (data && excalidrawAPI) {
-      excalidrawAPI.updateScene({
-        elements: data.elements,
-        appState: data.appState,
-      });
-
-      // TODO: Load row data
-
-      Logger.info("MagicCanvas", "Canvas loaded");
+    setIsProcessing(true);
+    try {
+      await processAllRows(excalidrawAPI);
+      Logger.info("MagicCanvas", "All rows processed successfully");
+    } catch (error) {
+      Logger.error("MagicCanvas", "Failed to process all rows", error);
+    } finally {
+      setIsProcessing(false);
     }
-  }, [excalidrawAPI, loadCanvas]);
+  }, [excalidrawAPI, processAllRows]);
 
   /**
-   * Export canvas
+   * Save canvas - now handled by DocumentStore auto-save
+   * Manual save just triggers immediate save
    */
-  const handleExport = useCallback(async () => {
+  const handleSave = useCallback(() => {
     if (!excalidrawAPI) return;
 
-    const elements = excalidrawAPI.getSceneElements();
+    // Sync current Excalidraw state to document before saving
+    const elements = excalidrawAPI.getSceneElements().filter(el => !el.isRowDivider);
     const appState = excalidrawAPI.getAppState();
     const files = excalidrawAPI.getFiles();
-    const rowData = getAllRows().reduce((acc, row) => {
-      acc[row.id] = row;
-      return acc;
-    }, {});
 
-    await exportCanvas({
-      elements,
-      appState,
-      files,
-      rowData,
-    });
-  }, [excalidrawAPI, getAllRows, exportCanvas]);
+    ops.updateCanvasState({ elements, appState, files });
+
+    // Save will happen automatically via DocumentStore
+    save();
+
+    Logger.info("MagicCanvas", "Canvas saved");
+  }, [excalidrawAPI, ops, save]);
+
+  /**
+   * Export canvas as JSON
+   */
+  const handleExport = useCallback(() => {
+    if (!excalidrawAPI) return;
+
+    // Sync current state
+    const elements = excalidrawAPI.getSceneElements().filter(el => !el.isRowDivider);
+    const appState = excalidrawAPI.getAppState();
+    const files = excalidrawAPI.getFiles();
+
+    ops.updateCanvasState({ elements, appState, files });
+
+    // Export document as JSON
+    const json = store.exportJSON();
+
+    // Download as file
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `magic-canvas-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    Logger.info("MagicCanvas", "Canvas exported");
+  }, [excalidrawAPI, ops, store]);
 
   /**
    * Handle row click (selection)
    */
   const handleRowClick = useCallback(
     (rowId) => {
-      selectRow(rowId);
+      setSelectedRow(rowId);
       Logger.debug("MagicCanvas", `Selected row ${rowId}`);
     },
-    [selectRow],
+    [],
   );
 
   /**
@@ -445,10 +279,34 @@ function MagicCanvas() {
       if (e.ctrlKey && e.key === "Enter") {
         e.preventDefault();
         if (selectedRow !== null) {
-          processRow(selectedRow);
+          handleProcessRow(selectedRow);
         } else {
-          processAllRows();
+          handleProcessAllRows();
         }
+      }
+
+      // Ctrl+Z: Undo
+      if (e.ctrlKey && e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        if (canUndo) {
+          undo();
+          Logger.info("MagicCanvas", "Undo");
+        }
+      }
+
+      // Ctrl+Shift+Z or Ctrl+Y: Redo
+      if ((e.ctrlKey && e.shiftKey && e.key === "Z") || (e.ctrlKey && e.key === "y")) {
+        e.preventDefault();
+        if (canRedo) {
+          redo();
+          Logger.info("MagicCanvas", "Redo");
+        }
+      }
+
+      // Ctrl+S: Save
+      if (e.ctrlKey && e.key === "s") {
+        e.preventDefault();
+        handleSave();
       }
 
       // D key: Toggle debug mode
@@ -459,7 +317,7 @@ function MagicCanvas() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedRow, processRow, processAllRows]);
+  }, [selectedRow, handleProcessRow, handleProcessAllRows, canUndo, canRedo, undo, redo, handleSave]);
 
   /**
    * Render row overlays (LaTeX, status icons, etc.)
@@ -475,7 +333,8 @@ function MagicCanvas() {
       height: appState.height,
     };
 
-    const visibleRows = Array.from(rows.values()).filter((row) => {
+    const allRows = document.getAllRows();
+    const visibleRows = allRows.filter((row) => {
       const rowTop = row.y;
       const rowBottom = row.y + row.height;
       return rowBottom >= viewport.y && rowTop <= viewport.y + viewport.height;
@@ -496,7 +355,7 @@ function MagicCanvas() {
         ))}
       </div>
     );
-  }, [excalidrawAPI, rows, selectedRow, handleRowClick, debugMode]);
+  }, [excalidrawAPI, document, selectedRow, handleRowClick, debugMode]);
 
   return (
     <div className="unified-canvas">
@@ -534,8 +393,9 @@ function MagicCanvas() {
 
       {/* Toolbar */}
       <div className="unified-toolbar">
+        {/* Processing controls */}
         <button
-          onClick={processAllRows}
+          onClick={handleProcessAllRows}
           disabled={isProcessing}
           className="btn btn-primary"
         >
@@ -544,7 +404,7 @@ function MagicCanvas() {
 
         {selectedRow !== null && (
           <button
-            onClick={() => processRow(selectedRow)}
+            onClick={() => handleProcessRow(selectedRow)}
             disabled={isProcessing}
             className="btn btn-secondary"
           >
@@ -552,6 +412,89 @@ function MagicCanvas() {
           </button>
         )}
 
+        <div
+          style={{
+            borderLeft: "1px solid #e5e7eb",
+            height: "24px",
+            margin: "0 8px",
+          }}
+        />
+
+        {/* Validation controls */}
+        <button
+          onClick={validateAllRows}
+          disabled={isProcessing || stats.rowCount < 2}
+          className="btn btn-success"
+        >
+          Validate All
+        </button>
+
+        <button
+          onClick={clearAllValidations}
+          disabled={isProcessing}
+          className="btn btn-outline"
+        >
+          Clear Validations
+        </button>
+
+        <div
+          style={{
+            borderLeft: "1px solid #e5e7eb",
+            height: "24px",
+            margin: "0 8px",
+          }}
+        />
+
+        {/* History controls */}
+        <button
+          onClick={undo}
+          disabled={!canUndo}
+          className="btn btn-outline"
+          title="Undo (Ctrl+Z)"
+        >
+          ↶ Undo
+        </button>
+
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          className="btn btn-outline"
+          title="Redo (Ctrl+Shift+Z)"
+        >
+          ↷ Redo
+        </button>
+
+        <div
+          style={{
+            borderLeft: "1px solid #e5e7eb",
+            height: "24px",
+            margin: "0 8px",
+          }}
+        />
+
+        {/* File controls */}
+        <button
+          onClick={handleSave}
+          disabled={!hasUnsavedChanges}
+          className="btn btn-outline"
+          title="Save (Ctrl+S)"
+        >
+          Save
+        </button>
+
+        <button onClick={handleExport} className="btn btn-outline">
+          Export
+        </button>
+
+        <div
+          style={{
+            borderLeft: "1px solid #e5e7eb",
+            height: "24px",
+            margin: "0 8px",
+          }}
+        />
+
+        {/* Debug mode */}
         <button
           onClick={() => setDebugMode(!debugMode)}
           className="btn btn-outline"
@@ -559,58 +502,15 @@ function MagicCanvas() {
           Debug: {debugMode ? "ON" : "OFF"}
         </button>
 
-        <button
-          onClick={validateAll}
-          disabled={isValidating || rows.size < 2}
-          className="btn btn-success"
-        >
-          {isValidating ? "Validating..." : "Validate All"}
-        </button>
-
-        <button
-          onClick={() => setAutoValidationEnabled(!autoValidationEnabled)}
-          className="btn btn-outline"
-        >
-          Auto-Validate: {autoValidationEnabled ? "ON" : "OFF"}
-        </button>
-
-        <div
-          style={{
-            borderLeft: "1px solid #e5e7eb",
-            height: "24px",
-            margin: "0 4px",
-          }}
-        />
-
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="btn btn-outline"
-        >
-          {isSaving ? "Saving..." : "Save"}
-        </button>
-
-        <button onClick={handleLoad} className="btn btn-outline">
-          Load
-        </button>
-
-        <button onClick={handleExport} className="btn btn-outline">
-          Export
-        </button>
-
+        {/* Info */}
         <div className="toolbar-info">
-          <span>{rows.size} rows</span>
-          {isProcessing && (
-            <span>
-              Processing row {processingRowId}
-              {progress.total > 0 && (
-                <>
-                  {" "}
-                  ({progress.completed}/{progress.total}{" "}
-                  {progress.phase || "tiles"})
-                </>
-              )}
-            </span>
+          <span>{stats.rowCount} rows</span>
+          <span>Version: {stats.version}</span>
+          {stats.ocrCompleteCount > 0 && (
+            <span>OCR: {stats.ocrCompleteCount}/{stats.rowCount}</span>
+          )}
+          {stats.validationCompleteCount > 0 && (
+            <span>Valid: {stats.validationCompleteCount}</span>
           )}
         </div>
       </div>
@@ -619,12 +519,16 @@ function MagicCanvas() {
       <div className="status-bar">
         <span>Row height: {ROW_HEIGHT}px</span>
         <span>Model: {modelConfig.name}</span>
+        <span>Document: {document.id.substring(0, 8)}...</span>
         {selectedRow !== null && <span>Selected: Row {selectedRow}</span>}
         {lastSaved && (
-          <span>Last saved: {new Date(lastSaved).toLocaleTimeString()}</span>
+          <span>Saved: {new Date(lastSaved).toLocaleTimeString()}</span>
         )}
         {hasUnsavedChanges && (
-          <span style={{ color: "#f59e0b" }}>● Unsaved changes</span>
+          <span style={{ color: "#f59e0b" }}>● Unsaved</span>
+        )}
+        {stats.historySize > 1 && (
+          <span>History: {stats.historySize}</span>
         )}
       </div>
     </div>
