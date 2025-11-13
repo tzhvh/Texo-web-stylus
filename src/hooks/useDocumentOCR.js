@@ -17,6 +17,9 @@ export function useDocumentOCR() {
 
   // Keep worker pool instance across renders
   const workerPoolRef = useRef(null);
+  
+  // Track currently processing rows to prevent concurrent processing
+  const processingRowsRef = useRef(new Set());
 
   // Initialize worker pool lazily
   const getWorkerPool = useCallback(() => {
@@ -31,6 +34,15 @@ export function useDocumentOCR() {
    */
   const processRow = useCallback(
     async (rowId, excalidrawAPI) => {
+      // Check if already processing this row
+      if (processingRowsRef.current.has(rowId)) {
+        console.warn(`Row ${rowId} is already being processed, skipping duplicate request`);
+        return null;
+      }
+
+      // Add to processing set
+      processingRowsRef.current.add(rowId);
+
       try {
         const row = document.getRow(rowId);
         if (!row) {
@@ -51,6 +63,11 @@ export function useDocumentOCR() {
         });
 
         const tiles = tilingEngine.generateRowTiles(rowId, elements, canvasWidth);
+        
+        // Defensive check: ensure tiles is an array
+        if (!Array.isArray(tiles)) {
+          throw new Error(`TilingEngine returned non-array tiles: ${typeof tiles}`);
+        }
 
         ops.updateOCRStatus(rowId, 'processing', {
           progress: 0.1,
@@ -87,7 +104,7 @@ export function useDocumentOCR() {
           const renderProgress = 0.1 + ((index + 1) / tiles.length) * 0.2;
           ops.updateOCRStatus(rowId, 'processing', {
             progress: renderProgress,
-            tiles,
+            tiles: [...tiles], // Create a copy to ensure it stays as an array
           });
 
           return tile;
@@ -102,7 +119,7 @@ export function useDocumentOCR() {
           const ocrProgress = 0.3 + (completed / total) * 0.5;
           ops.updateOCRStatus(rowId, 'processing', {
             progress: ocrProgress,
-            tiles,
+            tiles: [...tiles], // Create a copy to ensure it stays as an array
           });
         };
 
@@ -110,11 +127,16 @@ export function useDocumentOCR() {
           tiles,
           progressCallback
         );
+        
+        // Defensive check: ensure processedTiles is an array
+        if (!Array.isArray(processedTiles)) {
+          throw new Error(`Worker pool returned non-array processedTiles: ${typeof processedTiles}`);
+        }
 
         // Phase 4: Assemble LaTeX (80-100% progress)
         ops.updateOCRStatus(rowId, 'processing', {
           progress: 0.8,
-          tiles: processedTiles,
+          tiles: [...processedTiles], // Create a copy to ensure it stays as an array
         });
 
         const assembler = new RestorativeLatexAssembler();
@@ -124,7 +146,7 @@ export function useDocumentOCR() {
         ops.updateOCRResult(rowId, {
           latex: result.latex,
           confidence: result.confidence,
-          tiles: processedTiles,
+          tiles: [...processedTiles], // Create a copy to ensure it stays as an array
         });
 
         return result;
@@ -135,6 +157,9 @@ export function useDocumentOCR() {
           progress: 0,
         });
         throw error;
+      } finally {
+        // Remove from processing set
+        processingRowsRef.current.delete(rowId);
       }
     },
     [document, ops, getWorkerPool]
@@ -148,7 +173,10 @@ export function useDocumentOCR() {
       const rowsNeedingOCR = document.getRowsNeedingOCR();
 
       for (const row of rowsNeedingOCR) {
-        await processRow(row.id, excalidrawAPI);
+        // Skip if already processing this row (safety check)
+        if (!processingRowsRef.current.has(row.id)) {
+          await processRow(row.id, excalidrawAPI);
+        }
       }
     },
     [document, processRow]
@@ -159,6 +187,12 @@ export function useDocumentOCR() {
    */
   const retryRow = useCallback(
     async (rowId, excalidrawAPI) => {
+      // Skip if already processing this row
+      if (processingRowsRef.current.has(rowId)) {
+        console.warn(`Row ${rowId} is already being processed, skipping retry`);
+        return null;
+      }
+      
       // Reset status to pending
       ops.updateOCRStatus(rowId, 'pending', { progress: 0, error: null });
 
@@ -176,6 +210,9 @@ export function useDocumentOCR() {
       workerPoolRef.current.terminate();
       workerPoolRef.current = null;
     }
+    
+    // Clear processing set
+    processingRowsRef.current.clear();
   }, []);
 
   return {
