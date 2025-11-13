@@ -19,6 +19,7 @@ import {
 } from "../hooks/useDocument";
 import { useDocumentOCR } from "../hooks/useDocumentOCR";
 import { useDocumentValidation } from "../hooks/useDocumentValidation";
+import { useRowInfoSync } from "../hooks/useRowInfoSync";
 import { getActiveModelConfig } from "../config/ocrModels";
 import Logger from "../utils/logger";
 
@@ -26,7 +27,6 @@ import Logger from "../utils/logger";
 import { CanvasContainer } from "../components/MagicCanvas/CanvasContainer";
 import { CanvasToolbar } from "../components/MagicCanvas/CanvasToolbar";
 import { StatusBar } from "../components/MagicCanvas/StatusBar";
-import { RowOverlayMemo } from "../components/MagicCanvas/RowOverlay";
 
 import "./MagicCanvas.css";
 
@@ -60,6 +60,15 @@ function MagicCanvas() {
 
   // Model config
   const modelConfig = getActiveModelConfig();
+
+  // Sync row info with canvas elements
+  useRowInfoSync({
+    excalidrawAPI,
+    document,
+    selectedRow,
+    debugMode,
+    enabled: true,
+  });
 
   // Cleanup on unmount and initialize element tracking
   useEffect(() => {
@@ -108,8 +117,8 @@ function MagicCanvas() {
     (elements, appState) => {
       if (!elements) return;
 
-      // Filter out row dividers
-      const contentElements = elements.filter((el) => !el.isRowDivider);
+      // Filter out row dividers and row info elements
+      const contentElements = elements.filter((el) => !el.isRowDivider && !el.isRowInfo);
 
       // Only update if elements actually changed
       if (elementsChanged(contentElements)) {
@@ -274,49 +283,6 @@ function MagicCanvas() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedRow, handleProcessRow, handleProcessAllRows, canUndo, canRedo, undo, redo, handleSave]);
 
-  /**
-   * Render row overlays (LaTeX, status icons, etc.)
-   * Uses useMemo to avoid re-renders when document changes
-   * Only depends on specific document properties that affect rendering
-   */
-  const rowOverlays = useMemo(() => {
-    if (!excalidrawAPI) return null;
-
-    const appState = excalidrawAPI.getAppState();
-    const viewport = {
-      x: appState.scrollX || 0,
-      y: appState.scrollY || 0,
-      width: appState.width || window.innerWidth,
-      height: appState.height || window.innerHeight,
-    };
-
-    // Get rows using the store directly to avoid full document re-renders
-    const allRows = store.getDocument().getAllRows();
-    const visibleRows = allRows.filter((row) => {
-      const rowTop = row.y;
-      const rowBottom = row.y + row.height;
-      return rowBottom >= viewport.y && rowTop <= viewport.y + viewport.height;
-    });
-
-    const zoom = appState.zoom?.value || 1;
-
-    return (
-      <div className="row-overlays">
-        {visibleRows.map((row) => (
-          <RowOverlayMemo
-            key={row.id}
-            row={row}
-            viewport={viewport}
-            zoom={zoom}
-            selected={selectedRow === row.id}
-            onClick={handleRowClick}
-            debugMode={debugMode}
-          />
-        ))}
-      </div>
-    );
-  }, [excalidrawAPI, store, selectedRow, handleRowClick, debugMode]);
-
   return (
     <div className="unified-canvas">
       {/* Canvas with Excalidraw and row dividers */}
@@ -325,9 +291,6 @@ function MagicCanvas() {
         onExcalidrawReady={setExcalidrawAPI}
         onSceneChange={handleSceneChange}
       />
-
-      {/* Row overlays */}
-      {rowOverlays}
 
       {/* Toolbar */}
       <CanvasToolbar
