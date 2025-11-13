@@ -23,3 +23,10 @@ dist-ssr
 *.sln
 *.sw?
 .vite/deps/*
+.bmad/*
+.claude/*
+.crush/*
+.gemini/*
+.opencode/*
+.qwen/*
+CLAUDE.md

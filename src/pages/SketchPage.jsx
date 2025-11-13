@@ -221,6 +221,11 @@ export default function SketchPage() {
           ...excalidrawAPI.getAppState(),
           exportBackground: true,
           viewBackgroundColor: "#ffffff",
+          // Set the view to focus on the OCR box area
+          width: OCR_BOX_SIZE,
+          height: OCR_BOX_SIZE,
+          offsetLeft: -OCR_BOX_X,  // Adjust the view so the OCR box starts at 0,0
+          offsetTop: -OCR_BOX_Y,
         },
         files: excalidrawAPI.getFiles(),
         getDimensions: (width, height) => ({
