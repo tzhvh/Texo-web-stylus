@@ -47,6 +47,7 @@ import {
   loadSessionState,
 } from "../utils/workspaceDB.js";
 import Logger from "../utils/logger.js";
+import { useDebug } from "../contexts/DebugContext";
 
 // ProseMirror Schema with math nodes
 const mathSchema = new Schema({
@@ -126,35 +127,8 @@ export default function ComposePage() {
   const [cacheStats, setCacheStats] = useState(null);
   const debounceTimerRef = useRef(null);
   const [showHelp, setShowHelp] = useState(false);
-  const [debugMode, setDebugMode] = useState(true); // Default to true
+  const { debugMode } = useDebug(); // Use global debug state
   const [forceAlgebrite, setForceAlgebrite] = useState(false); // Force Algebrite usage
-
-  // Load debug mode from session state on mount
-  useEffect(() => {
-    const loadDebugSetting = async () => {
-      const savedDebug = await loadSessionState('debugMode');
-      if (savedDebug !== null) {
-        setDebugMode(savedDebug);
-        Logger.setDebugMode(savedDebug);
-      } else {
-        // Default to true
-        Logger.setDebugMode(true);
-      }
-    };
-    loadDebugSetting();
-  }, []);
-
-  // Save debug mode to session state and sync with Logger when it changes
-  useEffect(() => {
-    saveSessionState('debugMode', debugMode);
-    Logger.setDebugMode(debugMode);
-
-    // Log the toggle action
-    Logger.info('ComposePage', `Debug mode ${debugMode ? 'ENABLED' : 'DISABLED'}`, {
-      debugMode,
-      timestamp: Date.now()
-    }, ['config', 'debug-toggle']);
-  }, [debugMode]);
 
   // Initialize ProseMirror editor
   useEffect(() => {
@@ -521,23 +495,6 @@ export default function ComposePage() {
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold text-gray-700">Math Editor</h2>
             <div className="flex gap-3 items-center">
-              {/* Prominent Debug Toggle */}
-              <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
-                debugMode
-                  ? 'bg-green-50 border-green-500 text-green-700'
-                  : 'bg-gray-50 border-gray-300 text-gray-600'
-              }`}>
-                <input
-                  type="checkbox"
-                  checked={debugMode}
-                  onChange={(e) => setDebugMode(e.target.checked)}
-                  className="w-4 h-4 rounded"
-                />
-                <span className="font-medium text-sm">
-                  {debugMode ? '🐛 Debug ON' : 'Debug OFF'}
-                </span>
-              </label>
-
               {/* Force Algebrite Toggle */}
               <label className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 cursor-pointer transition-all ${
                 forceAlgebrite

@@ -227,6 +227,8 @@ function isTestEnvironment() {
 
 if (!isTestEnvironment()) {
   Logger.init();
+  // Make logger globally accessible for debug mode toggling
+  window.__TEXO_LOGGER__ = Logger;
 }
 
 export default Logger;

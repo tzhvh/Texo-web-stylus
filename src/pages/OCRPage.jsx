@@ -122,6 +122,21 @@ export default function OCRPage() {
       return;
     }
 
+    console.log("OCRPage - File size:", file.size, "bytes");
+    console.log("OCRPage - File type:", file.type);
+
+    // Create and log a URL for the blob to see the actual image
+    const blobUrl = URL.createObjectURL(file);
+    console.log("OCRPage - Blob URL:", blobUrl);
+
+    // Create a temporary image to see what's being sent
+    const img = new Image();
+    img.onload = () => {
+      console.log("OCRPage - Image dimensions:", img.width, "x", img.height);
+      URL.revokeObjectURL(blobUrl); // Clean up
+    };
+    img.src = blobUrl;
+
     workerRef.current.postMessage({
       action: "predict",
       image: file,
@@ -165,7 +180,7 @@ export default function OCRPage() {
   };
 
   const loadExampleImage = () => {
-    fetch("/test_img/单行公式.png")
+    fetch("/test_img/test.png")
       .then((r) => {
         if (!r.ok) throw new Error("Example image not found");
         return r.blob();
