@@ -1,10 +1,15 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Link } from "react-router-dom";
+import { HelmetProvider } from 'react-helmet-async';
 import OCRPage from "./pages/OCRPage";
 import SketchPage from "./pages/SketchPage";
 import ComposePage from "./pages/ComposePage";
 import DatabasePage from "./pages/DatabasePage";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { DebugProvider, useDebug } from "./contexts/DebugContext";
+
+// Lazy-loaded pages
+const MagicCanvas = lazy(() => import("./pages/MagicCanvas"));
 
 function AppContent() {
   const { debugMode, toggleDebug } = useDebug();
@@ -19,27 +24,33 @@ function AppContent() {
           <nav className="flex items-center space-x-6">
             <Link
               to="/ocr"
-              className="text-gray-700 hover:text-blue-600 font-medium transition"
+              className={({ isActive }) => isActive ? "text-blue-600 font-medium transition" : "text-gray-700 hover:text-blue-600 font-medium transition"}
             >
               Recognize
             </Link>
             <Link
               to="/"
-              className="text-gray-700 hover:text-blue-600 font-medium transition"
+              className={({ isActive }) => isActive ? "text-blue-600 font-medium transition" : "text-gray-700 hover:text-blue-600 font-medium transition"}
             >
               Sketch
             </Link>
             <Link
               to="/compose"
-              className="text-gray-700 hover:text-blue-600 font-medium transition"
+              className={({ isActive }) => isActive ? "text-blue-600 font-medium transition" : "text-gray-700 hover:text-blue-600 font-medium transition"}
             >
               Compose
             </Link>
             <Link
               to="/database"
-              className="text-gray-700 hover:text-blue-600 font-medium transition"
+              className={({ isActive }) => isActive ? "text-blue-600 font-medium transition" : "text-gray-700 hover:text-blue-600 font-medium transition"}
             >
               Database
+            </Link>
+            <Link
+              to="/magic-canvas"
+              className={({ isActive }) => isActive ? "text-blue-600 font-medium transition" : "text-gray-700 hover:text-blue-600 font-medium transition"}
+            >
+              Magic Canvas
             </Link>
           </nav>
           <label className="flex items-center space-x-2 cursor-pointer">
@@ -65,6 +76,16 @@ function AppContent() {
           <Route path="/" element={<SketchPage />} />
           <Route path="/compose" element={<ComposePage />} />
           <Route path="/database" element={<DatabasePage />} />
+          <Route
+            path="/magic-canvas"
+            element={
+              <Suspense fallback={<div className="p-6 max-w-7xl mx-auto">Loading Magic Canvas...</div>}>
+                <ErrorBoundary>
+                  <MagicCanvas />
+                </ErrorBoundary>
+              </Suspense>
+            }
+          />
         </Routes>
       </main>
       <footer className="bg-white border-t p-4 text-center text-sm text-gray-500">
@@ -78,7 +99,9 @@ export default function App() {
   return (
     <BrowserRouter>
       <DebugProvider>
-        <AppContent />
+        <HelmetProvider>
+          <AppContent />
+        </HelmetProvider>
       </DebugProvider>
     </BrowserRouter>
   );
