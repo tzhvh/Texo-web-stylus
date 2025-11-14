@@ -9,7 +9,7 @@
  */
 
 const DB_NAME = 'texo-workspace-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const DEFAULT_WORKSPACE = 'default';
 
 // Store names
@@ -18,7 +18,8 @@ const STORES = {
   CAS_CACHE: 'cas-cache',
   SESSION_STATE: 'session-state',
   DIAGNOSTIC_LOGS: 'diagnostic-logs',
-  TRANSFORMERS_CACHE: 'transformers-cache'
+  TRANSFORMERS_CACHE: 'transformers-cache',
+  MAGIC_CANVAS_STATE: 'magic-canvas-state'
 };
 
 let db = null;
@@ -82,8 +83,14 @@ export async function initWorkspaceDB() {
         transformersStore.createIndex('timestamp', 'timestamp', { unique: false });
       }
 
-      // Future versions can add migration logic here
-      // if (oldVersion < 2) { ... }
+      // Version 2: Add Magic Canvas state store
+      if (oldVersion < 2) {
+        // Magic Canvas state (per workspace)
+        const magicCanvasStore = db.createObjectStore(STORES.MAGIC_CANVAS_STATE, { keyPath: ['workspaceId', 'key'] });
+        magicCanvasStore.createIndex('workspaceId', 'workspaceId', { unique: false });
+        magicCanvasStore.createIndex('timestamp', 'timestamp', { unique: false });
+        magicCanvasStore.createIndex('version', 'version', { unique: false });
+      }
     };
   });
 }
@@ -253,14 +260,15 @@ export async function deleteWorkspace(workspaceId) {
     STORES.CAS_CACHE,
     STORES.SESSION_STATE,
     STORES.DIAGNOSTIC_LOGS,
-    STORES.TRANSFORMERS_CACHE
+    STORES.TRANSFORMERS_CACHE,
+    STORES.MAGIC_CANVAS_STATE
   ], 'readwrite');
 
   // Delete workspace metadata
   tx.objectStore(STORES.WORKSPACES).delete(workspaceId);
 
   // Delete workspace data from all stores
-  const stores = [STORES.CAS_CACHE, STORES.SESSION_STATE, STORES.TRANSFORMERS_CACHE];
+  const stores = [STORES.CAS_CACHE, STORES.SESSION_STATE, STORES.TRANSFORMERS_CACHE, STORES.MAGIC_CANVAS_STATE];
   for (const storeName of stores) {
     const store = tx.objectStore(storeName);
     const index = store.index('workspaceId');
@@ -431,7 +439,8 @@ export async function getCacheStats() {
     casCache: { count: 0, oldestEntry: null, newestEntry: null },
     transformersCache: { count: 0 },
     sessionState: { count: 0 },
-    diagnosticLogs: { count: 0, byLevel: {} }
+    diagnosticLogs: { count: 0, byLevel: {} },
+    magicCanvasState: { count: 0, oldestEntry: null, newestEntry: null }
   };
 
   return new Promise((resolve, reject) => {
@@ -439,7 +448,8 @@ export async function getCacheStats() {
       STORES.CAS_CACHE,
       STORES.TRANSFORMERS_CACHE,
       STORES.SESSION_STATE,
-      STORES.DIAGNOSTIC_LOGS
+      STORES.DIAGNOSTIC_LOGS,
+      STORES.MAGIC_CANVAS_STATE
     ], 'readonly');
 
     // CAS Cache stats
@@ -495,6 +505,28 @@ export async function getCacheStats() {
       }
     };
 
+    // Magic Canvas state stats
+    const magicCanvasStore = tx.objectStore(STORES.MAGIC_CANVAS_STATE);
+    const magicCanvasIndex = magicCanvasStore.index('workspaceId');
+    const magicCanvasRequest = magicCanvasIndex.openCursor(IDBKeyRange.only(currentWorkspace));
+
+    magicCanvasRequest.onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        stats.magicCanvasState.count++;
+        const timestamp = cursor.value.timestamp;
+
+        if (!stats.magicCanvasState.oldestEntry || timestamp < stats.magicCanvasState.oldestEntry) {
+          stats.magicCanvasState.oldestEntry = timestamp;
+        }
+        if (!stats.magicCanvasState.newestEntry || timestamp > stats.magicCanvasState.newestEntry) {
+          stats.magicCanvasState.newestEntry = timestamp;
+        }
+
+        cursor.continue();
+      }
+    };
+
     tx.oncomplete = () => resolve(stats);
     tx.onerror = () => reject(tx.error);
   });
@@ -513,7 +545,8 @@ export async function exportWorkspace(workspaceId = currentWorkspace) {
     casCache: [],
     sessionState: [],
     diagnosticLogs: [],
-    transformersCache: []
+    transformersCache: [],
+    magicCanvasState: []
   };
 
   return new Promise((resolve, reject) => {
@@ -521,7 +554,8 @@ export async function exportWorkspace(workspaceId = currentWorkspace) {
       STORES.CAS_CACHE,
       STORES.SESSION_STATE,
       STORES.DIAGNOSTIC_LOGS,
-      STORES.TRANSFORMERS_CACHE
+      STORES.TRANSFORMERS_CACHE,
+      STORES.MAGIC_CANVAS_STATE
     ], 'readonly');
 
     // Export CAS cache
@@ -568,6 +602,17 @@ export async function exportWorkspace(workspaceId = currentWorkspace) {
       }
     };
 
+    // Export Magic Canvas state
+    const magicCanvasStore = tx.objectStore(STORES.MAGIC_CANVAS_STATE);
+    const magicCanvasIndex = magicCanvasStore.index('workspaceId');
+    magicCanvasIndex.openCursor(IDBKeyRange.only(workspaceId)).onsuccess = (event) => {
+      const cursor = event.target.result;
+      if (cursor) {
+        exportData.magicCanvasState.push(cursor.value);
+        cursor.continue();
+      }
+    };
+
     tx.oncomplete = () => {
       logDiagnostic('info', 'export', `Exported workspace: ${workspaceId}`);
       resolve(exportData);
@@ -603,7 +648,8 @@ export async function importWorkspace(importData, options = {}) {
       STORES.CAS_CACHE,
       STORES.SESSION_STATE,
       STORES.DIAGNOSTIC_LOGS,
-      STORES.TRANSFORMERS_CACHE
+      STORES.TRANSFORMERS_CACHE,
+      STORES.MAGIC_CANVAS_STATE
     ], 'readwrite');
 
     // Import workspace metadata
@@ -633,6 +679,12 @@ export async function importWorkspace(importData, options = {}) {
     const transformersStore = tx.objectStore(STORES.TRANSFORMERS_CACHE);
     (importData.transformersCache || []).forEach(entry => {
       transformersStore.put({ ...entry, workspaceId });
+    });
+
+    // Import Magic Canvas state
+    const magicCanvasStore = tx.objectStore(STORES.MAGIC_CANVAS_STATE);
+    (importData.magicCanvasState || []).forEach(entry => {
+      magicCanvasStore.put({ ...entry, workspaceId });
     });
 
     tx.oncomplete = () => {
@@ -679,6 +731,483 @@ export async function loadSessionState(key) {
 
     request.onsuccess = () => resolve(request.result?.value || null);
     request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Save Magic Canvas state with versioning and validation
+ */
+export async function saveMagicCanvasState(key, canvasState, appState, rowManagerState, version = 1) {
+  if (!db) await initWorkspaceDB();
+
+  try {
+    // Validate inputs before saving
+    const validation = validateMagicCanvasStateInputs(canvasState, appState, rowManagerState, version);
+    if (!validation.isValid) {
+      throw new Error(`Invalid Magic Canvas state: ${validation.errors.join(', ')}`);
+    }
+
+    // Optimize state for large canvases (>100 elements)
+    let optimizedState = { canvasState, appState, rowManagerState };
+    if (canvasState.length > 100) {
+      optimizedState = optimizeMagicCanvasState(canvasState, appState, rowManagerState);
+    }
+
+    const entry = {
+      workspaceId: currentWorkspace,
+      key,
+      canvasState: optimizedState.canvasState, // Optimized Excalidraw elements
+      appState: optimizedState.appState,   // Excalidraw app state (zoom, pan, etc.)
+      rowManagerState: optimizedState.rowManagerState, // Optimized RowManager state
+      version,
+      timestamp: Date.now(),
+      optimized: canvasState.length > 100 // Flag for debugging
+    };
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORES.MAGIC_CANVAS_STATE], 'readwrite');
+      const store = tx.objectStore(STORES.MAGIC_CANVAS_STATE);
+      const request = store.put(entry);
+
+      request.onsuccess = () => {
+        logDiagnostic('info', 'workspace', `Magic Canvas state saved: ${key}`, {
+          elementCount: optimizedState.canvasState?.length || 0,
+          originalElementCount: canvasState?.length || 0,
+          rowCount: optimizedState.rowManagerState?.rows?.length || 0,
+          elementMappings: Object.keys(optimizedState.rowManagerState?.elementToRow || {}).length,
+          version,
+          zoomLevel: optimizedState.appState?.zoom?.value,
+          optimized: entry.optimized,
+          optimizationTime: optimizedState.optimizationTime?.toFixed(2) + 'ms'
+        });
+        resolve(entry);
+      };
+      request.onerror = () => {
+        const error = request.error;
+        let errorMessage = error.message;
+        let errorSeverity = 'error';
+        
+        // Handle specific IndexedDB errors
+        if (error.name === 'QuotaExceededError') {
+          errorMessage = 'Storage quota exceeded - canvas state too large to save';
+          errorSeverity = 'critical';
+        } else if (error.name === 'InvalidStateError') {
+          errorMessage = 'Database invalid state - try refreshing the page';
+          errorSeverity = 'critical';
+        } else if (error.name === 'TransactionInactiveError') {
+          errorMessage = 'Database transaction inactive - try again';
+          errorSeverity = 'warn';
+        }
+        
+        logDiagnostic(errorSeverity, 'workspace', `Failed to save Magic Canvas state: ${key}`, {
+          error: errorMessage,
+          errorName: error.name,
+          elementCount: canvasState?.length || 0,
+          version,
+          quotaUsed: error.name === 'QuotaExceededError' ? 'exceeded' : 'unknown'
+        });
+        reject(new Error(errorMessage));
+      };
+    });
+  } catch (error) {
+    logDiagnostic('error', 'workspace', `Magic Canvas state save validation failed: ${key}`, {
+      error: error.message,
+      elementCount: canvasState?.length || 0,
+      version
+    });
+    throw error;
+  }
+}
+
+/**
+ * Validate Magic Canvas state inputs before saving
+ */
+function validateMagicCanvasStateInputs(canvasState, appState, rowManagerState, version) {
+  const errors = [];
+  
+  // Validate canvasState
+  if (!Array.isArray(canvasState)) {
+    errors.push('canvasState must be an array');
+  } else if (canvasState.length > 10000) {
+    errors.push('canvasState has too many elements (>10000)');
+  }
+  
+  // Validate appState
+  if (!appState || typeof appState !== 'object') {
+    errors.push('appState must be an object');
+  }
+  
+  // Validate rowManagerState
+  if (!rowManagerState || typeof rowManagerState !== 'object') {
+    errors.push('rowManagerState must be an object');
+  } else {
+    if (!Array.isArray(rowManagerState.rows)) {
+      errors.push('rowManagerState.rows must be an array');
+    }
+    
+    if (typeof rowManagerState.elementToRow !== 'object') {
+      errors.push('rowManagerState.elementToRow must be an object');
+    }
+  }
+  
+  // Validate version
+  if (typeof version !== 'number' || version < 1) {
+    errors.push('version must be a positive number');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Load Magic Canvas state with version checking and corruption detection
+ */
+export async function loadMagicCanvasState(key, expectedVersion = 1) {
+  if (!db) await initWorkspaceDB();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORES.MAGIC_CANVAS_STATE], 'readonly');
+    const store = tx.objectStore(STORES.MAGIC_CANVAS_STATE);
+    const request = store.get([currentWorkspace, key]);
+
+    request.onsuccess = () => {
+      const result = request.result;
+      
+      if (result) {
+        try {
+          // Validate state structure
+          const validation = validateMagicCanvasState(result);
+          
+          if (!validation.isValid) {
+            logDiagnostic('error', 'workspace', `Magic Canvas state corruption detected`, {
+              key,
+              errors: validation.errors,
+              timestamp: result.timestamp
+            });
+            resolve(null); // Return null to trigger fallback
+            return;
+          }
+
+          // Version compatibility check
+          if (result.version !== expectedVersion) {
+            logDiagnostic('warn', 'workspace', `Magic Canvas state version mismatch`, {
+              key,
+              expected: expectedVersion,
+              actual: result.version
+            });
+          }
+          
+          resolve({
+            canvasState: result.canvasState,
+            appState: result.appState,
+            rowManagerState: result.rowManagerState,
+            version: result.version,
+            timestamp: result.timestamp
+          });
+        } catch (validationError) {
+          logDiagnostic('error', 'workspace', `Magic Canvas state validation error`, {
+            key,
+            error: validationError.message,
+            timestamp: result.timestamp
+          });
+          resolve(null); // Return null to trigger fallback
+        }
+      } else {
+        resolve(null);
+      }
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Validate Magic Canvas state structure and detect corruption
+ */
+function validateMagicCanvasState(state) {
+  const errors = [];
+  
+  // Check required top-level properties
+  if (!state || typeof state !== 'object') {
+    errors.push('State is not an object');
+    return { isValid: false, errors };
+  }
+
+  // Validate canvasState (should be array of elements)
+  if (!Array.isArray(state.canvasState)) {
+    errors.push('canvasState is not an array');
+  } else {
+    // Check element structure
+    for (let i = 0; i < Math.min(state.canvasState.length, 10); i++) {
+      const element = state.canvasState[i];
+      if (!element || typeof element !== 'object') {
+        errors.push(`Element at index ${i} is not a valid object`);
+        continue;
+      }
+      
+      if (!element.id || typeof element.id !== 'string') {
+        errors.push(`Element at index ${i} missing valid id`);
+      }
+      
+      if (typeof element.x !== 'number' || typeof element.y !== 'number') {
+        errors.push(`Element at index ${i} missing valid coordinates`);
+      }
+    }
+  }
+
+  // Validate appState
+  if (!state.appState || typeof state.appState !== 'object') {
+    errors.push('appState is not a valid object');
+  } else {
+    // Check critical appState properties
+    if (state.appState.zoom && typeof state.appState.zoom !== 'object') {
+      errors.push('appState.zoom is not a valid object');
+    }
+    
+    if (typeof state.appState.scrollX !== 'number') {
+      errors.push('appState.scrollX is not a number');
+    }
+    
+    if (typeof state.appState.scrollY !== 'number') {
+      errors.push('appState.scrollY is not a number');
+    }
+  }
+
+  // Validate rowManagerState
+  if (!state.rowManagerState || typeof state.rowManagerState !== 'object') {
+    errors.push('rowManagerState is not a valid object');
+  } else {
+    if (!Array.isArray(state.rowManagerState.rows)) {
+      errors.push('rowManagerState.rows is not an array');
+    }
+    
+    if (typeof state.rowManagerState.elementToRow !== 'object') {
+      errors.push('rowManagerState.elementToRow is not an object');
+    }
+  }
+
+  // Validate version
+  if (typeof state.version !== 'number' || state.version < 1) {
+    errors.push('version is not a valid positive number');
+  }
+
+  // Validate timestamp
+  if (typeof state.timestamp !== 'number' || state.timestamp <= 0) {
+    errors.push('timestamp is not a valid positive number');
+  }
+
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+}
+
+/**
+ * Benchmark Magic Canvas state restoration performance
+ */
+export async function benchmarkMagicCanvasRestoration(elementCount = 500) {
+  if (!db) await initWorkspaceDB();
+
+  const startTime = performance.now();
+  
+  try {
+    // Create test data with specified element count
+    const testCanvasState = Array.from({ length: elementCount }, (_, i) => ({
+      id: `test-element-${i}`,
+      type: 'rectangle',
+      x: Math.random() * 1000,
+      y: Math.random() * 10000,
+      width: 100,
+      height: 50,
+      strokeColor: '#000000',
+      backgroundColor: 'transparent',
+      fillStyle: 'solid',
+      strokeWidth: 2,
+      roughness: 0,
+      opacity: 100,
+      isDeleted: false
+    }));
+
+    const testAppState = {
+      viewBackgroundColor: '#f5f5f5',
+      zoom: { value: 1 },
+      scrollX: 0,
+      scrollY: 0
+    };
+
+    const testRowManagerState = {
+      rowHeight: 384,
+      startY: 0,
+      rows: Array.from({ length: Math.ceil(elementCount / 10) }, (_, i) => ({
+        id: `row-${i}`,
+        yStart: i * 384,
+        yEnd: (i + 1) * 384,
+        elementIds: new Set(Array.from({ length: 10 }, (_, j) => `test-element-${i * 10 + j}`))
+      })),
+      elementToRow: Object.fromEntries(
+        Array.from({ length: elementCount }, (_, i) => [`test-element-${i}`, `row-${Math.floor(i / 10)}`])
+      )
+    };
+
+    // Save test state
+    await saveMagicCanvasState('benchmark', testCanvasState, testAppState, testRowManagerState, 1);
+    
+    const saveTime = performance.now() - startTime;
+    const loadStartTime = performance.now();
+    
+    // Load test state
+    const loadedState = await loadMagicCanvasState('benchmark', 1);
+    
+    const loadTime = performance.now() - loadStartTime;
+    const totalTime = performance.now() - startTime;
+    
+    // Clean up benchmark data
+    await clearMagicCanvasState('benchmark');
+    
+    const results = {
+      elementCount,
+      saveTime: saveTime.toFixed(2),
+      loadTime: loadTime.toFixed(2),
+      totalTime: totalTime.toFixed(2),
+      meetsTarget: loadTime < 1000, // AC6: <1s for <500 elements
+      throughput: (elementCount / (loadTime / 1000)).toFixed(0) // elements per second
+    };
+    
+    logDiagnostic('info', 'workspace', 'Magic Canvas performance benchmark completed', results);
+    
+    return results;
+  } catch (error) {
+    logDiagnostic('error', 'workspace', 'Magic Canvas performance benchmark failed', {
+      elementCount,
+      error: error.message
+    });
+    throw error;
+  }
+}
+
+/**
+ * Optimize Magic Canvas state for large canvases
+ */
+export function optimizeMagicCanvasState(canvasState, appState, rowManagerState) {
+  const startTime = performance.now();
+  
+  try {
+    // Create optimized copies
+    const optimizedCanvasState = canvasState.map(element => ({
+      // Only keep essential properties for persistence
+      id: element.id,
+      type: element.type,
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+      strokeColor: element.strokeColor,
+      backgroundColor: element.backgroundColor,
+      fillStyle: element.fillStyle,
+      strokeWidth: element.strokeWidth,
+      roughness: element.roughness,
+      opacity: element.opacity,
+      isDeleted: element.isDeleted,
+      // Trim text content if too long (potential performance issue)
+      text: element.text && element.text.length > 1000 ? element.text.substring(0, 1000) + '...' : element.text,
+      // Exclude non-essential properties like customData, seed, etc.
+    }));
+
+    // Optimize RowManager state
+    const optimizedRowManagerState = {
+      ...rowManagerState,
+      // Convert Sets to Arrays for better serialization performance
+      rows: rowManagerState.rows.map(row => ({
+        ...row,
+        elementIds: Array.from(row.elementIds)
+      })),
+      elementToRow: rowManagerState.elementToRow
+    };
+
+    const optimizationTime = performance.now() - startTime;
+    
+    logDiagnostic('debug', 'workspace', 'Magic Canvas state optimized', {
+      originalElementCount: canvasState.length,
+      optimizedElementCount: optimizedCanvasState.length,
+      optimizationTime: `${optimizationTime.toFixed(2)}ms`,
+      sizeReduction: `${((1 - JSON.stringify(optimizedCanvasState).length / JSON.stringify(canvasState).length) * 100).toFixed(1)}%`
+    });
+
+    return {
+      canvasState: optimizedCanvasState,
+      appState, // AppState is usually small, no optimization needed
+      rowManagerState: optimizedRowManagerState,
+      optimizationTime
+    };
+  } catch (error) {
+    logDiagnostic('error', 'workspace', 'Magic Canvas state optimization failed', {
+      elementCount: canvasState.length,
+      error: error.message
+    });
+    // Return original state if optimization fails
+    return { canvasState, appState, rowManagerState, optimizationTime: 0 };
+  }
+}
+
+/**
+ * Clear Magic Canvas state for current workspace
+ */
+export async function clearMagicCanvasState(key = null) {
+  if (!db) await initWorkspaceDB();
+
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction([STORES.MAGIC_CANVAS_STATE], 'readwrite');
+    const store = tx.objectStore(STORES.MAGIC_CANVAS_STATE);
+
+    if (key) {
+      // Clear specific key
+      const request = store.delete([currentWorkspace, key]);
+      request.onsuccess = () => {
+        logDiagnostic('info', 'workspace', `Magic Canvas state cleared: ${key}`);
+        resolve(1);
+      };
+    request.onerror = () => {
+      const error = request.error;
+      let errorMessage = error.message;
+      let errorSeverity = 'error';
+      
+      // Handle specific IndexedDB errors
+      if (error.name === 'InvalidStateError') {
+        errorMessage = 'Database invalid state - try refreshing the page';
+        errorSeverity = 'critical';
+      } else if (error.name === 'TransactionInactiveError') {
+        errorMessage = 'Database transaction inactive - try again';
+        errorSeverity = 'warn';
+      }
+      
+      logDiagnostic(errorSeverity, 'workspace', `Failed to load Magic Canvas state: ${key}`, {
+        error: errorMessage,
+        errorName: error.name
+      });
+      reject(new Error(errorMessage));
+    };
+    } else {
+      // Clear all Magic Canvas state for workspace
+      const index = store.index('workspaceId');
+      const request = index.openCursor(IDBKeyRange.only(currentWorkspace));
+
+      let deleteCount = 0;
+      request.onsuccess = (event) => {
+        const cursor = event.target.result;
+        if (cursor) {
+          cursor.delete();
+          deleteCount++;
+          cursor.continue();
+        }
+      };
+
+      tx.oncomplete = () => {
+        logDiagnostic('info', 'workspace', `Cleared ${deleteCount} Magic Canvas state entries`);
+        resolve(deleteCount);
+      };
+      tx.onerror = () => reject(tx.error);
+    }
   });
 }
 

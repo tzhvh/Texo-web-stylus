@@ -1,0 +1,72 @@
+<story-context id="{bmad_folder}/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>6</storyId>
+    <title>Display Row Status Indicators at Row Edge</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-14</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/1-6-display-row-status-indicators-at-row-edge.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>see visual indicators showing each row's status</iWant>
+    <soThat>I know when transcription/validation is happening or complete</soThat>
+    <tasks>Create status icon component library, Implement canvas overlay rendering system, Integrate with RowManager state, Add tap detection for inspection panel, Write unit tests for icon component, Write integration tests for overlay system</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Given rows have various statuses (pending, processing, validated, etc.), When I view the canvas, Then I see a status icon at the right edge of each row, vertically centered (AC: 17)
+2. And icons are positioned at: (canvasWidth - 60px, rowCenterY) (AC: 17)
+3. And icons are 48x48px (exceeds 44x44px WCAG touch target minimum) (AC: 17)
+4. And icons use clear, intuitive symbols: Gray ∅ (empty/pending), Orange ⟳ (spinning for processing), Green ✓ (validated correct), Red ✗ (validation failed), Yellow ⚠️ (parse error) (AC: 17)
+5. And icons fade in smoothly when status changes (200ms transition) (AC: 17)
+6. And icons don't interfere with drawing (rendered on separate layer) (AC: 17)
+7. And icons remain visible during zoom (scale with canvas) (AC: 17)
+8. And icons are tappable/clickable (44x44px tap target for inspection panel) (AC: 18)</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc path="docs/PRD.md" title="Product Requirements Document" section="Visual Feedback Capabilities (FR47-FR57)" snippet="Visual feedback through colored symbols (✓ green for correct, ✗ red for errors, ⟳ orange for processing, ⚠️ yellow for parse errors, ∅ gray for pending) appears directly on canvas at row edges without interrupting flow state." />
+      <doc path="docs/sprint-artifacts/tech-spec-epic-1.md" title="Epic 1 Technical Specification" section="Acceptance Criteria 17-18" snippet="Status icons are positioned at row edge (canvasWidth - 60px, rowCenterY) with minimum 48x48px size. Green ✓ indicates row ready for processing, red ✗ for errors, orange ⟳ for processing. Icons must be tappable with 44x44px targets for inspection panel integration." />
+      <doc path="docs/architecture.md" title="Magic Canvas Architecture" section="Visual Feedback Components" snippet="ValidationFeedback.jsx component renders status icons (✓/✗/⚠️) on canvas. Icons positioned at far right edge of row, vertically centered. Use React portal with createPortal() to render icons outside Excalidraw's DOM tree, positioned absolutely over canvas." />
+      <doc path="docs/architecture.md" title="Magic Canvas Architecture" section="Pattern 3: State Synchronization" snippet="RowManager as single truth source, unidirectional flow (Excalidraw → RowManager → IndexedDB). Row status values: ocrStatus ('pending'|'processing'|'completed'|'error') and validationStatus ('pending'|'processing'|'validated'|'invalid'|'error')." />
+    </docs>
+    <code>
+      <artifact path="src/components/RowHeader.jsx" kind="component" symbol="RowHeader" lines="1-177" reason="Existing component that displays status icons at row edges with proper positioning (canvasWidth - 60px) and status mapping logic. Already implements 48x48px icons with hover effects and debug information overlay." />
+      <artifact path="src/utils/rowManager.js" kind="utility" symbol="RowManager" lines="45-389" reason="Core class that maintains row state including ocrStatus and validationStatus enums. Provides updateRow() method for status changes and getAllRows() for rendering row headers." />
+      <artifact path="src/hooks/useRowSystem.js" kind="hook" symbol="useRowSystem" lines="47-550" reason="React hook that synchronizes Excalidraw canvas with RowManager state. Provides handleCanvasChange method for detecting element modifications and triggering row status updates." />
+      <artifact path="src/pages/MagicCanvas.jsx" kind="page" symbol="MagicCanvas" lines="1-50" reason="Main page component that hosts Excalidraw canvas and renders RowHeader components. Contains createGuideLine() function for row positioning and canvas configuration constants." />
+    </code>
+    <dependencies>
+      <dependency ecosystem="React" packages="react@18.3.1, react-dom@18.3.1" reason="Component framework for RowHeader and MagicCanvas rendering" />
+      <dependency ecosystem="Excalidraw" packages="@excalidraw/excalidraw@0.18.0" reason="Canvas API for element positioning and overlay rendering" />
+      <dependency ecosystem="Styling" packages="tailwindcss@3.4.17" reason="CSS utility classes for icon positioning, animations, and responsive design" />
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint type="architecture">Use React portal with createPortal() to render icons outside Excalidraw's DOM tree, positioned absolutely over canvas</constraint>
+    <constraint type="layering">Icons render in separate z-index layer (z-index: 1000) to prevent interference with drawing elements</constraint>
+    <constraint type="performance">Icon updates must use requestAnimationFrame batching to maintain 60fps during pan/zoom operations</constraint>
+    <constraint type="status-values">Use RowManager's row.ocrStatus and row.validationStatus enums to determine icon display</constraint>
+    <constraint type="positioning">Icons positioned at (canvasWidth - 60px, rowCenterY) with 48x48px actual size (exceeds 44x44px WCAG minimum)</constraint>
+    <constraint type="animation">Icons fade in smoothly with 200ms transition when status changes</constraint>
+    <constraint type="interaction">Icons implement 44x44px tap target for inspection panel integration (Story 4.1)</constraint>
+  </constraints>
+  <interfaces>
+    <interface name="RowManager Status API" kind="class interface" signature="row.ocrStatus: 'pending'|'processing'|'completed'|'error', row.validationStatus: 'pending'|'processing'|'validated'|'invalid'|'error'" path="src/utils/rowManager.js" />
+    <interface name="RowHeader Component Props" kind="React component" signature="RowHeader({row, y, canvasWidth, debugMode})" path="src/components/RowHeader.jsx" />
+    <interface name="useRowSystem Hook" kind="React hook" signature="useRowSystem({excalidrawAPI, rowManager, debounceMs, debugMode})" path="src/hooks/useRowSystem.js" />
+  </interfaces>
+  <tests>
+    <standards>Unit tests use Vitest with jsdom environment for React component testing. Icon component tests verify rendering for all status states, fade-in animation timing (200ms), and spinner animation performance. Integration tests validate canvas overlay positioning accuracy during pan/zoom operations and ensure 60fps maintenance with multiple icons.</standards>
+    <locations>Unit tests in src/utils/__tests__/rowManager.test.js for status mapping logic. Component tests in src/components/__tests__/RowHeader.test.js for icon rendering. Integration tests manual browser testing for canvas overlay positioning and zoom scaling behavior.</locations>
+    <ideas>
+      <test idea="AC1-7: Icon positioning accuracy" acceptance-criteria="1,2,3,4,5,6,7" description="Test icon positioning at (canvasWidth - 60px, rowCenterY) with various canvas widths and zoom levels. Verify 48x48px size and vertical centering." />
+      <test idea="AC8: Tap target responsiveness" acceptance-criteria="8" description="Test 44x44px tap target detection on touch devices. Verify tap doesn't interfere with drawing and triggers inspection panel handler." />
+      <test idea="Performance: 60fps maintenance" acceptance-criteria="5,6" description="Stress test with 50+ rows showing different status icons. Measure frame rate during pan/zoom operations with requestAnimationFrame batching." />
+      <test idea="Animation: 200ms fade-in timing" acceptance-criteria="5" description="Verify fade-in transition duration exactly 200ms using performance measurement. Test smoothness across different browsers." />
+    </ideas>
+  </tests>
+</story-context>

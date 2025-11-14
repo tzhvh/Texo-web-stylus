@@ -14,7 +14,7 @@ import "@excalidraw/excalidraw/index.css";
 import { useDebug } from "../contexts/DebugContext";
 import useRowSystem from "../hooks/useRowSystem.js";
 import RowManager from "../utils/rowManager.js";
-import { saveSessionState, loadSessionState } from "../utils/workspaceDB.js";
+import { saveMagicCanvasState, loadMagicCanvasState } from "../utils/workspaceDB.js";
 import { MemoizedRowHeader } from "../components/RowHeader.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 
@@ -100,6 +100,7 @@ function MagicCanvasComponent() {
     scrollY: 0,
   });
   const [elementCount, setElementCount] = useState(0);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   // Track viewport for RowHeader rendering
   const [viewport, setViewport] = useState({
@@ -238,48 +239,72 @@ function MagicCanvasComponent() {
     try {
       const elements = excalidrawAPI.getSceneElements();
       const appState = excalidrawAPI.getAppState();
-      const canvasState = {
-        elements: elements,
-        appState: appState,
-        timestamp: Date.now()
-      };
+      
+      // Get RowManager state for unified persistence
+      const rowManagerState = rowManager.serialize();
 
-      await saveSessionState('magic-canvas-state', canvasState);
+      await saveMagicCanvasState(
+        'current', // Key for current canvas state
+        elements,  // Canvas elements
+        appState, // Excalidraw app state (zoom, pan, etc.)
+        rowManagerState, // RowManager state
+        1 // Version
+      );
 
       if (debugMode) {
-        console.log('MagicCanvas: Canvas state saved to IndexedDB', {
+        console.log('MagicCanvas: Unified canvas state saved to IndexedDB', {
           elementCount: elements.length,
+          rowCount: rowManagerState.rows.length,
+          elementMappings: Object.keys(rowManagerState.elementToRow).length,
           zoom: appState.zoom?.value,
           scrollX: appState.scrollX,
           scrollY: appState.scrollY
         });
       }
     } catch (error) {
-      console.error('MagicCanvas: Failed to save canvas state', error);
+      console.error('MagicCanvas: Failed to save unified canvas state', error);
     }
-  }, [excalidrawAPI, debugMode]);
+  }, [excalidrawAPI, rowManager, debugMode]);
 
   // Load canvas state from IndexedDB
   const loadCanvasState = useCallback(async () => {
     if (!excalidrawAPI) return false;
 
+    setIsRestoring(true);
+    const startTime = performance.now();
+
     try {
-      const savedState = await loadSessionState('magic-canvas-state');
+      const savedState = await loadMagicCanvasState('current', 1);
 
       if (savedState) {
+        // Restore Excalidraw canvas
         excalidrawAPI.updateScene({
-          elements: savedState.elements,
+          elements: savedState.canvasState,
           appState: savedState.appState
         });
 
+        // Restore RowManager state
+        rowManager.deserialize(savedState.rowManagerState);
+
+        const loadTime = performance.now() - startTime;
+
         if (debugMode) {
-          console.log('MagicCanvas: Canvas state loaded from IndexedDB', {
-            elementCount: savedState.elements.length,
+          console.log('MagicCanvas: Unified canvas state loaded from IndexedDB', {
+            elementCount: savedState.canvasState.length,
+            rowCount: savedState.rowManagerState.rows.length,
+            elementMappings: Object.keys(savedState.rowManagerState.elementToRow).length,
             zoom: savedState.appState.zoom?.value,
             scrollX: savedState.appState.scrollX,
             scrollY: savedState.appState.scrollY,
-            savedTimestamp: new Date(savedState.timestamp).toISOString()
+            version: savedState.version,
+            savedTimestamp: new Date(savedState.timestamp).toISOString(),
+            loadTime: `${loadTime.toFixed(2)}ms`
           });
+        }
+
+        // Performance warning if >1s (AC6 requirement)
+        if (loadTime > 1000) {
+          console.warn(`MagicCanvas: State restoration took ${loadTime.toFixed(2)}ms (>1000ms target for <500 elements)`);
         }
 
         return true;
@@ -287,10 +312,12 @@ function MagicCanvasComponent() {
 
       return false;
     } catch (error) {
-      console.error('MagicCanvas: Failed to load canvas state', error);
+      console.error('MagicCanvas: Failed to load unified canvas state', error);
       return false;
+    } finally {
+      setIsRestoring(false);
     }
-  }, [excalidrawAPI, debugMode]);
+  }, [excalidrawAPI, rowManager, debugMode]);
 
   // Initialize canvas with guide lines and load saved state (Story 1.3, Task 3.1, 3.2)
   useEffect(() => {
@@ -298,7 +325,7 @@ function MagicCanvasComponent() {
       if (!excalidrawAPI) return;
 
       try {
-        // Try to load saved canvas state first
+        // Try to load unified canvas state first
         const stateLoaded = await loadCanvasState();
 
         if (!stateLoaded) {
@@ -311,27 +338,39 @@ function MagicCanvasComponent() {
             );
           }
         } else {
-          // State loaded, update guide lines for current viewport
+          // Unified state loaded, update guide lines for current viewport
           updateViewportGuideLines();
 
           if (debugMode) {
             console.log(
-              "MagicCanvas: Initialized from saved state with guide lines",
+              "MagicCanvas: Initialized from unified saved state with guide lines",
             );
           }
         }
       } catch (error) {
-        console.error("Failed to initialize Excalidraw scene:", error);
+        console.error("Failed to initialize Excalidraw scene with unified state:", error);
+
+        // Log error to diagnostic system
+        if (window.logDiagnostic) {
+          window.logDiagnostic('error', 'canvas', 'Magic Canvas initialization failed', {
+            error: error.message,
+            stack: error.stack
+          });
+        }
 
         // Fallback to basic initialization
         try {
           updateViewportGuideLines();
+          
+          if (debugMode) {
+            console.log("MagicCanvas: Fallback initialization successful - starting with empty canvas");
+          }
         } catch (fallbackError) {
           console.error("Fallback initialization also failed:", fallbackError);
-        }
-
-        if (debugMode) {
-          alert("Canvas initialization failed. Please refresh the page.");
+          
+          if (debugMode) {
+            alert("Canvas initialization failed. Please refresh the page.");
+          }
         }
       }
     };
@@ -409,14 +448,14 @@ function MagicCanvasComponent() {
     // Delegate element assignment to useRowSystem hook (Story 1.5)
     handleRowSystemChange(elements, appState, files);
 
-    // Schedule canvas state auto-save (debounced)
+    // Schedule unified canvas state auto-save (debounced)
     if (canvasSaveTimeoutRef.current) {
       clearTimeout(canvasSaveTimeoutRef.current);
     }
 
     canvasSaveTimeoutRef.current = setTimeout(() => {
       saveCanvasState();
-    }, 2000); // 2 second debounce for canvas state
+    }, 2000); // 2 second debounce for unified canvas state
   }, [handleRowSystemChange, saveCanvasState, debugMode]); // Include saveCanvasState dependency
 
   // Clear canvas (keep guide lines)
@@ -526,7 +565,7 @@ function MagicCanvasComponent() {
       <MemoizedRowHeader
         key={row.id}
         row={row}
-        y={row.yStart + (row.yEnd - row.yStart) / 2} // Center of row
+        y={row.yStart} // Pass row start, RowHeader will calculate center
         canvasWidth={CANVAS_CONFIG.MAX_WIDTH}
         debugMode={debugMode}
       />
@@ -564,6 +603,17 @@ function MagicCanvasComponent() {
 
         {/* Canvas Container */}
         <div className="flex-1 relative overflow-hidden">
+          {/* Loading overlay for slow restores */}
+          {isRestoring && (
+            <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center z-50">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                <p className="text-gray-700 font-medium">Restoring Canvas...</p>
+                <p className="text-gray-500 text-sm">Please wait while we load your work</p>
+              </div>
+            </div>
+          )}
+          
           <Excalidraw
             excalidrawAPI={setExcalidrawAPI}
             onChange={handleCanvasChange}
