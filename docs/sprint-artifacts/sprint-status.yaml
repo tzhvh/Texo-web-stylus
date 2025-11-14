@@ -49,7 +49,7 @@ development_status:
      completed: 2025-11-14
 
    epic-2: ready-for-dev
-  2-1-implement-tile-extraction-with-overlap-from-row-elements: backlog
+  2-1-implement-tile-extraction-with-overlap-from-row-elements: done
   2-2-create-ocr-worker-pool-for-parallel-processing: backlog
   2-3-display-per-tile-ocr-progress-indicators: backlog
   2-4-implement-tile-level-ocr-caching: backlog

@@ -1,0 +1,155 @@
+<story-context id="{bmad_folder}/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>2</epicId>
+    <storyId>1</storyId>
+    <title>Implement Tile Extraction with Overlap from Row Elements</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-14</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>/home/mser/Documents/cla/w/Texo-web-stylus/docs/sprint-artifacts/2-1-implement-tile-extraction-with-overlap-from-row-elements.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>system component</asA>
+    <iWant>to extract overlapping 384x384px tiles from row elements</iWant>
+    <soThat>wide expressions can be processed by the OCR model without losing context at boundaries</soThat>
+    <tasks>- [ ] **Task 1: Create TileExtractor utility module** (AC: #1, #2, #3, #4)
+  - [ ] 1.1 Create `src/utils/ocrTiling.js` module
+  - [ ] 1.2 Implement `extractTiles(row, elements)` pure function
+  - [ ] 1.3 Implement `calculateTilePositions(width, overlap)` helper function
+  - [ ] 1.4 Add bounding box calculation from Excalidraw elements array
+
+- [ ] **Task 2: Implement tile image rendering** (AC: #5, #6)
+  - [ ] 2.1 Integrate existing imageProcessor.js for grayscale conversion
+  - [ ] 2.2 Render each tile as 384x384 ImageData from Excalidraw canvas context
+  - [ ] 2.3 Build complete Tile object with all metadata fields
+
+- [ ] **Task 3: Implement tile hashing for cache keys** (AC: #8)
+  - [ ] 3.1 Research inline xxhash implementation (no new dependencies)
+  - [ ] 3.2 Implement fast hash function for ImageData
+  - [ ] 3.3 Add hash field to Tile object
+
+- [ ] **Task 4: Handle edge cases** (AC: #9)
+  - [ ] 4.1 Validate bounding box (throw error if width <= 0 or height <= 0)
+  - [ ] 4.2 Handle single-tile rows (<384px): center-crop logic
+  - [ ] 4.3 Return empty array for empty rows (no elements)
+
+- [ ] **Task 5: Unit tests for TileExtractor** (AC: All)
+  - [ ] 5.1 Test single-tile rows (<384px)
+  - [ ] 5.2 Test multi-tile rows: 400px (2 tiles), 800px (3 tiles), 1200px (4 tiles)
+  - [ ] 5.3 Test overlap calculation: verify 64px overlap, 320px stride
+  - [ ] 5.4 Test tile count formula: ceil((width - 64) / 320)
+  - [ ] 5.5 Test hash uniqueness: same pixels → same hash, different pixels → different hash
+  - [ ] 5.6 Test edge cases: empty row, invalid bbox, zero-width elements
+  - [ ] 5.7 Performance test: extractTiles() <200ms for 5-tile row
+
+- [ ] **Task 6: Integration with RowManager from Epic 1** (AC: #10)
+  - [ ] 6.1 Import RowManager from `src/utils/rowManager.js`
+  - [ ] 6.2 Test integration: RowManager.getRow() → TileExtractor.extractTiles()
+  - [ ] 6.3 Verify row metadata consistency (row IDs, elementIds, bounding box)</tasks>
+  </story>
+
+  <acceptanceCriteria>1. **Tile Dimensions**: Each tile is exactly 384x384px (FormulaNet model requirement)
+   - **Source**: [Tech Spec Epic 2: Story 2.1, FR25]
+
+2. **Overlap Strategy**: Tiles overlap by 64px (16.7%) horizontally
+   - Formula: stride = 384 - 64 = 320px
+   - **Source**: [Tech Spec Epic 2: Tile Extraction Algorithm, ADR-002]
+
+3. **Tile Count Calculation**: Number of tiles = ceil((width - 64) / 320) for width > 384px
+   - Single tile for rows ≤384px wide
+   - **Source**: [Tech Spec Epic 2: TileExtractor Responsibility]
+
+4. **Bounding Box Extraction**: Tiles extracted from row's bounding box (min/max X/Y of all elements)
+   - Use RowManager.getRow(rowId) to retrieve row object with elementIds
+   - Calculate bbox from Excalidraw elements array
+   - **Source**: [Tech Spec Epic 2: Integration Contract 1 - RowManager → TileExtractor]
+
+5. **Image Rendering**: Each tile rendered as 384x384 grayscale ImageData
+   - Reuse existing imageProcessor.js patterns (grayscale conversion, normalization)
+   - **Source**: [Architecture: Reused Components, Epic 2]
+
+6. **Tile Metadata**: Each Tile object includes complete metadata
+   ```javascript
+   {
+     rowId: string,           // "row-5"
+     tileIndex: number,       // 0-based sequential
+     offsetX: number,         // Canvas X coordinate
+     offsetY: number,         // Canvas Y coordinate (row.yStart)
+     width: 384,
+     height: 384,
+     overlap: number,         // 64px for tiles > index 0, 0 for first tile
+     imageData: ImageData,    // 384x384 grayscale
+     hash: string             // xxhash for cache lookup
+   }
+   ```
+   - **Source**: [Tech Spec Epic 2: Data Models - Tile Object]
+
+7. **Performance**: Extraction completes within 200ms for typical row (<5 tiles)
+   - **Source**: [Tech Spec Epic 2: TileExtractor Performance Budget]
+
+8. **Hash Calculation**: Tile hash computed using xxhash (or inline fast hash) for cache key uniqueness
+   - **Source**: [Tech Spec Epic 2: Contract 6 - TileExtractor → OCRCache, ADR-006 no new npm dependencies]
+
+9. **Edge Cases Handled**:
+   - Empty rows (no elements): Return empty array []
+   - Rows <384px wide: Return single tile, center-cropped to 384x384
+   - Invalid bounding box (zero width/height): Throw error per FM-004
+   - **Source**: [Tech Spec Epic 2: FM-004 Invalid Bounding Box]
+
+10. **Integration with RowManager**: Respects row metadata from Epic 1
+    - Row IDs deterministic: `row-${index}` format
+    - Row object includes: yStart, yEnd, elementIds
+    - **Source**: [Architecture: ADR-001, Epic 1 Foundation]</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc path="docs/architecture.md" title="Magic Canvas - Decision Architecture" section="Epic 2: OCR Tiling & Transcription" snippet="Tile Extraction: Extract overlapping 384x384 tiles from row bounding box. Overlap: 64px (16.7%), Stride: 320px. numTiles = Math.ceil((width - 64) / 320). tiles = [0...numTiles].map(i => ({ offsetX: minX + i * 320, offsetY: rowYStart, width: 384, height: 384, overlap: i > 0 ? 64 : 0 }))" />
+      <doc path="docs/comprehensive-architecture.md" title="Comprehensive Architecture Documentation" section="Web Worker Architecture" snippet="All heavy computations run off the main thread to maintain 60fps UI: OCR Worker (FormulaNet model inference), Image Processor (Image preprocessing pipeline), Logging Worker (Async log aggregation)" />
+      <doc path="docs/bmm-architecture.md" title="Texo-web-stylus Architecture" section="Worker Architecture" snippet="OCR Worker (`src/workers/ocrWorker.js`): Loads FormulaNet model from HuggingFace (~150 MB, one-time download), Runs inference on 384×384 grayscale images, Reports progress during model download" />
+      <doc path="docs/PRD.md" title="Texo-web-stylus - Product Requirements Document" section="OCR & Transcription Capabilities" snippet="FR20: System extracts tiles from rows for OCR processing. FR21: Tile extraction creates overlapping 384x384 tiles with 10-20% overlap. FR22: Multiple tiles from single row are processed in parallel via worker pool. FR23: System displays per-tile progress indicators during OCR processing. FR24: System caches OCR results per tile using content hash to avoid re-processing unchanged tiles." />
+    </docs>
+    <code>
+      <artifact path="src/workers/ocrWorker.js" kind="worker" symbol="predict" lines="68-93" reason="Existing OCR worker that processes 384x384 images and returns LaTeX. Can be reused for tile processing with minor modifications to accept ImageData directly." />
+      <artifact path="src/workers/imageProcessor.js" kind="utility" symbol="preprocessImg" lines="14-69" reason="Existing image preprocessing utility that handles grayscale conversion, resizing, and normalization. Already outputs 384x384 format required by OCR model." />
+      <artifact path="src/utils/rowManager.js" kind="class" symbol="RowManager" lines="45-440" reason="Existing row management system that provides row metadata and element assignments. Contains getRow() method needed for tile extraction integration." />
+    </code>
+    <dependencies>
+      <ecosystem name="node">
+        <package name="@huggingface/transformers" version="^3.2.3" usage="OCR model inference for FormulaNet" />
+        <package name="image-js" version="^0.35.6" usage="Image preprocessing and canvas manipulation for tile extraction" />
+      </ecosystem>
+      <ecosystem name="browser">
+        <api name="Canvas API" usage="Render tiles from Excalidraw canvas context and extract ImageData" />
+        <api name="ImageData" usage="384x384 grayscale pixel data structure for OCR model input" />
+      </ecosystem>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint type="performance" description="Tile extraction must complete within 200ms for typical rows (<5 tiles) to maintain responsive UI" source="Tech Spec Epic 2: Performance Budget" />
+    <constraint type="memory" description="No new npm dependencies - implement inline hash function to avoid increasing bundle size" source="ADR-006 no new npm dependencies" />
+    <constraint type="integration" description="Must integrate with existing RowManager class without modifications" source="Epic 1 Foundation" />
+    <constraint type="format" description="All tiles must be exactly 384x384px grayscale to match FormulaNet model requirements" source="FR25: FormulaNet model requirements" />
+    <constraint type="overlap" description="Tiles must overlap by exactly 64px (16.7%) with 320px stride between tiles" source="ADR-002: Fixed 64px Tile Overlap" />
+  </constraints>
+
+  <interfaces>
+    <interface name="TileExtractor.extractTiles" kind="function" signature="extractTiles(row: Row, elements: ExcalidrawElement[]): Tile[]" path="src/utils/ocrTiling.js" />
+    <interface name="RowManager.getRow" kind="method" signature="getRow(rowId: string): Row | undefined" path="src/utils/rowManager.js" />
+    <interface name="imageProcessor.preprocessImg" kind="function" signature="preprocessImg(imageFile: File|Blob, targetSize?: number): Promise&lt;{array: Float32Array, width: number, height: number}&gt;" path="src/workers/imageProcessor.js" />
+  </interfaces>
+
+  <tests>
+    <standards>Unit tests using Vitest framework with jsdom environment. Test file naming: *.test.js in __tests__ directory. Performance tests use performance.now() for timing validation. Edge case testing includes empty inputs, invalid dimensions, and boundary conditions.</standards>
+    <locations>src/utils/__tests__/ocrTiling.test.js - Unit tests for tile extraction logic. src/utils/__tests__/rowManager.test.js - Integration tests with existing RowManager. Manual browser testing for canvas rendering and ImageData extraction.</locations>
+    <ideas>
+      <test idea="Test single tile extraction for narrow rows (<384px)" acceptanceCriteria="#1,#5,#9" />
+      <test idea="Test multi-tile extraction with correct overlap calculation" acceptanceCriteria="#2,#3" />
+      <test idea="Test bounding box calculation from Excalidraw elements array" acceptanceCriteria="#4" />
+      <test idea="Test hash function uniqueness and collision resistance" acceptanceCriteria="#8" />
+      <test idea="Test performance with 5-tile row extraction under 200ms" acceptanceCriteria="#7" />
+      <test idea="Test integration with RowManager.getRow() method" acceptanceCriteria="#10" />
+    </ideas>
+  </tests>
+</story-context>
