@@ -178,7 +178,7 @@ export default function SketchPage() {
         el.y > boxBottom ||
         elBottom < OCR_BOX_Y
       );
-      
+
       if (isInBox) {
         console.log("Element included in OCR:", {
           id: el.id,
@@ -187,10 +187,10 @@ export default function SketchPage() {
           y: el.y,
           width: el.width,
           height: el.height,
-          isInBox: true
+          isInBox: true,
         });
       }
-      
+
       return isInBox;
     });
 
@@ -209,9 +209,9 @@ export default function SketchPage() {
         maxX: OCR_BOX_X + OCR_BOX_SIZE,
         maxY: OCR_BOX_Y + OCR_BOX_SIZE,
         width: OCR_BOX_SIZE,
-        height: OCR_BOX_SIZE
+        height: OCR_BOX_SIZE,
       };
-      
+
       console.log("Export bounding box coordinates:", boundingBox);
 
       // Export only the bounding box area with white background
@@ -224,7 +224,7 @@ export default function SketchPage() {
           // Set the view to focus on the OCR box area
           width: OCR_BOX_SIZE,
           height: OCR_BOX_SIZE,
-          offsetLeft: -OCR_BOX_X,  // Adjust the view so the OCR box starts at 0,0
+          offsetLeft: -OCR_BOX_X, // Adjust the view so the OCR box starts at 0,0
           offsetTop: -OCR_BOX_Y,
         },
         files: excalidrawAPI.getFiles(),
@@ -240,19 +240,22 @@ export default function SketchPage() {
       // Debug: Log blob information
       console.log("Blob size:", blob.size, "bytes");
       console.log("Blob type:", blob.type);
-      
+
       // Create and log a URL for the blob to see the actual image
       const blobUrl = URL.createObjectURL(blob);
       console.log("Blob URL:", blobUrl);
-      
+
       // Create a temporary image to see what's being sent
       const img = new Image();
       img.onload = () => {
         console.log("Image dimensions:", img.width, "x", img.height);
         // Optionally create a preview of the OCR image
-        const debugDiv = document.getElementById('ocr-debug-preview');
+        const debugDiv = document.getElementById("ocr-debug-preview");
         if (debugDiv) {
-          debugDiv.innerHTML = '<h3>OCR Input Image:</h3><img src="' + blobUrl + '" style="max-width: 384px; max-height: 384px; border: 2px solid red;"/>';
+          debugDiv.innerHTML =
+            '<h3>OCR Input Image:</h3><img src="' +
+            blobUrl +
+            '" style="max-width: 384px; max-height: 384px; border: 2px solid red;"/>';
         }
         URL.revokeObjectURL(blobUrl); // Clean up
       };
@@ -563,19 +566,22 @@ export default function SketchPage() {
           </div>
         </div>
       </div>
-      
+
       {/* Debug preview for OCR input - controlled by global debug toggle */}
-      <div id="ocr-debug-preview" style={{
-        position: 'fixed',
-        top: '10px',
-        right: '10px',
-        zIndex: 10000,
-        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-        border: '1px solid #ccc',
-        padding: '5px',
-        fontSize: '12px',
-        display: debugMode ? 'block' : 'none'
-      }}></div>
+      <div
+        id="ocr-debug-preview"
+        style={{
+          position: "fixed",
+          bottom: "10px",
+          right: "10px",
+          zIndex: 10000,
+          backgroundColor: "rgba(255, 255, 255, 0.9)",
+          border: "1px solid #ccc",
+          padding: "5px",
+          fontSize: "12px",
+          display: debugMode ? "block" : "none",
+        }}
+      ></div>
     </div>
   );
 }

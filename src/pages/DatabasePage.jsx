@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from "react";
 import {
   initWorkspaceDB,
   getCurrentWorkspace,
@@ -14,26 +14,26 @@ import {
   importWorkspace,
   getDiagnosticLogs,
   getStorageEstimate,
-  logDiagnostic
-} from '../utils/workspaceDB.js';
+  logDiagnostic,
+} from "../utils/workspaceDB.js";
 
 export default function DatabasePage() {
   const [workspaces, setWorkspaces] = useState([]);
-  const [currentWorkspaceId, setCurrentWorkspaceId] = useState('default');
+  const [currentWorkspaceId, setCurrentWorkspaceId] = useState("default");
   const [stats, setStats] = useState(null);
   const [logs, setLogs] = useState([]);
   const [storageInfo, setStorageInfo] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview'); // overview, logs, import-export
+  const [activeTab, setActiveTab] = useState("logs"); // overview, logs, import-export
 
   // Form states
-  const [newWorkspaceName, setNewWorkspaceName] = useState('');
-  const [newWorkspaceDesc, setNewWorkspaceDesc] = useState('');
+  const [newWorkspaceName, setNewWorkspaceName] = useState("");
+  const [newWorkspaceDesc, setNewWorkspaceDesc] = useState("");
 
   // Log filter states
-  const [logLevelFilter, setLogLevelFilter] = useState('');
-  const [logSourceFilter, setLogSourceFilter] = useState('');
-  const [logTagFilter, setLogTagFilter] = useState('');
+  const [logLevelFilter, setLogLevelFilter] = useState("");
+  const [logSourceFilter, setLogSourceFilter] = useState("");
+  const [logTagFilter, setLogTagFilter] = useState("");
   const [logLimit, setLogLimit] = useState(100);
 
   // Log selection states
@@ -59,7 +59,7 @@ export default function DatabasePage() {
       await loadStorageInfo();
       setLoading(false);
     } catch (error) {
-      console.error('Failed to initialize database:', error);
+      console.error("Failed to initialize database:", error);
       setLoading(false);
     }
   };
@@ -69,7 +69,7 @@ export default function DatabasePage() {
       const workspaceList = await listWorkspaces();
       setWorkspaces(workspaceList);
     } catch (error) {
-      console.error('Failed to load workspaces:', error);
+      console.error("Failed to load workspaces:", error);
     }
   };
 
@@ -78,7 +78,7 @@ export default function DatabasePage() {
       const cacheStats = await getCacheStats();
       setStats(cacheStats);
     } catch (error) {
-      console.error('Failed to load stats:', error);
+      console.error("Failed to load stats:", error);
     }
   };
 
@@ -88,50 +88,56 @@ export default function DatabasePage() {
         limit: logLimit,
         level: logLevelFilter || null,
         source: logSourceFilter || null,
-        tags: logTagFilter ? [logTagFilter] : null
+        tags: logTagFilter ? [logTagFilter] : null,
       };
       const diagnosticLogs = await getDiagnosticLogs(filters);
       setLogs(diagnosticLogs);
     } catch (error) {
-      console.error('Failed to load logs:', error);
+      console.error("Failed to load logs:", error);
     }
   };
 
   // Reload logs when filters change
   useEffect(() => {
-    if (currentWorkspaceId && activeTab === 'logs') {
+    if (currentWorkspaceId && activeTab === "logs") {
       loadLogs();
     }
   }, [logLevelFilter, logSourceFilter, logTagFilter, logLimit, activeTab]);
 
   const handleExportLogsToClipboard = async () => {
     try {
-      const logsToExport = selectedLogIds.size > 0
-        ? logs.filter(log => selectedLogIds.has(log.id))
-        : logs;
+      const logsToExport =
+        selectedLogIds.size > 0
+          ? logs.filter((log) => selectedLogIds.has(log.id))
+          : logs;
 
-      const logText = logsToExport.map(log => {
-        const timestamp = new Date(log.timestamp).toISOString();
-        const perfMs = log.perfTimestamp || 0;
-        const meta = Object.keys(log.metadata || {}).length > 0
-          ? '\n  ' + JSON.stringify(log.metadata, null, 2).split('\n').join('\n  ')
-          : '';
-        const tags = log.tags && log.tags.length > 0 ? ` [${log.tags.join(', ')}]` : '';
+      const logText = logsToExport
+        .map((log) => {
+          const timestamp = new Date(log.timestamp).toISOString();
+          const perfMs = log.perfTimestamp || 0;
+          const meta =
+            Object.keys(log.metadata || {}).length > 0
+              ? "\n  " +
+                JSON.stringify(log.metadata, null, 2).split("\n").join("\n  ")
+              : "";
+          const tags =
+            log.tags && log.tags.length > 0 ? ` [${log.tags.join(", ")}]` : "";
 
-        return `[${timestamp}] [${perfMs}ms] [${log.level.toUpperCase()}] [${log.source}]${tags}\n${log.message}${meta}`;
-      }).join('\n\n' + '='.repeat(80) + '\n\n');
+          return `[${timestamp}] [${perfMs}ms] [${log.level.toUpperCase()}] [${log.source}]${tags}\n${log.message}${meta}`;
+        })
+        .join("\n\n" + "=".repeat(80) + "\n\n");
 
       await navigator.clipboard.writeText(logText);
       alert(`✓ Copied ${logsToExport.length} log entries to clipboard`);
     } catch (error) {
-      console.error('Failed to copy to clipboard:', error);
+      console.error("Failed to copy to clipboard:", error);
       alert(`Failed to copy to clipboard: ${error.message}`);
     }
   };
 
   // Log selection handlers
   const handleToggleLogSelection = (logId) => {
-    setSelectedLogIds(prev => {
+    setSelectedLogIds((prev) => {
       const newSet = new Set(prev);
       if (newSet.has(logId)) {
         newSet.delete(logId);
@@ -143,7 +149,7 @@ export default function DatabasePage() {
   };
 
   const handleSelectAllLogs = () => {
-    setSelectedLogIds(new Set(logs.map(log => log.id)));
+    setSelectedLogIds(new Set(logs.map((log) => log.id)));
   };
 
   const handleSelectNoneLogs = () => {
@@ -151,9 +157,9 @@ export default function DatabasePage() {
   };
 
   const handleInvertSelection = () => {
-    setSelectedLogIds(prev => {
+    setSelectedLogIds((prev) => {
       const newSet = new Set();
-      logs.forEach(log => {
+      logs.forEach((log) => {
         if (!prev.has(log.id)) {
           newSet.add(log.id);
         }
@@ -164,15 +170,23 @@ export default function DatabasePage() {
 
   const handleApplyFiltersToSelection = () => {
     // Select only logs that match current filters
-    const matchingLogs = logs.filter(log => {
+    const matchingLogs = logs.filter((log) => {
       const levelMatch = !logLevelFilter || log.level === logLevelFilter;
-      const sourceMatch = !logSourceFilter || (log.source && log.source.toLowerCase().includes(logSourceFilter.toLowerCase()));
-      const tagMatch = !logTagFilter || (log.tags && log.tags.some(tag => tag.toLowerCase().includes(logTagFilter.toLowerCase())));
+      const sourceMatch =
+        !logSourceFilter ||
+        (log.source &&
+          log.source.toLowerCase().includes(logSourceFilter.toLowerCase()));
+      const tagMatch =
+        !logTagFilter ||
+        (log.tags &&
+          log.tags.some((tag) =>
+            tag.toLowerCase().includes(logTagFilter.toLowerCase()),
+          ));
 
       return levelMatch && sourceMatch && tagMatch;
     });
 
-    setSelectedLogIds(new Set(matchingLogs.map(log => log.id)));
+    setSelectedLogIds(new Set(matchingLogs.map((log) => log.id)));
     alert(`✓ Selected ${matchingLogs.length} logs matching current filters`);
   };
 
@@ -181,7 +195,7 @@ export default function DatabasePage() {
       const estimate = await getStorageEstimate();
       setStorageInfo(estimate);
     } catch (error) {
-      console.error('Failed to load storage info:', error);
+      console.error("Failed to load storage info:", error);
     }
   };
 
@@ -192,7 +206,7 @@ export default function DatabasePage() {
       await loadStats();
       await loadLogs();
     } catch (error) {
-      console.error('Failed to switch workspace:', error);
+      console.error("Failed to switch workspace:", error);
       alert(`Failed to switch workspace: ${error.message}`);
     }
   };
@@ -200,7 +214,7 @@ export default function DatabasePage() {
   const handleCreateWorkspace = async (e) => {
     e.preventDefault();
     if (!newWorkspaceName.trim()) {
-      alert('Workspace name is required');
+      alert("Workspace name is required");
       return;
     }
 
@@ -208,26 +222,30 @@ export default function DatabasePage() {
       const workspace = await createWorkspace({
         id: `workspace-${Date.now()}`,
         name: newWorkspaceName,
-        description: newWorkspaceDesc
+        description: newWorkspaceDesc,
       });
 
       await loadWorkspaces();
-      setNewWorkspaceName('');
-      setNewWorkspaceDesc('');
+      setNewWorkspaceName("");
+      setNewWorkspaceDesc("");
       alert(`Workspace "${workspace.name}" created successfully!`);
     } catch (error) {
-      console.error('Failed to create workspace:', error);
+      console.error("Failed to create workspace:", error);
       alert(`Failed to create workspace: ${error.message}`);
     }
   };
 
   const handleDeleteWorkspace = async (workspaceId) => {
-    if (workspaceId === 'default') {
-      alert('Cannot delete default workspace');
+    if (workspaceId === "default") {
+      alert("Cannot delete default workspace");
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete this workspace? This action cannot be undone.`)) {
+    if (
+      !confirm(
+        `Are you sure you want to delete this workspace? This action cannot be undone.`,
+      )
+    ) {
       return;
     }
 
@@ -235,17 +253,21 @@ export default function DatabasePage() {
       await deleteWorkspace(workspaceId);
       await loadWorkspaces();
       if (currentWorkspaceId === workspaceId) {
-        setCurrentWorkspaceId('default');
+        setCurrentWorkspaceId("default");
       }
-      alert('Workspace deleted successfully');
+      alert("Workspace deleted successfully");
     } catch (error) {
-      console.error('Failed to delete workspace:', error);
+      console.error("Failed to delete workspace:", error);
       alert(`Failed to delete workspace: ${error.message}`);
     }
   };
 
   const handleClearCASCache = async () => {
-    if (!confirm('Are you sure you want to clear the CAS cache? This will remove all cached canonical forms.')) {
+    if (
+      !confirm(
+        "Are you sure you want to clear the CAS cache? This will remove all cached canonical forms.",
+      )
+    ) {
       return;
     }
 
@@ -254,13 +276,17 @@ export default function DatabasePage() {
       await loadStats();
       alert(`Cleared ${count} CAS cache entries`);
     } catch (error) {
-      console.error('Failed to clear CAS cache:', error);
+      console.error("Failed to clear CAS cache:", error);
       alert(`Failed to clear cache: ${error.message}`);
     }
   };
 
   const handleClearTransformersCache = async () => {
-    if (!confirm('Are you sure you want to clear the transformers cache metadata?')) {
+    if (
+      !confirm(
+        "Are you sure you want to clear the transformers cache metadata?",
+      )
+    ) {
       return;
     }
 
@@ -269,13 +295,13 @@ export default function DatabasePage() {
       await loadStats();
       alert(`Cleared ${count} transformer cache entries`);
     } catch (error) {
-      console.error('Failed to clear transformers cache:', error);
+      console.error("Failed to clear transformers cache:", error);
       alert(`Failed to clear cache: ${error.message}`);
     }
   };
 
   const handleClearLogs = async () => {
-    if (!confirm('Are you sure you want to clear diagnostic logs?')) {
+    if (!confirm("Are you sure you want to clear diagnostic logs?")) {
       return;
     }
 
@@ -284,7 +310,7 @@ export default function DatabasePage() {
       await loadLogs();
       alert(`Cleared ${count} log entries`);
     } catch (error) {
-      console.error('Failed to clear logs:', error);
+      console.error("Failed to clear logs:", error);
       alert(`Failed to clear logs: ${error.message}`);
     }
   };
@@ -292,9 +318,11 @@ export default function DatabasePage() {
   const handleExportWorkspace = async () => {
     try {
       const data = await exportWorkspace(currentWorkspaceId);
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      const a = document.createElement("a");
       a.href = url;
       a.download = `texo-workspace-${currentWorkspaceId}-${Date.now()}.json`;
       document.body.appendChild(a);
@@ -302,10 +330,14 @@ export default function DatabasePage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      await logDiagnostic('info', 'export', `Exported workspace: ${currentWorkspaceId}`);
-      alert('Workspace exported successfully!');
+      await logDiagnostic(
+        "info",
+        "export",
+        `Exported workspace: ${currentWorkspaceId}`,
+      );
+      alert("Workspace exported successfully!");
     } catch (error) {
-      console.error('Failed to export workspace:', error);
+      console.error("Failed to export workspace:", error);
       alert(`Failed to export workspace: ${error.message}`);
     }
   };
@@ -318,46 +350,53 @@ export default function DatabasePage() {
       const text = await file.text();
       const data = JSON.parse(text);
 
-      const newWorkspaceId = prompt('Enter a new workspace ID (leave blank to use original):');
-      const overwrite = confirm('Overwrite existing workspace if it exists?');
+      const newWorkspaceId = prompt(
+        "Enter a new workspace ID (leave blank to use original):",
+      );
+      const overwrite = confirm("Overwrite existing workspace if it exists?");
 
       await importWorkspace(data, {
         newWorkspaceId: newWorkspaceId || null,
-        overwrite
+        overwrite,
       });
 
       await loadWorkspaces();
       await loadStats();
-      alert('Workspace imported successfully!');
+      alert("Workspace imported successfully!");
     } catch (error) {
-      console.error('Failed to import workspace:', error);
+      console.error("Failed to import workspace:", error);
       alert(`Failed to import workspace: ${error.message}`);
     }
 
     // Reset file input
-    e.target.value = '';
+    e.target.value = "";
   };
 
   const formatBytes = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
+    if (bytes === 0) return "0 Bytes";
     const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
   };
 
   const formatTimestamp = (timestamp) => {
-    if (!timestamp) return 'N/A';
+    if (!timestamp) return "N/A";
     return new Date(timestamp).toLocaleString();
   };
 
   const getLevelColor = (level) => {
     switch (level) {
-      case 'error': return 'text-red-600';
-      case 'warn': return 'text-yellow-600';
-      case 'info': return 'text-blue-600';
-      case 'debug': return 'text-gray-600';
-      default: return 'text-gray-600';
+      case "error":
+        return "text-red-600";
+      case "warn":
+        return "text-yellow-600";
+      case "info":
+        return "text-blue-600";
+      case "debug":
+        return "text-gray-600";
+      default:
+        return "text-gray-600";
     }
   };
 
@@ -374,8 +413,12 @@ export default function DatabasePage() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">IndexedDB Management</h1>
-          <p className="text-gray-600">Manage workspaces, cache, and diagnostic data</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            IndexedDB Management
+          </h1>
+          <p className="text-gray-600">
+            Manage workspaces, cache, and diagnostic data
+          </p>
         </div>
 
         {/* Workspace Selector */}
@@ -389,13 +432,13 @@ export default function DatabasePage() {
             >
               {workspaces.map((ws) => (
                 <option key={ws.id} value={ws.id}>
-                  {ws.name} {ws.id === 'default' ? '(Default)' : ''}
+                  {ws.name} {ws.id === "default" ? "(Default)" : ""}
                 </option>
               ))}
             </select>
             <button
               onClick={() => handleDeleteWorkspace(currentWorkspaceId)}
-              disabled={currentWorkspaceId === 'default'}
+              disabled={currentWorkspaceId === "default"}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
             >
               Delete
@@ -405,7 +448,10 @@ export default function DatabasePage() {
           {/* Create New Workspace */}
           <div className="mt-6 pt-6 border-t border-gray-200">
             <h3 className="text-lg font-semibold mb-3">Create New Workspace</h3>
-            <form onSubmit={handleCreateWorkspace} className="flex flex-col gap-3">
+            <form
+              onSubmit={handleCreateWorkspace}
+              className="flex flex-col gap-3"
+            >
               <input
                 type="text"
                 placeholder="Workspace name"
@@ -434,17 +480,20 @@ export default function DatabasePage() {
         <div className="mb-6">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex space-x-8">
-              {['overview', 'logs', 'import-export'].map((tab) => (
+              {["logs", "overview", "import-export"].map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === tab
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                   }`}
                 >
-                  {tab.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                  {tab
+                    .split("-")
+                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+                    .join(" ")}
                 </button>
               ))}
             </nav>
@@ -452,7 +501,7 @@ export default function DatabasePage() {
         </div>
 
         {/* Overview Tab */}
-        {activeTab === 'overview' && (
+        {activeTab === "overview" && (
           <div className="space-y-6">
             {/* Cache Statistics */}
             <div className="bg-white rounded-lg shadow-md p-6">
@@ -460,34 +509,58 @@ export default function DatabasePage() {
               {stats ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   <div className="p-4 bg-blue-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">CAS Cache Entries</div>
-                    <div className="text-2xl font-bold text-blue-600">{stats.casCache.count}</div>
+                    <div className="text-sm text-gray-600 mb-1">
+                      CAS Cache Entries
+                    </div>
+                    <div className="text-2xl font-bold text-blue-600">
+                      {stats.casCache.count}
+                    </div>
                     {stats.casCache.count > 0 && (
                       <div className="text-xs text-gray-500 mt-2">
-                        <div>Oldest: {formatTimestamp(stats.casCache.oldestEntry)}</div>
-                        <div>Newest: {formatTimestamp(stats.casCache.newestEntry)}</div>
+                        <div>
+                          Oldest: {formatTimestamp(stats.casCache.oldestEntry)}
+                        </div>
+                        <div>
+                          Newest: {formatTimestamp(stats.casCache.newestEntry)}
+                        </div>
                       </div>
                     )}
                   </div>
 
                   <div className="p-4 bg-green-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Transformers Cache</div>
-                    <div className="text-2xl font-bold text-green-600">{stats.transformersCache.count}</div>
+                    <div className="text-sm text-gray-600 mb-1">
+                      Transformers Cache
+                    </div>
+                    <div className="text-2xl font-bold text-green-600">
+                      {stats.transformersCache.count}
+                    </div>
                   </div>
 
                   <div className="p-4 bg-purple-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Session State Items</div>
-                    <div className="text-2xl font-bold text-purple-600">{stats.sessionState.count}</div>
+                    <div className="text-sm text-gray-600 mb-1">
+                      Session State Items
+                    </div>
+                    <div className="text-2xl font-bold text-purple-600">
+                      {stats.sessionState.count}
+                    </div>
                   </div>
 
                   <div className="p-4 bg-orange-50 rounded-lg">
-                    <div className="text-sm text-gray-600 mb-1">Diagnostic Logs</div>
-                    <div className="text-2xl font-bold text-orange-600">{stats.diagnosticLogs.count}</div>
+                    <div className="text-sm text-gray-600 mb-1">
+                      Diagnostic Logs
+                    </div>
+                    <div className="text-2xl font-bold text-orange-600">
+                      {stats.diagnosticLogs.count}
+                    </div>
                     {Object.keys(stats.diagnosticLogs.byLevel).length > 0 && (
                       <div className="text-xs text-gray-500 mt-2">
-                        {Object.entries(stats.diagnosticLogs.byLevel).map(([level, count]) => (
-                          <div key={level}>{level}: {count}</div>
-                        ))}
+                        {Object.entries(stats.diagnosticLogs.byLevel).map(
+                          ([level, count]) => (
+                            <div key={level}>
+                              {level}: {count}
+                            </div>
+                          ),
+                        )}
                       </div>
                     )}
                   </div>
@@ -531,26 +604,38 @@ export default function DatabasePage() {
             {/* Storage Information */}
             {storageInfo && (
               <div className="bg-white rounded-lg shadow-md p-6">
-                <h2 className="text-xl font-semibold mb-4">Storage Information</h2>
+                <h2 className="text-xl font-semibold mb-4">
+                  Storage Information
+                </h2>
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-gray-600">Used:</span>
-                    <span className="font-semibold">{formatBytes(storageInfo.usage || 0)}</span>
+                    <span className="font-semibold">
+                      {formatBytes(storageInfo.usage || 0)}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Quota:</span>
-                    <span className="font-semibold">{formatBytes(storageInfo.quota || 0)}</span>
+                    <span className="font-semibold">
+                      {formatBytes(storageInfo.quota || 0)}
+                    </span>
                   </div>
                   {storageInfo.quota && storageInfo.usage && (
                     <div className="mt-4">
                       <div className="w-full bg-gray-200 rounded-full h-4">
                         <div
                           className="bg-blue-600 h-4 rounded-full"
-                          style={{ width: `${(storageInfo.usage / storageInfo.quota) * 100}%` }}
+                          style={{
+                            width: `${(storageInfo.usage / storageInfo.quota) * 100}%`,
+                          }}
                         />
                       </div>
                       <div className="text-sm text-gray-600 mt-1 text-center">
-                        {((storageInfo.usage / storageInfo.quota) * 100).toFixed(2)}% used
+                        {(
+                          (storageInfo.usage / storageInfo.quota) *
+                          100
+                        ).toFixed(2)}
+                        % used
                       </div>
                     </div>
                   )}
@@ -561,7 +646,7 @@ export default function DatabasePage() {
         )}
 
         {/* Diagnostic Logs Tab */}
-        {activeTab === 'logs' && (
+        {activeTab === "logs" && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-md p-6">
               <div className="flex justify-between items-center mb-4">
@@ -572,7 +657,10 @@ export default function DatabasePage() {
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                     disabled={logs.length === 0}
                   >
-                    📋 Copy {selectedLogIds.size > 0 ? `Selected (${selectedLogIds.size})` : 'All'}
+                    📋 Copy{" "}
+                    {selectedLogIds.size > 0
+                      ? `Selected (${selectedLogIds.size})`
+                      : "All"}
                   </button>
                   <button
                     onClick={loadLogs}
@@ -686,8 +774,9 @@ export default function DatabasePage() {
 
               {/* Log Count */}
               <div className="mb-3 text-sm text-gray-600">
-                Showing {logs.length} {logs.length === 1 ? 'entry' : 'entries'}
-                {(logLevelFilter || logSourceFilter || logTagFilter) && ' (filtered)'}
+                Showing {logs.length} {logs.length === 1 ? "entry" : "entries"}
+                {(logLevelFilter || logSourceFilter || logTagFilter) &&
+                  " (filtered)"}
               </div>
 
               {/* Logs List */}
@@ -701,15 +790,15 @@ export default function DatabasePage() {
                     <div
                       key={log.id}
                       className={`border-l-4 pl-3 py-2 ${
-                        log.level === 'error'
-                          ? 'border-red-500 bg-red-50'
-                          : log.level === 'warn'
-                          ? 'border-yellow-500 bg-yellow-50'
-                          : log.level === 'info'
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-300 bg-gray-50'
+                        log.level === "error"
+                          ? "border-red-500 bg-red-50"
+                          : log.level === "warn"
+                            ? "border-yellow-500 bg-yellow-50"
+                            : log.level === "info"
+                              ? "border-blue-500 bg-blue-50"
+                              : "border-gray-300 bg-gray-50"
                       } ${
-                        selectedLogIds.has(log.id) ? 'ring-2 ring-blue-400' : ''
+                        selectedLogIds.has(log.id) ? "ring-2 ring-blue-400" : ""
                       }`}
                     >
                       <div className="flex items-start gap-2">
@@ -724,10 +813,14 @@ export default function DatabasePage() {
                         {/* Log content */}
                         <div className="flex-1">
                           <div className="flex items-start gap-2 flex-wrap">
-                            <span className={`font-semibold text-xs ${getLevelColor(log.level)}`}>
+                            <span
+                              className={`font-semibold text-xs ${getLevelColor(log.level)}`}
+                            >
                               [{log.level.toUpperCase()}]
                             </span>
-                            <span className="text-xs text-gray-500">[{log.source || log.category}]</span>
+                            <span className="text-xs text-gray-500">
+                              [{log.source || log.category}]
+                            </span>
                             {log.perfTimestamp !== undefined && (
                               <span className="text-xs text-purple-600 font-mono">
                                 [{log.perfTimestamp}ms]
@@ -735,10 +828,12 @@ export default function DatabasePage() {
                             )}
                             {log.tags && log.tags.length > 0 && (
                               <span className="text-xs text-blue-600">
-                                {log.tags.map(tag => `#${tag}`).join(' ')}
+                                {log.tags.map((tag) => `#${tag}`).join(" ")}
                               </span>
                             )}
-                            <span className="text-sm flex-1">{log.message}</span>
+                            <span className="text-sm flex-1">
+                              {log.message}
+                            </span>
                             <span className="text-xs text-gray-400 whitespace-nowrap">
                               {formatTimestamp(log.timestamp)}
                             </span>
@@ -746,7 +841,8 @@ export default function DatabasePage() {
                           {Object.keys(log.metadata || {}).length > 0 && (
                             <details className="mt-2">
                               <summary className="text-xs text-gray-600 cursor-pointer hover:text-gray-800">
-                                Metadata ({Object.keys(log.metadata).length} fields)
+                                Metadata ({Object.keys(log.metadata).length}{" "}
+                                fields)
                               </summary>
                               <pre className="text-xs text-gray-600 mt-1 ml-4 overflow-x-auto bg-white p-2 rounded border border-gray-200">
                                 {JSON.stringify(log.metadata, null, 2)}
@@ -773,29 +869,59 @@ export default function DatabasePage() {
 
             {/* Log Helper Info */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-900 mb-2">Log Filtering & Selection Tips</h3>
+              <h3 className="font-semibold text-blue-900 mb-2">
+                Log Filtering & Selection Tips
+              </h3>
               <ul className="list-disc list-inside text-sm text-blue-800 space-y-1">
-                <li><strong>Level:</strong> Filter by severity (debug, info, warn, error)</li>
-                <li><strong>Source:</strong> Filter by component (e.g., EquivalenceChecker, Algebrite)</li>
-                <li><strong>Tag:</strong> Filter by category tags (e.g., equivalence, parse, algebrite)</li>
-                <li><strong>Apply Filters to Selection:</strong> Select only logs matching current filter criteria</li>
-                <li><strong>Checkboxes:</strong> Select individual logs or use bulk controls (All/None/Invert)</li>
-                <li><strong>Selected logs:</strong> Have a blue ring highlight and count shown in selection bar</li>
-                <li><strong>Copy to Clipboard:</strong> Exports selected logs if any, otherwise all visible logs</li>
-                <li><strong>Performance timestamps:</strong> Shown in purple as [Xms] from page load</li>
-                <li><strong>Metadata:</strong> Click to expand detailed information</li>
+                <li>
+                  <strong>Level:</strong> Filter by severity (debug, info, warn,
+                  error)
+                </li>
+                <li>
+                  <strong>Source:</strong> Filter by component (e.g.,
+                  EquivalenceChecker, Algebrite)
+                </li>
+                <li>
+                  <strong>Tag:</strong> Filter by category tags (e.g.,
+                  equivalence, parse, algebrite)
+                </li>
+                <li>
+                  <strong>Apply Filters to Selection:</strong> Select only logs
+                  matching current filter criteria
+                </li>
+                <li>
+                  <strong>Checkboxes:</strong> Select individual logs or use
+                  bulk controls (All/None/Invert)
+                </li>
+                <li>
+                  <strong>Selected logs:</strong> Have a blue ring highlight and
+                  count shown in selection bar
+                </li>
+                <li>
+                  <strong>Copy to Clipboard:</strong> Exports selected logs if
+                  any, otherwise all visible logs
+                </li>
+                <li>
+                  <strong>Performance timestamps:</strong> Shown in purple as
+                  [Xms] from page load
+                </li>
+                <li>
+                  <strong>Metadata:</strong> Click to expand detailed
+                  information
+                </li>
               </ul>
             </div>
           </div>
         )}
 
         {/* Import/Export Tab */}
-        {activeTab === 'import-export' && (
+        {activeTab === "import-export" && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-xl font-semibold mb-4">Export Workspace</h2>
               <p className="text-gray-600 mb-4">
-                Export the current workspace including all cache data, session state, and diagnostic logs.
+                Export the current workspace including all cache data, session
+                state, and diagnostic logs.
               </p>
               <button
                 onClick={handleExportWorkspace}
@@ -808,7 +934,9 @@ export default function DatabasePage() {
             <div className="bg-white rounded-lg shadow-md p-6">
               <h2 className="text-xl font-semibold mb-4">Import Workspace</h2>
               <p className="text-gray-600 mb-4">
-                Import a previously exported workspace. You'll be prompted to choose a new workspace ID and whether to overwrite existing data.
+                Import a previously exported workspace. You'll be prompted to
+                choose a new workspace ID and whether to overwrite existing
+                data.
               </p>
               <input
                 type="file"
@@ -824,11 +952,20 @@ export default function DatabasePage() {
             </div>
 
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6">
-              <h3 className="font-semibold text-yellow-900 mb-2">Important Notes</h3>
+              <h3 className="font-semibold text-yellow-900 mb-2">
+                Important Notes
+              </h3>
               <ul className="list-disc list-inside text-sm text-yellow-800 space-y-1">
-                <li>Exported files contain all workspace data including cache and logs</li>
-                <li>Import can create a new workspace or overwrite an existing one</li>
-                <li>The default workspace cannot be deleted but can be overwritten</li>
+                <li>
+                  Exported files contain all workspace data including cache and
+                  logs
+                </li>
+                <li>
+                  Import can create a new workspace or overwrite an existing one
+                </li>
+                <li>
+                  The default workspace cannot be deleted but can be overwritten
+                </li>
                 <li>Workspace IDs must be unique</li>
               </ul>
             </div>
