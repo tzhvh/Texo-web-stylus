@@ -145,6 +145,7 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
     scrollX: 0,
     scrollY: 0,
   });
+
   // Element count tracked in state for efficient UI updates
   // Alternative: derive from excalidrawAPI.getSceneElements() on-demand, but that's
   // more expensive and requires additional re-render triggers
@@ -192,6 +193,12 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
   const renderCountRef = useRef(0);
   const canvasSaveTimeoutRef = useRef(null);
 
+  // Track last viewport position to prevent unnecessary guide line updates
+  const lastViewportRef = useRef({ scrollY: 0, zoomLevel: 1 });
+
+  // Track current canvas state for change detection
+  const canvasStateRef = useRef(canvasState);
+
   // Track render count in useEffect, not during render
   useEffect(() => {
     if (debugMode) {
@@ -205,6 +212,11 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
       }
     }
   }, [debugMode]);
+
+  // Keep canvasStateRef in sync with canvasState
+  useEffect(() => {
+    canvasStateRef.current = canvasState;
+  }, [canvasState]);
 
   // Memoize initialData to prevent re-creation on every render
   const initialData = React.useMemo(
@@ -440,14 +452,26 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
   useEffect(() => {
     if (!excalidrawAPI) return;
 
-    // Update guide lines when scroll position or zoom changes
-    // Zoom-invariant spacing: guide lines maintain 384px spacing in canvas coordinates
-    debouncedUpdateGuideLines();
+    // Only update if viewport has changed significantly (>100px or >10% zoom)
+    const scrollYDiff = Math.abs(canvasState.scrollY - lastViewportRef.current.scrollY);
+    const zoomDiff = Math.abs(canvasState.zoomLevel - lastViewportRef.current.zoomLevel);
 
-    if (debugMode) {
-      console.log(
-        `Viewport changed: zoom=${Math.round(canvasState.zoomLevel * 100)}%, scrollY=${Math.round(canvasState.scrollY)}`,
-      );
+    const shouldUpdate = scrollYDiff > 100 || zoomDiff > 0.1;
+
+    if (shouldUpdate) {
+      // Update guide lines when scroll position or zoom changes significantly
+      lastViewportRef.current = {
+        scrollY: canvasState.scrollY,
+        zoomLevel: canvasState.zoomLevel,
+      };
+
+      debouncedUpdateGuideLines();
+
+      if (debugMode) {
+        console.log(
+          `Viewport changed significantly: zoom=${Math.round(canvasState.zoomLevel * 100)}%, scrollY=${Math.round(canvasState.scrollY)}`,
+        );
+      }
     }
   }, [
     canvasState.scrollY,
@@ -465,26 +489,43 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
       throttle((elements, appState, files) => {
         const now = Date.now();
 
-        // Log for debug mode
-        if (debugMode) {
-          console.log("MagicCanvas: onChange processed (", now, "ms)");
-        }
-
-        // Update zoom level and pan position
+        // Update zoom level and pan position only if changed
         const newCanvasState = {
           zoomLevel: appState.zoom?.value || 1,
           scrollX: appState.scrollX || 0,
           scrollY: appState.scrollY || 0,
         };
-        setCanvasState(newCanvasState);
 
-        // Update viewport for RowHeader rendering
-        const viewportHeight = window.innerHeight * CANVAS_CONFIG.VIEWPORT_HEIGHT_RATIO;
-        setViewport({
-          y: newCanvasState.scrollY,
-          height: viewportHeight,
-          width: CANVAS_CONFIG.MAX_WIDTH,
-        });
+        // Only update state if values actually changed (prevent unnecessary re-renders)
+        const currentState = canvasStateRef.current;
+        const hasChanged =
+          newCanvasState.zoomLevel !== currentState.zoomLevel ||
+          newCanvasState.scrollX !== currentState.scrollX ||
+          newCanvasState.scrollY !== currentState.scrollY;
+
+        if (hasChanged) {
+          setCanvasState(newCanvasState);
+        }
+
+        // Log for debug mode
+        if (debugMode) {
+          console.log("MagicCanvas: onChange processed", {
+            timestamp: now,
+            hasStateChange: hasChanged,
+            zoom: Math.round(newCanvasState.zoomLevel * 100),
+            scrollY: Math.round(newCanvasState.scrollY),
+          });
+        }
+
+        // Update viewport for RowHeader rendering only if canvas state changed
+        if (hasChanged) {
+          const viewportHeight = window.innerHeight * CANVAS_CONFIG.VIEWPORT_HEIGHT_RATIO;
+          setViewport({
+            y: newCanvasState.scrollY,
+            height: viewportHeight,
+            width: CANVAS_CONFIG.MAX_WIDTH,
+          });
+        }
 
         // Count user-drawn elements (exclude guide lines)
         const userElements = getUserElements(elements);
