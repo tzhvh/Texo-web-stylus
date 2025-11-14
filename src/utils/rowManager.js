@@ -1,10 +1,10 @@
 /**
  * RowManager Class for Magic Canvas Row State Tracking
- * 
+ *
  * Serves as the authoritative source for row state in Magic Canvas.
  * Provides O(1) lookup performance for row operations and maintains
  * stable identifiers across pan/zoom/reload operations.
- * 
+ *
  * @class RowManager
  * @description Manages row metadata and element-to-row assignments for Magic Canvas
  */
@@ -40,12 +40,12 @@
  * @property {Object} elementToRow - Element ID to row ID mapping
  */
 
-import Logger from './logger.js';
+import Logger from "./logger.js";
 
 export class RowManager {
   /**
    * Create a new RowManager instance
-   * 
+   *
    * @param {Object} config - Configuration options
    * @param {number} [config.rowHeight=384] - Height of each row in pixels (matches OCR tile height)
    * @param {number} [config.startY=0] - Starting Y position for first row
@@ -53,57 +53,62 @@ export class RowManager {
   constructor({ rowHeight = 384, startY = 0 } = {}) {
     this.rowHeight = rowHeight;
     this.startY = startY;
-    
+
     // Map<string, Row> - All rows by ID for O(1) lookup
     this.rows = new Map();
-    
+
     // Map<string, string> - Element ID to row ID mapping for O(1) element lookup
     this.elementToRow = new Map();
-    
-    Logger.debug('RowManager', 'Initialized', {
+
+    Logger.debug("RowManager", "Initialized", {
       rowHeight,
       startY,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
   /**
    * Get the row for a given Y coordinate
-   * 
+   *
    * @param {number} y - Y coordinate to find row for
    * @returns {Row|null} Row containing the Y coordinate, or null if invalid
    */
   getRowForY(y) {
-    if (typeof y !== 'number' || !isFinite(y)) {
-      Logger.warn('RowManager', 'Invalid Y coordinate provided to getRowForY', { y });
+    if (typeof y !== "number" || !isFinite(y) || isNaN(y)) {
+      Logger.warn("RowManager", "Invalid Y coordinate provided to getRowForY", {
+        y,
+      });
       return null;
     }
 
-    // Calculate row index based on Y position
+    // Calculate row index based on Y position with robust bounds checking
+    // Ensure coordinates are within reasonable bounds (±10,000 pixels)
+    const clampedY = Math.max(-10000, Math.min(10000, y));
+
     // Ensure negative Y coordinates map to row 0
-    let rowIndex = Math.floor((y - this.startY) / this.rowHeight);
-    rowIndex = Math.max(0, rowIndex);
-    
+    let rowIndex = Math.floor((clampedY - this.startY) / this.rowHeight);
+    rowIndex = Math.max(0, Math.min(10000, rowIndex)); // Prevent excessive row creation
+
     // Generate deterministic row ID
     const rowId = `row-${rowIndex}`;
-    
+
     // Return existing row or create new one
     if (this.rows.has(rowId)) {
       return this.rows.get(rowId);
     }
-    
+
     // Create new row if it doesn't exist
     const newRow = this._createRow(rowIndex);
     this.rows.set(rowId, newRow);
-    
-    Logger.debug('RowManager', 'Created new row', {
+
+    Logger.debug("RowManager", "Created new row", {
       rowId,
       rowIndex,
       y,
       yStart: newRow.yStart,
-      yEnd: newRow.yEnd
+      yEnd: newRow.yEnd,
     });
-    
+
     return newRow;
   }
 
@@ -120,34 +125,41 @@ export class RowManager {
    */
   assignElement(element) {
     if (!element || !element.id) {
-      Logger.error('RowManager', 'Invalid element provided to assignElement', { element });
-      throw new Error('Element must have a valid id property');
+      Logger.error("RowManager", "Invalid element provided to assignElement", {
+        element,
+      });
+      throw new Error("Element must have a valid id property");
     }
 
     // Extract element center Y coordinate from bounding box
     // Excalidraw elements have: x, y (top-left), width, height
-    if (typeof element.y !== 'number') {
-      Logger.warn('RowManager', 'Element has invalid Y coordinate', {
+    if (typeof element.y !== "number" || !isFinite(element.y)) {
+      Logger.warn("RowManager", "Element has invalid Y coordinate", {
         elementId: element.id,
-        y: element.y
+        y: element.y,
       });
       return null;
     }
 
-    // Calculate center Y coordinate from element bounds
-    const minY = element.y;
-    const maxY = element.y + (element.height || 0);
+    // Calculate center Y coordinate from element bounds with bounds validation
+    const minY = Math.max(-10000, Math.min(10000, element.y)); // Clamp to reasonable bounds
+    const maxY = Math.max(
+      -10000,
+      Math.min(10000, element.y + (element.height || 0)),
+    );
     const centerY = (minY + maxY) / 2;
 
     // Remove element from previous row if assigned elsewhere
     this._removeElementFromPreviousRow(element.id);
 
-    // Get target row for center Y coordinate
-    const targetRow = this.getRowForY(centerY);
+    // Get target row for center Y coordinate with bounds validation
+    const clampedCenterY = Math.max(0, Math.min(10000, centerY)); // Ensure reasonable Y coordinate
+    const targetRow = this.getRowForY(clampedCenterY);
     if (!targetRow) {
-      Logger.error('RowManager', 'Could not determine target row for element', {
+      Logger.error("RowManager", "Could not determine target row for element", {
         elementId: element.id,
-        centerY
+        centerY: clampedCenterY,
+        originalCenterY: centerY,
       });
       return null;
     }
@@ -155,16 +167,16 @@ export class RowManager {
     // Add element to target row
     targetRow.elementIds.add(element.id);
     this.elementToRow.set(element.id, targetRow.id);
-    
+
     // Update row metadata
     targetRow.lastModified = Date.now();
-    targetRow.ocrStatus = 'pending'; // Reset OCR status when elements change
+    targetRow.ocrStatus = "pending"; // Reset OCR status when elements change
 
-    Logger.debug('RowManager', 'Assigned element to row', {
+    Logger.debug("RowManager", "Assigned element to row", {
       elementId: element.id,
       rowId: targetRow.id,
       centerY,
-      elementCount: targetRow.elementIds.size
+      elementCount: targetRow.elementIds.size,
     });
 
     return targetRow.id;
@@ -172,13 +184,13 @@ export class RowManager {
 
   /**
    * Get a row by its ID
-   * 
+   *
    * @param {string} rowId - ID of the row to retrieve
    * @returns {Row|undefined} Row object or undefined if not found
    */
   getRow(rowId) {
-    if (typeof rowId !== 'string') {
-      Logger.warn('RowManager', 'Invalid rowId provided to getRow', { rowId });
+    if (typeof rowId !== "string") {
+      Logger.warn("RowManager", "Invalid rowId provided to getRow", { rowId });
       return undefined;
     }
 
@@ -187,7 +199,7 @@ export class RowManager {
 
   /**
    * Update row metadata with partial updates
-   * 
+   *
    * @param {string} rowId - ID of the row to update
    * @param {Partial<Row>} updates - Partial row object with properties to update
    * @returns {void}
@@ -195,13 +207,18 @@ export class RowManager {
   updateRow(rowId, updates) {
     const row = this.getRow(rowId);
     if (!row) {
-      Logger.warn('RowManager', 'Attempted to update non-existent row', { rowId });
+      Logger.warn("RowManager", "Attempted to update non-existent row", {
+        rowId,
+      });
       return;
     }
 
     // Validate updates object
-    if (!updates || typeof updates !== 'object') {
-      Logger.warn('RowManager', 'Invalid updates provided to updateRow', { rowId, updates });
+    if (!updates || typeof updates !== "object") {
+      Logger.warn("RowManager", "Invalid updates provided to updateRow", {
+        rowId,
+        updates,
+      });
       return;
     }
 
@@ -210,17 +227,17 @@ export class RowManager {
     Object.assign(row, updates);
     row.lastModified = Date.now();
 
-    Logger.debug('RowManager', 'Updated row', {
+    Logger.debug("RowManager", "Updated row", {
       rowId,
       updates: Object.keys(updates),
       previousState,
-      newState: row
+      newState: row,
     });
   }
 
   /**
    * Get all tracked rows
-   * 
+   *
    * @returns {Row[]} Array of all rows
    */
   getAllRows() {
@@ -229,20 +246,28 @@ export class RowManager {
 
   /**
    * Get rows that are visible within the given viewport
-   * 
+   *
    * @param {Viewport} viewport - Viewport bounds
    * @returns {Row[]} Array of rows within viewport
    */
   getRowsInViewport(viewport) {
-    if (!viewport || typeof viewport.y !== 'number' || typeof viewport.height !== 'number') {
-      Logger.warn('RowManager', 'Invalid viewport provided to getRowsInViewport', { viewport });
+    if (
+      !viewport ||
+      typeof viewport.y !== "number" ||
+      typeof viewport.height !== "number"
+    ) {
+      Logger.warn(
+        "RowManager",
+        "Invalid viewport provided to getRowsInViewport",
+        { viewport },
+      );
       return [];
     }
 
     const viewportTop = viewport.y;
     const viewportBottom = viewport.y + viewport.height;
 
-    return this.getAllRows().filter(row => {
+    return this.getAllRows().filter((row) => {
       // Row is visible if any part overlaps with viewport
       return row.yStart < viewportBottom && row.yEnd > viewportTop;
     });
@@ -250,13 +275,15 @@ export class RowManager {
 
   /**
    * Remove an element from its assigned row
-   * 
+   *
    * @param {string} elementId - ID of element to remove
    * @returns {void}
    */
   removeElement(elementId) {
-    if (typeof elementId !== 'string') {
-      Logger.warn('RowManager', 'Invalid elementId provided to removeElement', { elementId });
+    if (typeof elementId !== "string") {
+      Logger.warn("RowManager", "Invalid elementId provided to removeElement", {
+        elementId,
+      });
       return;
     }
 
@@ -265,32 +292,34 @@ export class RowManager {
 
   /**
    * Serialize RowManager state for persistence
-   * 
+   *
    * @returns {SerializedState} Serialized state object
    */
   serialize() {
-    const serializedRows = this.getAllRows().map(row => ({
+    const serializedRows = this.getAllRows().map((row) => ({
       ...row,
-      elementIds: Array.from(row.elementIds) // Convert Set to Array for JSON serialization
+      elementIds: Array.from(row.elementIds), // Convert Set to Array for JSON serialization
     }));
 
     return {
       rowHeight: this.rowHeight,
       startY: this.startY,
       rows: serializedRows,
-      elementToRow: Object.fromEntries(this.elementToRow) // Convert Map to Object
+      elementToRow: Object.fromEntries(this.elementToRow), // Convert Map to Object
     };
   }
 
   /**
    * Deserialize and restore RowManager state from persistence
-   * 
+   *
    * @param {SerializedState} state - Serialized state object
    * @returns {void}
    */
   deserialize(state) {
-    if (!state || typeof state !== 'object') {
-      Logger.error('RowManager', 'Invalid state provided to deserialize', { state });
+    if (!state || typeof state !== "object") {
+      Logger.error("RowManager", "Invalid state provided to deserialize", {
+        state,
+      });
       return;
     }
 
@@ -305,31 +334,31 @@ export class RowManager {
 
       // Restore rows
       if (Array.isArray(state.rows)) {
-        state.rows.forEach(rowData => {
+        state.rows.forEach((rowData) => {
           const row = {
             ...rowData,
-            elementIds: new Set(rowData.elementIds || []) // Convert Array back to Set
+            elementIds: new Set(rowData.elementIds || []), // Convert Array back to Set
           };
           this.rows.set(row.id, row);
         });
       }
 
       // Restore element-to-row mapping
-      if (state.elementToRow && typeof state.elementToRow === 'object') {
+      if (state.elementToRow && typeof state.elementToRow === "object") {
         this.elementToRow = new Map(Object.entries(state.elementToRow));
       }
 
-      Logger.info('RowManager', 'State deserialized successfully', {
+      Logger.info("RowManager", "State deserialized successfully", {
         rowCount: this.rows.size,
         elementMappings: this.elementToRow.size,
         rowHeight: this.rowHeight,
-        startY: this.startY
+        startY: this.startY,
       });
     } catch (error) {
-      Logger.error('RowManager', 'Failed to deserialize state', { 
-        state, 
+      Logger.error("RowManager", "Failed to deserialize state", {
+        state,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
     }
   }
@@ -338,13 +367,13 @@ export class RowManager {
 
   /**
    * Create a new row object with default values
-   * 
+   *
    * @private
    * @param {number} rowIndex - Index of the row
    * @returns {Row} New row object
    */
   _createRow(rowIndex) {
-    const yStart = this.startY + (rowIndex * this.rowHeight);
+    const yStart = this.startY + rowIndex * this.rowHeight;
     const yEnd = yStart + this.rowHeight;
 
     return {
@@ -352,19 +381,19 @@ export class RowManager {
       yStart,
       yEnd,
       elementIds: new Set(),
-      ocrStatus: 'pending',
-      validationStatus: 'pending',
+      ocrStatus: "pending",
+      validationStatus: "pending",
       transcribedLatex: null,
       validationResult: null,
       lastModified: Date.now(),
       tileHash: null,
-      errorMessage: null
+      errorMessage: null,
     };
   }
 
   /**
    * Remove element from its previous row assignment
-   * 
+   *
    * @private
    * @param {string} elementId - ID of element to remove
    * @returns {void}
@@ -376,11 +405,11 @@ export class RowManager {
       if (previousRow) {
         previousRow.elementIds.delete(elementId);
         previousRow.lastModified = Date.now();
-        
-        Logger.debug('RowManager', 'Removed element from previous row', {
+
+        Logger.debug("RowManager", "Removed element from previous row", {
           elementId,
           previousRowId,
-          remainingElements: previousRow.elementIds.size
+          remainingElements: previousRow.elementIds.size,
         });
       }
       this.elementToRow.delete(elementId);
