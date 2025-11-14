@@ -234,6 +234,13 @@ class RowManager {
 - Add React error boundary for MagicCanvas route (Error recovery)
 - Consider integration test for /magic-canvas route (Test coverage improvement)
 
+**From Story 1.4 Code Review (2025-11-13):**
+- Implement IndexedDB persistence integration via workspaceDB.js for RowManager state
+- Create and integrate RowHeader component for visual status indicators at row edges
+- Add performance optimizations (useCallback wrappers, error boundaries) in MagicCanvas
+- Fix assignElement error handling consistency with test expectations
+- Complete JSDoc documentation coverage for all RowManager methods
+
 ## Test Strategy Summary
 
 **Unit Tests:**

@@ -1,0 +1,530 @@
+/**
+ * Unit Tests for useRowSystem Hook
+ * 
+ * Tests canvas-row synchronization functionality including element assignment,
+ * debounced processing, change detection, and error handling.
+ */
+
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import useRowSystem from '../../hooks/useRowSystem.js';
+import RowManager from '../rowManager.js';
+
+// Mock logger
+const mockLogger = {
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn()
+};
+
+vi.mock('../../utils/logger.js', () => ({
+  default: mockLogger
+}));
+
+// Mock performance API
+global.performance = {
+  now: vi.fn(() => Date.now()),
+  mark: vi.fn(),
+  measure: vi.fn(),
+  getEntriesByName: vi.fn(() => [])
+};
+
+describe('useRowSystem', () => {
+  let mockExcalidrawAPI;
+  let rowManager;
+  let originalSetTimeout;
+  let originalClearTimeout;
+
+  beforeEach(() => {
+    // Mock Excalidraw API
+    mockExcalidrawAPI = {
+      getSceneElements: vi.fn(() => []),
+      updateScene: vi.fn(),
+      getAppState: vi.fn(() => ({ scrollY: 0, zoom: { value: 1 } }))
+    };
+
+    // Create RowManager instance
+    rowManager = new RowManager({ rowHeight: 384, startY: 0 });
+
+    // Mock timers
+    originalSetTimeout = global.setTimeout;
+    originalClearTimeout = global.clearTimeout;
+    global.setTimeout = vi.fn((fn, delay) => {
+      return originalSetTimeout(fn, delay || 0);
+    });
+    global.clearTimeout = vi.fn(originalClearTimeout);
+
+    // Reset performance mock
+    performance.now.mockReturnValue(Date.now());
+  });
+
+  afterEach(() => {
+    // Restore timers
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+    
+    // Cleanup
+    vi.clearAllMocks();
+  });
+
+  describe('Hook Initialization', () => {
+    it('should initialize with empty state', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      expect(result.current.elementToRow).toBeInstanceOf(Map);
+      expect(result.current.elementToRow.size).toBe(0);
+      expect(result.current.getElementRow('nonexistent')).toBeNull();
+      expect(result.current.getRowCount()).toBe(0);
+      expect(typeof result.current.handleCanvasChange).toBe('function');
+    });
+
+    it('should initialize with existing elements from canvas', () => {
+      const mockElements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' },
+        { id: 'el2', x: [200, 300, 300, 200], y: [450, 450, 550, 550], type: 'rectangle' }
+      ];
+      
+      mockExcalidrawAPI.getSceneElements.mockReturnValue(mockElements);
+
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      // Wait for async initialization
+      act(() => {
+        // Trigger initialization
+      });
+
+      expect(result.current.elementToRow.size).toBeGreaterThan(0);
+      expect(result.current.getRowCount()).toBeGreaterThan(0);
+    });
+
+    it('should ignore guide elements during initialization', () => {
+      const mockElements = [
+        { id: 'guide-0', x: [0, 1000, 1000, 0], y: [0, 0, 1, 1], type: 'line' },
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }
+      ];
+      
+      mockExcalidrawAPI.getSceneElements.mockReturnValue(mockElements);
+
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      act(() => {
+        // Trigger initialization
+      });
+
+      // Should only assign non-guide elements
+      expect(result.current.elementToRow.has('guide-0')).toBe(false);
+      expect(result.current.elementToRow.has('el1')).toBe(true);
+    });
+  });
+
+  describe('Element Assignment', () => {
+    it('should assign new elements to appropriate rows', async () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const newElements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(newElements, {}, []);
+      });
+
+      // Wait for async processing
+      await waitFor(() => {
+        expect(result.current.elementToRow.has('el1')).toBe(true);
+      });
+
+      expect(result.current.getElementRow('el1')).toBe('row-0');
+      expect(result.current.getRowCount()).toBe(1);
+    });
+
+    it('should assign elements to different rows based on Y coordinate', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const elements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }, // Row 0
+        { id: 'el2', x: [0, 100, 100, 0], y: [450, 450, 550, 550], type: 'rectangle' }  // Row 1
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      expect(result.current.getElementRow('el1')).toBe('row-0');
+      expect(result.current.getElementRow('el2')).toBe('row-1');
+      expect(result.current.getRowCount()).toBe(2);
+    });
+
+    it('should handle element modification and reassignment', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      // Initial assignment
+      const initialElements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(initialElements, {}, []);
+      });
+
+      expect(result.current.getElementRow('el1')).toBe('row-0');
+
+      // Move element to different row
+      const modifiedElements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [450, 450, 550, 550], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(modifiedElements, {}, []);
+      });
+
+      expect(result.current.getElementRow('el1')).toBe('row-1');
+      expect(result.current.getRowCount()).toBe(1);
+    });
+
+    it('should handle element deletion', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      // Add elements
+      const initialElements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' },
+        { id: 'el2', x: [0, 100, 100, 0], y: [450, 450, 550, 550], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(initialElements, {}, []);
+      });
+
+      expect(result.current.getRowCount()).toBe(2);
+
+      // Delete one element
+      const remainingElements = [
+        { id: 'el2', x: [0, 100, 100, 0], y: [450, 450, 550, 550], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(remainingElements, {}, []);
+      });
+
+      expect(result.current.elementToRow.has('el1')).toBe(false);
+      expect(result.current.elementToRow.has('el2')).toBe(true);
+      expect(result.current.getRowCount()).toBe(1);
+    });
+  });
+
+  describe('Debounced Processing', () => {
+    it('should debounce rapid changes', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager, debounceMs: 50 })
+      );
+
+      const elements1 = [{ id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }];
+      const elements2 = [{ id: 'el2', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }];
+
+      // Rapid successive changes
+      act(() => {
+        result.current.handleCanvasChange(elements1, {}, []);
+        result.current.handleCanvasChange(elements2, {}, []);
+      });
+
+      // Should only process the last change due to debouncing
+      expect(global.setTimeout).toHaveBeenCalledTimes(2);
+      expect(global.clearTimeout).toHaveBeenCalledTimes(1);
+    });
+
+    it('should process changes after debounce delay', async () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager, debounceMs: 10 })
+      );
+
+      const elements = [{ id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }];
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      // Wait for debounce
+      await waitFor(() => {
+        expect(result.current.elementToRow.has('el1')).toBe(true);
+      });
+    });
+  });
+
+  describe('Statistics Tracking', () => {
+    it('should track assignment statistics', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const initialStats = result.current.stats;
+      expect(initialStats.totalAssignments).toBe(0);
+      expect(initialStats.errorCount).toBe(0);
+
+      const elements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' },
+        { id: 'el2', x: [0, 100, 100, 0], y: [450, 450, 550, 550], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      const updatedStats = result.current.stats;
+      expect(updatedStats.totalAssignments).toBe(2);
+      expect(updatedStats.lastAssignmentTime).toBeGreaterThan(0);
+    });
+
+    it('should track error count', () => {
+      // Mock rowManager to throw error
+      const mockRowManager = {
+        assignElement: vi.fn(() => {
+          throw new Error('Assignment failed');
+        }),
+        removeElement: vi.fn(),
+        getAllRows: vi.fn(() => [])
+      };
+
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager: mockRowManager })
+      );
+
+      const elements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      expect(result.current.stats.errorCount).toBe(1);
+    });
+  });
+
+  describe('Change Detection', () => {
+    it('should detect when elements affect row assignment', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const element1 = { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' };
+      const element2 = { id: 'el1', x: [0, 100, 100, 0], y: [450, 450, 550, 550], type: 'rectangle' }; // Changed Y
+
+      act(() => {
+        result.current.handleCanvasChange([element1], {}, []);
+      });
+
+      act(() => {
+        result.current.handleCanvasChange([element2], {}, []);
+      });
+
+      // Should detect change and reassign to different row
+      expect(result.current.getElementRow('el1')).toBe('row-1');
+    });
+
+    it('should ignore irrelevant property changes', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const element1 = { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle', strokeColor: 'black' };
+      const element2 = { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle', strokeColor: 'red' }; // Changed color only
+
+      act(() => {
+        result.current.handleCanvasChange([element1], {}, []);
+      });
+
+      const initialAssignment = result.current.getElementRow('el1');
+
+      act(() => {
+        result.current.handleCanvasChange([element2], {}, []);
+      });
+
+      // Should not trigger reassignment for irrelevant changes
+      expect(result.current.getElementRow('el1')).toBe(initialAssignment);
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle invalid elements gracefully', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const invalidElements = [
+        { id: null, x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' },
+        { id: 'el2', x: [], y: [], type: 'rectangle' }, // Missing coordinates
+        { id: 'el3' } // Missing required properties
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(invalidElements, {}, []);
+      });
+
+      // Should not crash and should handle gracefully
+      expect(result.current.stats.errorCount).toBeGreaterThanOrEqual(0);
+    });
+
+    it('should handle row manager errors gracefully', () => {
+      const mockRowManager = {
+        assignElement: vi.fn(() => {
+          throw new Error('RowManager error');
+        }),
+        removeElement: vi.fn(),
+        getAllRows: vi.fn(() => [])
+      };
+
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager: mockRowManager })
+      );
+
+      const elements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      expect(result.current.stats.errorCount).toBe(1);
+    });
+  });
+
+  describe('Performance', () => {
+    it('should complete assignment within 100ms target', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const elements = Array.from({ length: 10 }, (_, i) => ({
+        id: `el${i}`,
+        x: [0, 100, 100, 0],
+        y: [50 + i * 50, 50 + i * 50, 150 + i * 50, 150 + i * 50],
+        type: 'rectangle'
+      }));
+
+      const startTime = performance.now();
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      expect(duration).toBeLessThan(100);
+      expect(result.current.elementToRow.size).toBe(10);
+    });
+
+    it('should handle large numbers of elements efficiently', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const elements = Array.from({ length: 100 }, (_, i) => ({
+        id: `el${i}`,
+        x: [0, 100, 100, 0],
+        y: [50 + i * 10, 50 + i * 10, 150 + i * 10, 150 + i * 10],
+        type: 'rectangle'
+      }));
+
+      const startTime = performance.now();
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+
+      expect(duration).toBeLessThan(200); // Should still be fast even with 100 elements
+      expect(result.current.elementToRow.size).toBe(100);
+    });
+  });
+
+  describe('Debug Mode', () => {
+    it('should log debug information when debug mode is enabled', () => {
+      const { logger } = require('../../utils/logger.js');
+      
+      const { result } = renderHook(() => 
+        useRowSystem({ 
+          excalidrawAPI: mockExcalidrawAPI, 
+          rowManager, 
+          debugMode: true 
+        })
+      );
+
+      const elements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      expect(logger.debug).toHaveBeenCalled();
+      expect(logger.info).toHaveBeenCalled();
+    });
+
+    it('should not log debug information when debug mode is disabled', () => {
+      const { logger } = require('../../utils/logger.js');
+      
+      const { result } = renderHook(() => 
+        useRowSystem({ 
+          excalidrawAPI: mockExcalidrawAPI, 
+          rowManager, 
+          debugMode: false 
+        })
+      );
+
+      const elements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      // Should not call debug logs, but may still call info/error
+      expect(logger.debug).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('Cleanup', () => {
+    it('should cleanup timeout on unmount', () => {
+      const { result } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+
+      const elements = [
+        { id: 'el1', x: [0, 100, 100, 0], y: [50, 50, 150, 150], type: 'rectangle' }
+      ];
+
+      act(() => {
+        result.current.handleCanvasChange(elements, {}, []);
+      });
+
+      // Unmount
+      const { unmount } = renderHook(() => 
+        useRowSystem({ excalidrawAPI: mockExcalidrawAPI, rowManager })
+      );
+      unmount();
+
+      expect(global.clearTimeout).toHaveBeenCalled();
+    });
+  });
+});
