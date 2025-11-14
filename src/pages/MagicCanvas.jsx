@@ -499,6 +499,52 @@ function MagicCanvasComponent() {
     );
   }, []);
 
+  // Get visible rows based on current viewport
+  const getVisibleRows = useCallback(() => {
+    if (!rowManager) return [];
+
+    const { y: viewportY, height: viewportHeight } = viewport;
+    const buffer = 500; // Buffer for smooth scrolling
+    const startY = viewportY - buffer;
+    const endY = viewportY + viewportHeight + buffer;
+
+    // Get all rows from rowManager
+    const allRows = rowManager.getAllRows ? rowManager.getAllRows() : [];
+
+    // Filter rows that intersect with viewport
+    return allRows.filter(row => {
+      return row.yEnd >= startY && row.yStart <= endY;
+    });
+  }, [rowManager, viewport]);
+
+  // Render RowHeader components for visible rows
+  const renderRowHeaders = useCallback(() => {
+    const visibleRows = getVisibleRows();
+
+    return visibleRows.map(row => (
+      <MemoizedRowHeader
+        key={row.id}
+        row={row}
+        y={row.yStart + (row.yEnd - row.yStart) / 2} // Center of row
+        canvasWidth={CANVAS_CONFIG.MAX_WIDTH}
+        debugMode={debugMode}
+      />
+    ));
+  }, [getVisibleRows, debugMode]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (canvasSaveTimeoutRef.current) {
+        clearTimeout(canvasSaveTimeoutRef.current);
+      }
+      // Save final canvas state on unmount
+      if (excalidrawAPI) {
+        saveCanvasState();
+      }
+    };
+  }, [excalidrawAPI, saveCanvasState]);
+
   return (
     <>
       <Helmet>
@@ -629,52 +675,6 @@ function MagicCanvasComponent() {
       </div>
     </>
   );
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (canvasSaveTimeoutRef.current) {
-        clearTimeout(canvasSaveTimeoutRef.current);
-      }
-      // Save final canvas state on unmount
-      if (excalidrawAPI) {
-        saveCanvasState();
-      }
-    };
-  }, [excalidrawAPI, saveCanvasState]);
-
-  // Get visible rows based on current viewport
-  const getVisibleRows = useCallback(() => {
-    if (!rowManager) return [];
-
-    const { y: viewportY, height: viewportHeight } = viewport;
-    const buffer = 500; // Buffer for smooth scrolling
-    const startY = viewportY - buffer;
-    const endY = viewportY + viewportHeight + buffer;
-
-    // Get all rows from rowManager
-    const allRows = rowManager.getAllRows ? rowManager.getAllRows() : [];
-
-    // Filter rows that intersect with viewport
-    return allRows.filter(row => {
-      return row.yEnd >= startY && row.yStart <= endY;
-    });
-  }, [rowManager, viewport]);
-
-  // Render RowHeader components for visible rows
-  const renderRowHeaders = useCallback(() => {
-    const visibleRows = getVisibleRows();
-    
-    return visibleRows.map(row => (
-      <MemoizedRowHeader
-        key={row.id}
-        row={row}
-        y={row.yStart + (row.yEnd - row.yStart) / 2} // Center of row
-        canvasWidth={CANVAS_CONFIG.MAX_WIDTH}
-        debugMode={debugMode}
-      />
-    ));
-  }, [getVisibleRows, debugMode]);
 }
 
 // Wrap with ErrorBoundary for graceful error handling
