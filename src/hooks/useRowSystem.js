@@ -130,18 +130,41 @@ export default function useRowSystem({
       const queue = changeQueueRef.current;
       if (queue.length === 0) return;
 
-      // Merge all queued changes into a single batch
-      const mergedChanges = {
-        new: [],
-        modified: [],
-        deleted: [],
-      };
+      // Merge all queued changes into a single batch with deduplication
+      const newElementsMap = new Map(); // elementId -> element
+      const modifiedElementsMap = new Map(); // elementId -> element
+      const deletedIdsSet = new Set(); // Set of deleted element IDs
 
       for (const changes of queue) {
-        mergedChanges.new.push(...changes.new);
-        mergedChanges.modified.push(...changes.modified);
-        mergedChanges.deleted.push(...changes.deleted);
+        // Process new elements (deduplicate by ID, keep latest)
+        for (const element of changes.new) {
+          if (element.id) {
+            newElementsMap.set(element.id, element);
+          }
+        }
+
+        // Process modified elements (deduplicate by ID, keep latest)
+        for (const element of changes.modified) {
+          if (element.id) {
+            modifiedElementsMap.set(element.id, element);
+          }
+        }
+
+        // Process deleted IDs (deduplicate)
+        for (const elementId of changes.deleted) {
+          deletedIdsSet.add(elementId);
+          // If deleted, remove from new/modified queues
+          newElementsMap.delete(elementId);
+          modifiedElementsMap.delete(elementId);
+        }
       }
+
+      // Convert Maps/Sets back to arrays
+      const mergedChanges = {
+        new: Array.from(newElementsMap.values()),
+        modified: Array.from(modifiedElementsMap.values()),
+        deleted: Array.from(deletedIdsSet),
+      };
 
       // Clear queue
       changeQueueRef.current = [];
@@ -725,39 +748,41 @@ export default function useRowSystem({
   }, [rowManager, saveState]);
 
   // Initialize element-to-row mapping on mount
+  // Note: RowManager state is loaded by MagicCanvas via unified storage
+  // This hook only syncs the UI mapping from already-loaded RowManager state
   useEffect(() => {
-    const initialize = async () => {
+    const initialize = () => {
       if (excalidrawAPI && rowManager) {
         try {
-          // Try to load saved state first
-          const stateLoaded = await loadState();
-
           // Get current elements from canvas
           const elements = excalidrawAPI.getSceneElements() || [];
 
-          if (stateLoaded) {
-            // If state was loaded, sync with current canvas elements
-            const changes = { new: [], modified: [], deleted: [], moved: [] };
+          // Check if RowManager already has state (loaded by MagicCanvas)
+          const allRows = rowManager.getAllRows();
+          const hasLoadedState = allRows.length > 0;
 
-            // Find elements that are new (not in loaded state)
+          if (hasLoadedState) {
+            // RowManager state was loaded by MagicCanvas, sync UI mapping only
             const loadedElementIds = new Set();
-            const allRows = rowManager.getAllRows();
             for (const row of allRows) {
               for (const elementId of row.elementIds) {
                 loadedElementIds.add(elementId);
               }
             }
 
+            // Find elements that are new (not in loaded RowManager state)
+            const newElements = [];
             for (const element of elements) {
               if (element.id && !element.id.startsWith("guide-")) {
                 if (!loadedElementIds.has(element.id)) {
-                  changes.new.push(element);
+                  newElements.push(element);
                 }
               }
             }
 
-            // Process only new elements
-            if (changes.new.length > 0 && processElementChangesRef.current) {
+            // Process only new elements (avoid reprocessing loaded state)
+            if (newElements.length > 0 && processElementChangesRef.current) {
+              const changes = { new: newElements, modified: [], deleted: [] };
               processElementChangesRef.current(changes);
             }
 
@@ -771,19 +796,18 @@ export default function useRowSystem({
             setElementToRow(updatedMapping);
 
             if (debugMode) {
-              Logger.info("useRowSystem", "Initialized from saved state", {
+              Logger.info("useRowSystem", "Initialized from pre-loaded state", {
                 elementCount: elements.length,
-                rowCount: getRowCount(),
-                newElements: changes.new.length,
+                rowCount: allRows.filter(r => r.elementIds.size > 0).length,
+                newElements: newElements.length,
               });
             }
           } else {
-            // No saved state, process all elements as new
+            // No pre-loaded state, process all elements as new
             const changes = {
-              new: elements,
+              new: elements.filter(el => el.id && !el.id.startsWith("guide-")),
               modified: [],
               deleted: [],
-              moved: [],
             };
             if (processElementChangesRef.current) {
               processElementChangesRef.current(changes);
@@ -792,7 +816,6 @@ export default function useRowSystem({
             if (debugMode) {
               Logger.info("useRowSystem", "Initialized with fresh state", {
                 elementCount: elements.length,
-                rowCount: getRowCount(),
               });
             }
           }
@@ -810,10 +833,9 @@ export default function useRowSystem({
           // Fallback to fresh initialization
           const elements = excalidrawAPI.getSceneElements() || [];
           const changes = {
-            new: elements,
+            new: elements.filter(el => el.id && !el.id.startsWith("guide-")),
             modified: [],
             deleted: [],
-            moved: [],
           };
           if (processElementChangesRef.current) {
             processElementChangesRef.current(changes);
@@ -826,7 +848,7 @@ export default function useRowSystem({
     };
 
     initialize();
-  }, [excalidrawAPI, rowManager, getRowCount, debugMode, loadState]);
+  }, [excalidrawAPI, rowManager, debugMode]);
 
   return {
     elementToRow,

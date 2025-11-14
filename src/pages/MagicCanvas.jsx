@@ -643,11 +643,15 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
     // Get all rows from rowManager
     const allRows = rowManager.getAllRows ? rowManager.getAllRows() : [];
 
-    // Filter rows that intersect with viewport
+    // Filter rows that:
+    // 1. Intersect with viewport (including buffer)
+    // 2. Have at least one element assigned
     return allRows.filter(row => {
-      return row.yEnd >= startY && row.yStart <= endY;
+      const inViewport = row.yEnd >= startY && row.yStart <= endY;
+      const hasElements = row.elementIds && row.elementIds.size > 0;
+      return inViewport && hasElements;
     });
-  }, [rowManager, viewport.y, viewport.height]);
+  }, [rowManager, viewport.y, viewport.height, elementToRow]);
 
   // Render RowHeader components for visible rows - memoized
   const rowHeaders = useMemo(() => {

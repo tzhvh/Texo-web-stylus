@@ -119,57 +119,74 @@ export default function RowHeader({
   const headerY = y + (row.yEnd - row.yStart) / 2; // Center of row (rowCenterY)
   
   return (
-    <div
-      role="button"
-      className={`row-status-icon absolute flex items-center justify-center w-12 h-12 rounded-full border-2 border-white shadow-md cursor-pointer transition-opacity duration-200 hover:scale-110 ${statusIcon.bgColor} ${statusIcon.color} ${
-        statusIcon.animation === 'spin' ? 'animate-spin' : ''
-      }`}
-      style={{
-        left: `${headerX}px`,
-        top: `${headerY}px`,
-        transform: 'translate(-50%, -50%)', // Center icon
-        zIndex: 1000, // AC: Separate layer (z-index: 1000) 
-        pointerEvents: 'auto', // Allow pointer events for tap targets
-        width: '48px', // AC: 48x48px icons
-        height: '48px' // AC: 48x48px icons
-      }}
-      title={statusIcon.title}
-      onClick={(e) => {
-        e.stopPropagation(); // Prevent canvas interaction
-        // Store tap handler for Story 4.1 integration
-        if (window.rowHeaderTapHandler) {
-          window.rowHeaderTapHandler(row);
-        }
-        if (debugMode) {
-          console.log(`RowHeader clicked: ${row.id}`, {
-            ocrStatus: row.ocrStatus,
-            validationStatus: row.validationStatus,
-            elementCount: row.elementIds?.size || 0,
-            lastModified: row.lastModified ? new Date(row.lastModified).toISOString() : 'Never',
-            errorMessage: row.errorMessage
-          });
-        }
-      }}
-    >
-      <span className="text-lg font-bold select-none">
-        {statusIcon.symbol}
-      </span>
-      
-      {/* Debug information overlay */}
-      {debugMode && (
-        <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 bg-black bg-opacity-75 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-50">
-          <div>ID: {row.id}</div>
-          <div>OCR: {row.ocrStatus}</div>
-          <div>Val: {row.validationStatus}</div>
-          <div>Elements: {row.elementIds?.size || 0}</div>
-          {row.errorMessage && (
-            <div className="text-red-300 truncate max-w-xs">
-              Error: {row.errorMessage}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+    <>
+      {/* Row separator line at top of row */}
+      <div
+        className="row-separator absolute pointer-events-none"
+        style={{
+          left: '0px',
+          top: `${y}px`,
+          width: `${canvasWidth}px`,
+          height: '2px',
+          backgroundColor: '#cbd5e1', // Tailwind slate-300
+          opacity: 0.6,
+          zIndex: 999, // Below status icon but above canvas
+        }}
+      />
+
+      {/* Status icon */}
+      <div
+        role="button"
+        className={`row-status-icon absolute flex items-center justify-center w-12 h-12 rounded-full border-2 border-white shadow-md cursor-pointer transition-opacity duration-200 hover:scale-110 ${statusIcon.bgColor} ${statusIcon.color} ${
+          statusIcon.animation === 'spin' ? 'animate-spin' : ''
+        }`}
+        style={{
+          left: `${headerX}px`,
+          top: `${headerY}px`,
+          transform: 'translate(-50%, -50%)', // Center icon
+          zIndex: 1000, // AC: Separate layer (z-index: 1000)
+          pointerEvents: 'auto', // Allow pointer events for tap targets
+          width: '48px', // AC: 48x48px icons
+          height: '48px' // AC: 48x48px icons
+        }}
+        title={statusIcon.title}
+        onClick={(e) => {
+          e.stopPropagation(); // Prevent canvas interaction
+          // Store tap handler for Story 4.1 integration
+          if (window.rowHeaderTapHandler) {
+            window.rowHeaderTapHandler(row);
+          }
+          if (debugMode) {
+            console.log(`RowHeader clicked: ${row.id}`, {
+              ocrStatus: row.ocrStatus,
+              validationStatus: row.validationStatus,
+              elementCount: row.elementIds?.size || 0,
+              lastModified: row.lastModified ? new Date(row.lastModified).toISOString() : 'Never',
+              errorMessage: row.errorMessage
+            });
+          }
+        }}
+      >
+        <span className="text-lg font-bold select-none">
+          {statusIcon.symbol}
+        </span>
+
+        {/* Debug information overlay */}
+        {debugMode && (
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-1 bg-black bg-opacity-75 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-50">
+            <div>ID: {row.id}</div>
+            <div>OCR: {row.ocrStatus}</div>
+            <div>Val: {row.validationStatus}</div>
+            <div>Elements: {row.elementIds?.size || 0}</div>
+            {row.errorMessage && (
+              <div className="text-red-300 truncate max-w-xs">
+                Error: {row.errorMessage}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

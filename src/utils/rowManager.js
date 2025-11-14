@@ -169,9 +169,6 @@ export class RowManager {
     const clampedMaxY = Math.max(-10000, Math.min(10000, maxY));
     const centerY = (clampedMinY + clampedMaxY) / 2;
 
-    // Remove element from previous row if assigned elsewhere
-    this._removeElementFromPreviousRow(element.id);
-
     // Get target row for center Y coordinate with bounds validation
     const clampedCenterY = Math.max(0, Math.min(10000, centerY)); // Ensure reasonable Y coordinate
     const targetRow = this.getRowForY(clampedCenterY);
@@ -184,17 +181,41 @@ export class RowManager {
       return null;
     }
 
+    // Guard: Check if element is already assigned to the correct row
+    const currentRowId = this.elementToRow.get(element.id);
+    if (currentRowId === targetRow.id) {
+      // Element already in correct row, skip redundant reassignment
+      Logger.debug("RowManager", "Element already in correct row, skipping reassignment", {
+        elementId: element.id,
+        rowId: targetRow.id,
+      });
+      return targetRow.id;
+    }
+
+    // Element needs to be moved (or is new)
+    const isNewElement = !currentRowId;
+
+    // Remove element from previous row if assigned elsewhere
+    if (!isNewElement) {
+      this._removeElementFromPreviousRow(element.id);
+    }
+
     // Add element to target row
     targetRow.elementIds.add(element.id);
     this.elementToRow.set(element.id, targetRow.id);
 
     // Update row metadata
     targetRow.lastModified = Date.now();
-    targetRow.ocrStatus = "pending"; // Reset OCR status when elements change
 
-    Logger.debug("RowManager", "Assigned element to row", {
+    // Only reset OCR status if this is a new element or cross-row move
+    if (isNewElement || currentRowId) {
+      targetRow.ocrStatus = "pending";
+    }
+
+    Logger.debug("RowManager", isNewElement ? "Assigned new element to row" : "Moved element to different row", {
       elementId: element.id,
       rowId: targetRow.id,
+      previousRowId: currentRowId || "none",
       centerY,
       elementCount: targetRow.elementIds.size,
     });
