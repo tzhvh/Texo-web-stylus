@@ -231,52 +231,7 @@ function MagicCanvasComponent() {
     }
   }, [excalidrawAPI, guideLineSpacing, debugMode]);
 
-  // Initialize canvas with guide lines and load saved state (Story 1.3, Task 3.1, 3.2)
-  useEffect(() => {
-    const initialize = async () => {
-      if (!excalidrawAPI) return;
-
-      try {
-        // Try to load saved canvas state first
-        const stateLoaded = await loadCanvasState();
-        
-        if (!stateLoaded) {
-          // No saved state, initialize with guide lines using viewport culling for performance
-          updateViewportGuideLines();
-          
-          if (debugMode) {
-            console.log(
-              "MagicCanvas: Initialized with guide lines at 384px spacing (no saved state)",
-            );
-          }
-        } else {
-          // State loaded, update guide lines for current viewport
-          updateViewportGuideLines();
-          
-          if (debugMode) {
-            console.log(
-              "MagicCanvas: Initialized from saved state with guide lines",
-            );
-          }
-        }
-      } catch (error) {
-        console.error("Failed to initialize Excalidraw scene:", error);
-        
-        // Fallback to basic initialization
-        try {
-          updateViewportGuideLines();
-        } catch (fallbackError) {
-          console.error("Fallback initialization also failed:", fallbackError);
-        }
-        
-        if (debugMode) {
-          alert("Canvas initialization failed. Please refresh the page.");
-        }
-      }
-    };
-    
-    initialize();
-    // Save canvas state to IndexedDB
+  // Save canvas state to IndexedDB
   const saveCanvasState = useCallback(async () => {
     if (!excalidrawAPI) return;
 
@@ -335,6 +290,53 @@ function MagicCanvasComponent() {
       return false;
     }
   }, [excalidrawAPI, debugMode]);
+
+  // Initialize canvas with guide lines and load saved state (Story 1.3, Task 3.1, 3.2)
+  useEffect(() => {
+    const initialize = async () => {
+      if (!excalidrawAPI) return;
+
+      try {
+        // Try to load saved canvas state first
+        const stateLoaded = await loadCanvasState();
+
+        if (!stateLoaded) {
+          // No saved state, initialize with guide lines using viewport culling for performance
+          updateViewportGuideLines();
+
+          if (debugMode) {
+            console.log(
+              "MagicCanvas: Initialized with guide lines at 384px spacing (no saved state)",
+            );
+          }
+        } else {
+          // State loaded, update guide lines for current viewport
+          updateViewportGuideLines();
+
+          if (debugMode) {
+            console.log(
+              "MagicCanvas: Initialized from saved state with guide lines",
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Failed to initialize Excalidraw scene:", error);
+
+        // Fallback to basic initialization
+        try {
+          updateViewportGuideLines();
+        } catch (fallbackError) {
+          console.error("Fallback initialization also failed:", fallbackError);
+        }
+
+        if (debugMode) {
+          alert("Canvas initialization failed. Please refresh the page.");
+        }
+      }
+    };
+
+    initialize();
+  }, [excalidrawAPI, loadCanvasState, updateViewportGuideLines, debugMode]);
 
   // Debounced version to prevent excessive updates during rapid pan/zoom
   const debouncedUpdateGuideLines = useMemo(
@@ -414,67 +416,7 @@ function MagicCanvasComponent() {
     canvasSaveTimeoutRef.current = setTimeout(() => {
       saveCanvasState();
     }, 2000); // 2 second debounce for canvas state
-  }, [handleRowSystemChange, saveCanvasState]); // Include saveCanvasState dependency
-
-  // Save canvas state to IndexedDB
-  const saveCanvasState = useCallback(async () => {
-    if (!excalidrawAPI) return;
-    
-    try {
-      const scene = excalidrawAPI.getScene();
-      const canvasState = {
-        elements: scene.elements,
-        appState: scene.appState,
-        timestamp: Date.now()
-      };
-      
-      await saveSessionState('magic-canvas-state', canvasState);
-      
-      if (debugMode) {
-        console.log('MagicCanvas: Canvas state saved to IndexedDB', {
-          elementCount: scene.elements.length,
-          zoom: scene.appState.zoom?.value,
-          scrollX: scene.appState.scrollX,
-          scrollY: scene.appState.scrollY
-        });
-      }
-    } catch (error) {
-      console.error('MagicCanvas: Failed to save canvas state', error);
-    }
-  }, [excalidrawAPI, debugMode]);
-
-  // Load canvas state from IndexedDB
-  const loadCanvasState = useCallback(async () => {
-    if (!excalidrawAPI) return false;
-    
-    try {
-      const savedState = await loadSessionState('magic-canvas-state');
-      
-      if (savedState) {
-        excalidrawAPI.updateScene({
-          elements: savedState.elements,
-          appState: savedState.appState
-        });
-        
-        if (debugMode) {
-          console.log('MagicCanvas: Canvas state loaded from IndexedDB', {
-            elementCount: savedState.elements.length,
-            zoom: savedState.appState.zoom?.value,
-            scrollX: savedState.appState.scrollX,
-            scrollY: savedState.appState.scrollY,
-            savedTimestamp: new Date(savedState.timestamp).toISOString()
-          });
-        }
-        
-        return true;
-      }
-      
-      return false;
-    } catch (error) {
-      console.error('MagicCanvas: Failed to load canvas state', error);
-      return false;
-    }
-  }, [excalidrawAPI, debugMode]);
+  }, [handleRowSystemChange, saveCanvasState, debugMode]); // Include saveCanvasState dependency
 
   // Clear canvas (keep guide lines)
   const clearCanvas = useCallback(() => {
@@ -700,6 +642,24 @@ function MagicCanvasComponent() {
       }
     };
   }, [excalidrawAPI, saveCanvasState]);
+
+  // Get visible rows based on current viewport
+  const getVisibleRows = useCallback(() => {
+    if (!rowManager) return [];
+
+    const { y: viewportY, height: viewportHeight } = viewport;
+    const buffer = 500; // Buffer for smooth scrolling
+    const startY = viewportY - buffer;
+    const endY = viewportY + viewportHeight + buffer;
+
+    // Get all rows from rowManager
+    const allRows = rowManager.getAllRows ? rowManager.getAllRows() : [];
+
+    // Filter rows that intersect with viewport
+    return allRows.filter(row => {
+      return row.yEnd >= startY && row.yStart <= endY;
+    });
+  }, [rowManager, viewport]);
 
   // Render RowHeader components for visible rows
   const renderRowHeaders = useCallback(() => {
