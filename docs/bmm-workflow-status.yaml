@@ -23,7 +23,7 @@ field_type: "brownfield"
 workflow_path: ".bmad/bmm/workflows/workflow-status/paths/method-brownfield.yaml"
 workflow_status: |
   # Prerequisite: Documentation
-  document-project: docs/bmm-index.md  # agent: analyst
+  document-project: docs/index.md  # agent: analyst
 
   # Phase 1: Planning
   prd: docs/PRD.md  # agent: pm

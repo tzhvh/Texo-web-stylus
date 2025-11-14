@@ -1,0 +1,114 @@
+<story-context id="{bmad_folder}/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>8</storyId>
+    <title>Handle Row Updates When Elements Are Modified or Moved</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-14</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>/home/mser/Documents/cla/w/Texo-web-stylus/docs/sprint-artifacts/stories/1-8-handle-row-updates-when-elements-are-modified-or-moved.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>row assignments to update automatically when I move or edit strokes</iWant>
+    <soThat>OCR and validation always process current content</soThat>
+    <tasks>- [ ] Task 1: Implement element move detection between rows (AC: 1, 2, 3, 4)
+  - [ ] Subtask 1.1: Hook into Excalidraw onChange to detect element position changes
+  - [ ] Subtask 1.2: Calculate row boundaries and detect cross-row moves
+  - [ ] Subtask 1.3: Update element assignments in source and target rows
+  - [ ] Subtask 1.4: Update row metadata (lastModified, ocrStatus)
+- [ ] Task 2: Implement element modification detection within rows (AC: 5, 6, 7)
+  - [ ] Subtask 2.1: Detect element property changes (stroke, size, text content)
+  - [ ] Subtask 2.2: Handle element deletion and removal from row assignments
+  - [ ] Subtask 2.3: Update affected row metadata and trigger OCR reset
+- [ ] Task 3: Implement debouncing for rapid modifications (AC: 8)
+  - [ ] Subtask 3.1: Add debounced row update mechanism
+  - [ ] Subtask 3.2: Batch multiple rapid changes into single update
+  - [ ] Subtask 3.3: Maintain performance during rapid drawing/editing</tasks>
+  </story>
+
+  <acceptanceCriteria>1. Given I have drawn elements assigned to rows, When I move an element from Row A to Row B (by dragging vertically), Then element is removed from Row A's element list and added to Row B's
+2. And both rows' `lastModified` timestamps are updated
+3. And moved row's OCR status resets to 'pending' (requires re-transcription)
+4. And target row's OCR status resets to 'pending'
+5. When I modify an element (change stroke, resize, edit text), Then its row's `lastModified` updates and OCR status resets to 'pending'
+6. When I delete an element, Then it's removed from its row's element list and row updates accordingly
+7. And updates happen within 100ms of modification
+8. And rapid modifications are debounced to avoid excessive processing</acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc path="docs/architecture.md" title="Magic Canvas - Decision Architecture" section="Pattern 3: State Synchronization" snippet="Unidirectional flow pattern (Excalidraw → RowManager → IndexedDB) with RowManager as single truth source. RowManager methods are synchronous to avoid race conditions, and debounced saves capture state at call time." />
+      <doc path="docs/comprehensive-architecture.md" title="Comprehensive Architecture Documentation" section="Data Flow Architecture" snippet="State Management Flow: User Interaction → Component State → React Context (Global) → IndexedDB (Persistence) → Cross-Tab Sync (BroadcastChannel)." />
+      <doc path="docs/epics.md" title="Epic Breakdown" section="Story 1.8: Handle Row Updates When Elements Are Modified or Moved" snippet="Excalidraw onChange callback provides elements, appState, files. Diff previous and current element arrays to detect moves/modifications. On modification: Set row.ocrStatus = 'pending' and row.transcribedLatex = null." />
+    </docs>
+    <code>
+      <artifact path="src/hooks/useRowSystem.js" kind="hook" symbol="handleCanvasChange" lines="395-414" reason="Main entry point for detecting element changes. Already includes debouncing and change detection logic that can be extended for cross-row move detection." />
+      <artifact path="src/hooks/useRowSystem.js" kind="hook" symbol="detectElementChanges" lines="109-130" reason="Core change detection logic that identifies new, modified, and deleted elements. Can be enhanced to detect Y-coordinate changes for row moves." />
+      <artifact path="src/hooks/useRowSystem.js" kind="hook" symbol="processElementChanges" lines="263-386" reason="Processes element changes and updates RowManager. Already handles element assignment and removal - needs extension for cross-row move detection and OCR status resets." />
+      <artifact path="src/utils/rowManager.js" kind="class" symbol="assignElement" lines="121-171" reason="Core element assignment logic. Already removes from previous row and assigns to new row based on center Y coordinate. Foundation for move detection." />
+      <artifact path="src/utils/rowManager.js" kind="class" symbol="updateRow" lines="195-219" reason="Updates row metadata including lastModified timestamp. Can be used to reset ocrStatus when elements move between rows." />
+      <artifact path="src/utils/rowManager.js" kind="class" symbol="_removeElementFromPreviousRow" lines="372-388" reason="Removes element from previous assignment and updates row metadata. Key for handling element deletion and row transfers." />
+      <artifact path="src/pages/MagicCanvas.jsx" kind="component" symbol="CANVAS_CONFIG" lines="24-48" reason="Contains performance timing constants including DEBOUNCE_MS and AUTO_SAVE_DELAY_MS that can be adjusted for rapid modification handling." />
+    </code>
+    <dependencies>
+      <framework name="React" version="18.3.1" packages="react, react-dom, react-helmet-async" />
+      <framework name="Excalidraw" version="0.18.0" packages="@excalidraw/excalidraw" />
+      <framework name="Vite" version="6.0.7" packages="vite, @vitejs/plugin-react" />
+      <framework name="Testing" version="vitest@2.1.8" packages="vitest, @testing-library/react, @testing-library/jest-dom" />
+      <framework name="Styling" version="3.4.17" packages="tailwindcss, postcss, autoprefixer" />
+      <framework name="Math Rendering" version="0.16.11" packages="katex, react-katex" />
+      <framework name="Text Editor" version="1.x" packages="@benrbray/prosemirror-math, prosemirror-*" />
+      <framework name="ML/OCR" version="3.2.3" packages="@huggingface/transformers" />
+      <framework name="CAS" version="1.4.0" packages="algebrite" />
+      <framework name="Image Processing" version="0.35.6" packages="image-js" />
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint name="Performance Target" description="All row updates must complete within 100ms of modification to maintain responsive UI during drawing." />
+    <constraint name="Debouncing Required" description="Rapid modifications must be debounced to avoid excessive OCR triggers and performance degradation." />
+    <constraint name="RowManager as Truth Source" description="All element assignments and row updates must go through RowManager methods to maintain state consistency." />
+    <constraint name="Unidirectional Data Flow" description="Follow Excalidraw → RowManager → IndexedDB pattern to prevent race conditions." />
+    <constraint name="Synchronous RowManager Operations" description="RowManager methods must remain synchronous to avoid async state inconsistencies during element moves." />
+    <constraint name="Status Enum Compliance" description="Use exact status values: 'pending'|'processing'|'completed'|'error' for OCR, 'pending'|'processing'|'validated'|'invalid'|'error' for validation." />
+    <constraint name="No New Dependencies" description="Implementation must use existing Texo infrastructure without adding new packages." />
+  </constraints>
+  <interfaces>
+    <interface name="RowManager.assignElement" kind="method" signature="assignElement(element: ExcalidrawElement): string" path="src/utils/rowManager.js:121-171" />
+    <interface name="RowManager.updateRow" kind="method" signature="updateRow(rowId: string, updates: Partial&lt;Row&gt;): void" path="src/utils/rowManager.js:195-219" />
+    <interface name="RowManager.removeElement" kind="method" signature="removeElement(elementId: string): void" path="src/utils/rowManager.js:257-264" />
+    <interface name="useRowSystem.handleCanvasChange" kind="callback" signature="handleCanvasChange(elements: Array, appState: Object, files: Array): void" path="src/hooks/useRowSystem.js:395-414" />
+    <interface name="Excalidraw onChange" kind="event" signature="onChange(elements, appState, files)" path="Excalidraw API documentation" />
+  </interfaces>
+  <tests>
+    <standards>Tests use Vitest with jsdom environment. Unit tests focus on individual class/method functionality with mocked dependencies. Integration tests verify complete workflows between Excalidraw, RowManager, and useRowSystem hook. Performance tests ensure <100ms update targets and proper debouncing. All tests use vi.mock() for external dependencies and include comprehensive edge case coverage.</standards>
+    <locations>src/utils/__tests__/rowManager.test.js (RowManager class unit tests), src/utils/__tests__/useRowSystem.integration.test.js (hook integration tests), src/utils/__tests__/useRowSystem.performance.test.js (performance and debouncing tests)</locations>
+    <ideas>
+      <test idea="Test cross-row element move detection" acceptanceCriteria="1,2,3,4">
+        Create element in Row A, simulate move to Row B by changing Y coordinate
+        Verify element removed from Row A.elementIds and added to Row B.elementIds
+        Verify both rows' lastModified timestamps updated
+        Verify both rows' ocrStatus reset to 'pending'
+      </test>
+      <test idea="Test element modification within same row" acceptanceCriteria="5,7">
+        Modify element properties (stroke, size) while keeping Y in same row
+        Verify row.lastModified updated
+        Verify row.ocrStatus reset to 'pending'
+        Verify update completes within 100ms
+      </test>
+      <test idea="Test element deletion handling" acceptanceCriteria="6">
+        Delete element from row with multiple elements
+        Verify element removed from row.elementIds
+        Verify row.lastModified updated
+        Verify element-to-row mapping cleared
+      </test>
+      <test idea="Test rapid modification debouncing" acceptanceCriteria="8">
+        Trigger multiple rapid changes within 100ms window
+        Verify only single OCR status reset after debounce period
+        Verify performance maintained during rapid input
+      </test>
+    </ideas>
+  </tests>
+</story-context>

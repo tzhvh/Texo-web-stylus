@@ -43,7 +43,7 @@ development_status:
   1-5-automatically-assign-drawn-elements-to-rows: done
   1-6-display-row-status-indicators-at-row-edge: done
   1-7-persist-row-state-and-canvas-state-across-reloads: done
-  1-8-handle-row-updates-when-elements-are-modified-or-moved: backlog
+  1-8-handle-row-updates-when-elements-are-modified-or-moved: in-progress
   epic-1-retrospective: optional
 
   epic-2: backlog

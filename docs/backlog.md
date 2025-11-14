@@ -21,3 +21,8 @@ Routing guidance:
 | 2025-11-13 | 1.4 | 1 | TechDebt | Med | TBD | Open | Add useCallback wrappers for event handlers in MagicCanvas component (src/pages/MagicCanvas.jsx:268-299) |
 | 2025-11-13 | 1.4 | 1 | Bug | Med | TBD | Open | Fix assignElement error handling consistency (src/utils/rowManager.js:119-133) |
 | 2025-11-13 | 1.4 | 1 | TechDebt | Low | TBD | Open | Complete JSDoc documentation for all RowManager method parameters (src/utils/rowManager.js:45-387) |
+| 2025-11-14 | 1.8 | 1 | Bug | High | TBD | Open | Optimize cross-row move processing to meet <100ms target (src/hooks/useRowSystem.js:300-352) |
+| 2025-11-14 | 1.8 | 1 | Bug | High | TBD | Open | Add proper debouncing to RowManager operations for rapid modifications (src/hooks/useRowSystem.js:263-433) |
+| 2025-11-14 | 1.8 | 1 | TechDebt | Med | TBD | Open | Add bounds validation for element coordinates to prevent edge cases (src/utils/rowManager.js:121-171) |
+| 2025-11-14 | 1.8 | 1 | TechDebt | Med | TBD | Open | Implement memory management for assignmentTimesRef array (src/hooks/useRowSystem.js:73-74) |
+| 2025-11-14 | 1.8 | 1 | Enhancement | Med | TBD | Open | Add integration tests for complete workflow scenarios (src/utils/__tests__/story-1-8-row-updates.test.js) |
