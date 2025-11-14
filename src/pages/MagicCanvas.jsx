@@ -236,10 +236,11 @@ function MagicCanvasComponent() {
     if (!excalidrawAPI) return;
 
     try {
-      const scene = excalidrawAPI.getScene();
+      const elements = excalidrawAPI.getSceneElements();
+      const appState = excalidrawAPI.getAppState();
       const canvasState = {
-        elements: scene.elements,
-        appState: scene.appState,
+        elements: elements,
+        appState: appState,
         timestamp: Date.now()
       };
 
@@ -247,10 +248,10 @@ function MagicCanvasComponent() {
 
       if (debugMode) {
         console.log('MagicCanvas: Canvas state saved to IndexedDB', {
-          elementCount: scene.elements.length,
-          zoom: scene.appState.zoom?.value,
-          scrollX: scene.appState.scrollX,
-          scrollY: scene.appState.scrollY
+          elementCount: elements.length,
+          zoom: appState.zoom?.value,
+          scrollX: appState.scrollX,
+          scrollY: appState.scrollY
         });
       }
     } catch (error) {
