@@ -44,9 +44,11 @@ development_status:
   1-6-display-row-status-indicators-at-row-edge: done
   1-7-persist-row-state-and-canvas-state-across-reloads: done
   1-8-handle-row-updates-when-elements-are-modified-or-moved: done
-  epic-1-retrospective: optional
+   epic-1-retrospective:
+     status: completed
+     completed: 2025-11-14
 
-  epic-2: backlog
+   epic-2: ready-for-dev
   2-1-implement-tile-extraction-with-overlap-from-row-elements: backlog
   2-2-create-ocr-worker-pool-for-parallel-processing: backlog
   2-3-display-per-tile-ocr-progress-indicators: backlog
