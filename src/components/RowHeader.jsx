@@ -17,7 +17,8 @@ import React from 'react';
  * @property {string} row.ocrStatus - OCR processing status ('pending'|'processing'|'completed'|'error')
  * @property {string} row.validationStatus - Validation status ('pending'|'processing'|'validated'|'invalid'|'error')
  * @property {string|null} row.errorMessage - Error message if processing failed
- * @property {number} y - Y coordinate for positioning of row start
+ * @property {number} y - Y coordinate for positioning of row start (grid-aligned)
+ * @property {number} [yCenter] - Pre-computed row center Y coordinate (optional, computed from row if not provided)
  * @property {number} canvasWidth - Width of canvas for positioning
  * @property {boolean} [debugMode=false] - Enable debug information display
  */
@@ -101,22 +102,24 @@ const getStatusIcon = (row) => {
  * @param {RowHeaderProps} props - Component props
  * @returns {React.ReactElement|null} Rendered component or null if invalid
  */
-export default function RowHeader({ 
-  row, 
-  y, 
-  canvasWidth, 
-  debugMode = false 
+export default function RowHeader({
+  row,
+  y,
+  yCenter,
+  canvasWidth,
+  debugMode = false
 }) {
   if (!row || typeof y !== 'number' || typeof canvasWidth !== 'number') {
     return null;
   }
-  
+
   const statusIcon = getStatusIcon(row);
-  
+
   // Position header at right edge of canvas with some padding
   // AC: Icons positioned at: (canvasWidth - 60px, rowCenterY)
   const headerX = canvasWidth - 60; // 60px from right edge
-  const headerY = y + (row.yEnd - row.yStart) / 2; // Center of row (rowCenterY)
+  // Use pre-computed yCenter if provided, otherwise compute from row bounds
+  const headerY = yCenter ?? (row.yCenter ?? (y + (row.yEnd - row.yStart) / 2));
   
   return (
     <>
@@ -204,6 +207,7 @@ export const MemoizedRowHeader = React.memo(RowHeader, (prevProps, nextProps) =>
     prevProps.row.validationStatus === nextProps.row.validationStatus &&
     prevProps.row.errorMessage === nextProps.row.errorMessage &&
     prevProps.y === nextProps.y &&
+    prevProps.yCenter === nextProps.yCenter &&
     prevProps.canvasWidth === nextProps.canvasWidth &&
     prevProps.debugMode === nextProps.debugMode
   );

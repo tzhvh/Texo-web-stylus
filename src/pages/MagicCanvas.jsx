@@ -19,12 +19,13 @@ import { MemoizedRowHeader } from "../components/RowHeader.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import Notification from "../components/Notification.jsx";
 import { getUserElements } from "../utils/canvasHelpers.js";
+import { GRID_CONFIG, GridCalculator, GridVisuals } from "../config/gridConfig.js";
 
-// Infinite canvas configuration
+// Canvas configuration (extended from grid config)
 const CANVAS_CONFIG = {
   MIN_Y: -50000,
   MAX_Y: 50000,
-  MAX_WIDTH: 2000,
+  MAX_WIDTH: GRID_CONFIG.CANVAS_WIDTH, // Use grid config value
   BACKGROUND_COLOR: "#f5f5f5", // Light gray per design
 
   // Performance timing (ms)
@@ -34,70 +35,33 @@ const CANVAS_CONFIG = {
 
   // Viewport calculations
   VIEWPORT_HEIGHT_RATIO: 0.6, // Approximate canvas viewport as % of window height
-  VIEWPORT_BUFFER_PX: 500, // Buffer for smooth scrolling
+  VIEWPORT_BUFFER_PX: GRID_CONFIG.VIEWPORT_BUFFER, // Use grid config value
 
   // Performance targets (ms)
   GUIDE_LINE_UPDATE_TARGET_MS: 16, // 60fps target
   STATE_RESTORE_TARGET_MS: 1000, // Story 1.7 AC6 requirement
 
-  // Guide lines
-  GUIDE_LINE_SPACING_PX: 384, // OCR tile alignment
-  GUIDE_LINE_COLOR: "#d3d3d3",
-  GUIDE_LINE_OPACITY: 30,
-  GUIDE_LINE_STROKE_WIDTH: 1,
+  // Guide lines (from grid config)
+  GUIDE_LINE_SPACING_PX: GRID_CONFIG.ROW_HEIGHT, // OCR tile alignment
+  GUIDE_LINE_COLOR: GRID_CONFIG.GUIDE_LINE_COLOR,
+  GUIDE_LINE_OPACITY: GRID_CONFIG.GUIDE_LINE_OPACITY,
+  GUIDE_LINE_STROKE_WIDTH: GRID_CONFIG.GUIDE_LINE_STROKE_WIDTH,
 };
 
-// Create guide lines (horizontal ruled lines for row guidance - Story 1.3)
-const createGuideLine = (y, id) => {
-  const guideLine = convertToExcalidrawElements([
-    {
-      type: "line",
-      x: 0,
-      y: y,
-      width: CANVAS_CONFIG.MAX_WIDTH,
-      height: 0,
-      strokeColor: CANVAS_CONFIG.GUIDE_LINE_COLOR,
-      backgroundColor: "transparent",
-      strokeWidth: CANVAS_CONFIG.GUIDE_LINE_STROKE_WIDTH,
-      strokeStyle: "solid",
-      roughness: 0,
-      opacity: CANVAS_CONFIG.GUIDE_LINE_OPACITY,
-      locked: true, // Prevent user interaction per Story 1.3, Task 2.3
-      isDeleted: false,
-      id: id || `guide-${y}`,
-    },
-  ]);
-  return guideLine[0];
-};
+// Grid-aligned guide line generation using GridVisuals
+// All guide lines are now positioned at exact grid boundaries
+const generateViewportGuideLines = (viewportY, viewportHeight) => {
+  // Get grid-aligned guide line configurations
+  const guideLineConfigs = GridVisuals.getGuideLines(viewportY, viewportHeight);
 
-// Generate guide lines with correct spacing for OCR alignment (Story 1.3)
-const generateGuideLines = (spacing = CANVAS_CONFIG.GUIDE_LINE_SPACING_PX) => {
-  const guideLines = [];
-  for (let y = CANVAS_CONFIG.MIN_Y; y <= CANVAS_CONFIG.MAX_Y; y += spacing) {
-    guideLines.push(createGuideLine(y));
-  }
+  // Convert to Excalidraw elements
+  const guideLines = convertToExcalidrawElements(guideLineConfigs);
+
   return guideLines;
 };
 
-const initialGuideLines = generateGuideLines(CANVAS_CONFIG.GUIDE_LINE_SPACING_PX);
-
-// Viewport culling: Only generate guide lines visible in current view + buffer (Story 1.3, Task 4.1)
-const generateViewportGuideLines = (
-  viewportY,
-  viewportHeight,
-  spacing = CANVAS_CONFIG.GUIDE_LINE_SPACING_PX,
-  buffer = CANVAS_CONFIG.VIEWPORT_BUFFER_PX,
-) => {
-  const startY = Math.floor((viewportY - buffer) / spacing) * spacing;
-  const endY =
-    Math.ceil((viewportY + viewportHeight + buffer) / spacing) * spacing;
-
-  const guideLines = [];
-  for (let y = startY; y <= endY; y += spacing) {
-    guideLines.push(createGuideLine(y));
-  }
-  return guideLines;
-};
+// Initial guide lines (will be replaced on first update)
+const initialGuideLines = generateViewportGuideLines(0, 600);
 
 // Debounced guide line regeneration for performance during zoom/pan (Story 1.3, Task 4.2)
 const debounce = (func, wait) => {
@@ -163,10 +127,10 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
   const guideLineRef = useRef(initialGuideLines);
   const viewportGuideLinesRef = useRef(null); // Cache for viewport-culled lines
 
-  // Initialize RowManager for element-to-row assignments (Story 1.5)
+  // Initialize grid-aware RowManager for element-to-row assignments
   const [rowManager] = useState(() => new RowManager({
-    rowHeight: CANVAS_CONFIG.GUIDE_LINE_SPACING_PX,
-    startY: 0
+    rowHeight: GRID_CONFIG.ROW_HEIGHT,
+    startY: GRID_CONFIG.ORIGIN_Y
   }));
 
   // Initialize useRowSystem hook for canvas-row synchronization (Story 1.5)
@@ -239,11 +203,11 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
     [],
   );
 
-  // Update guide lines based on viewport for performance (Story 1.3, Task 4.1, 4.2, 4.3)
+  // Update grid-aligned guide lines based on viewport
   const updateViewportGuideLines = useCallback(() => {
     if (!excalidrawAPI) return;
 
-    // Performance monitoring (Story 1.3, Task 4.3) - only when debug mode enabled
+    // Performance monitoring - only when debug mode enabled
     const startTime = debugMode ? performance.now() : 0;
 
     try {
@@ -252,18 +216,17 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
       const viewportHeight = window.innerHeight;
       const viewportY = appState.scrollY || 0;
 
-      // Generate viewport-culled guide lines (Story 1.3, Task 4.1)
+      // Generate grid-aligned guide lines using GridVisuals
       const viewportGuideLines = generateViewportGuideLines(
         viewportY,
-        viewportHeight,
-        guideLineSpacing,
+        viewportHeight
       );
 
       // Get existing user elements (exclude guide lines)
       const allElements = excalidrawAPI.getSceneElements();
       const userElements = getUserElements(allElements);
 
-      // Update scene with user elements + viewport guide lines
+      // Update scene with user elements + grid-aligned guide lines
       // Use storeAction: 'none' to prevent onChange callbacks and infinite render loops
       excalidrawAPI.updateScene({
         elements: [...userElements, ...viewportGuideLines],
@@ -273,12 +236,16 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
       // Cache for performance comparison
       viewportGuideLinesRef.current = viewportGuideLines;
 
-      // Performance measurement (Story 1.3, Task 4.3)
-      const duration = performance.now() - startTime;
-
+      // Performance measurement
       if (debugMode) {
+        const duration = performance.now() - startTime;
+        const { startIndex, endIndex } = GridCalculator.getVisibleRowIndices(
+          viewportY,
+          viewportHeight
+        );
+
         console.log(
-          `Guide lines: Generated ${viewportGuideLines.length} for viewport Y=${Math.round(viewportY)}, height=${viewportHeight} in ${duration.toFixed(2)}ms`,
+          `Grid guide lines: Generated ${viewportGuideLines.length} for rows ${startIndex}-${endIndex} (Y=${Math.round(viewportY)}) in ${duration.toFixed(2)}ms`,
         );
 
         // Performance warning if exceeds 60fps target
@@ -291,7 +258,7 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
     } catch (error) {
       console.error("Failed to update viewport guide lines:", error);
     }
-  }, [excalidrawAPI, guideLineSpacing, debugMode]);
+  }, [excalidrawAPI, debugMode]);
 
   // Save canvas state to IndexedDB
   const saveCanvasState = useCallback(async () => {
@@ -631,35 +598,32 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
     });
   }, []);
 
-  // Get visible rows based on current viewport - memoized for performance
+  // Get visible rows based on current viewport - using grid-aligned calculation
   const visibleRows = useMemo(() => {
     if (!rowManager) return [];
 
     const { y: viewportY, height: viewportHeight } = viewport;
-    const buffer = CANVAS_CONFIG.VIEWPORT_BUFFER_PX;
-    const startY = viewportY - buffer;
-    const endY = viewportY + viewportHeight + buffer;
 
-    // Get all rows from rowManager
-    const allRows = rowManager.getAllRows ? rowManager.getAllRows() : [];
-
-    // Filter rows that:
-    // 1. Intersect with viewport (including buffer)
-    // 2. Have at least one element assigned
-    return allRows.filter(row => {
-      const inViewport = row.yEnd >= startY && row.yStart <= endY;
-      const hasElements = row.elementIds && row.elementIds.size > 0;
-      return inViewport && hasElements;
+    // Use RowManager's grid-aware viewport method
+    const rowsInViewport = rowManager.getRowsInViewport({
+      y: viewportY,
+      height: viewportHeight
     });
+
+    // Filter to only rows with elements
+    return rowsInViewport.filter(row =>
+      row.elementIds && row.elementIds.size > 0
+    );
   }, [rowManager, viewport.y, viewport.height, elementToRow]);
 
-  // Render RowHeader components for visible rows - memoized
+  // Render RowHeader components for visible rows - with pre-computed grid positions
   const rowHeaders = useMemo(() => {
     return visibleRows.map(row => (
       <MemoizedRowHeader
         key={row.id}
         row={row}
-        y={row.yStart} // Pass row start, RowHeader will calculate center
+        y={row.yStart}           // Grid-aligned row start
+        yCenter={row.yCenter}    // Pre-computed grid-aligned center
         canvasWidth={CANVAS_CONFIG.MAX_WIDTH}
         debugMode={debugMode}
       />
@@ -861,7 +825,7 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
         {debugMode && (
           <div
             className="fixed bottom-20 right-6 bg-white border-2 border-green-500 rounded p-4 shadow-lg max-w-sm text-xs font-mono z-50"
-            style={{ maxHeight: "300px", overflowY: "auto" }}
+            style={{ maxHeight: "400px", overflowY: "auto" }}
           >
             <p className="font-bold text-green-600 mb-2">Debug Info</p>
             <div className="space-y-1 text-gray-700">
@@ -869,20 +833,22 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
               <p>Scroll Y: {Math.round(canvasState.scrollY)}</p>
               <p>Scroll X: {Math.round(canvasState.scrollX)}</p>
               <p>Elements: {elementCount}</p>
-              <p>
-                Guide lines: {viewportGuideLinesRef.current?.length || 0}{" "}
-                visible
-              </p>
-              <p>Guide spacing: {guideLineSpacing}px</p>
-              <p>
-                Canvas range: Y [{CANVAS_CONFIG.MIN_Y}, {CANVAS_CONFIG.MAX_Y}]
-              </p>
-              <p>Max width: {CANVAS_CONFIG.MAX_WIDTH}px</p>
-              
-              {/* Row System Debug Info (Story 1.5) */}
+
+              {/* Grid System Debug Info */}
+              <div className="border-t border-gray-300 pt-2 mt-2">
+                <p className="font-bold text-purple-600 mb-1">Grid System</p>
+                <p>Row height: {GRID_CONFIG.ROW_HEIGHT}px</p>
+                <p>Current row: {GridCalculator.getRowId(canvasState.scrollY)}</p>
+                <p>Grid origin: {GRID_CONFIG.ORIGIN_Y}</p>
+                <p>Guide lines visible: {viewportGuideLinesRef.current?.length || 0}</p>
+                <p>Canvas width: {GRID_CONFIG.CANVAS_WIDTH}px</p>
+              </div>
+
+              {/* Row System Debug Info */}
               <div className="border-t border-gray-300 pt-2 mt-2">
                 <p className="font-bold text-blue-600 mb-1">Row System</p>
                 <p>Rows with elements: {getRowCount()}</p>
+                <p>Visible rows: {visibleRows.length}</p>
                 <p>Element assignments: {elementToRow.size}</p>
                 <p>Total assignments: {rowStats.totalAssignments}</p>
                 <p>Avg assignment time: {rowStats.averageAssignmentTime.toFixed(2)}ms</p>

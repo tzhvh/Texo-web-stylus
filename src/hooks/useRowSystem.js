@@ -1,10 +1,12 @@
 /**
- * useRowSystem Hook for Canvas-Row Synchronization
+ * Grid-Aware useRowSystem Hook for Canvas-Row Synchronization
  *
- * Synchronizes Excalidraw canvas state with RowManager to automatically
+ * Synchronizes Excalidraw canvas state with grid-aware RowManager to automatically
  * assign drawn elements to rows based on Y coordinates. Handles element
  * lifecycle events (new, modified, deleted) with debounced processing
  * for optimal performance during rapid drawing scenarios.
+ *
+ * Integrates with grid-aligned coordinate system for deterministic positioning.
  *
  * @hook useRowSystem
  * @description React hook for managing element-to-row assignments in Magic Canvas
@@ -14,6 +16,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import Logger from "../utils/logger.js";
 import RowManager from "../utils/rowManager.js";
 import { saveSessionState, loadSessionState } from "../utils/workspaceDB.js";
+import { GRID_CONFIG } from "../config/gridConfig.js";
 
 /**
  * @typedef {Object} UseRowSystemOptions
@@ -268,10 +271,12 @@ export default function useRowSystem({
         lastSaveTimeRef.current = now;
 
         if (debugMode) {
-          Logger.debug("useRowSystem", "State saved to IndexedDB", {
+          Logger.debug("useRowSystem", "Grid-aware state saved to IndexedDB", {
             workspaceId,
             rowCount: serializedState.rows.length,
             elementMappings: Object.keys(serializedState.elementToRow).length,
+            gridVersion: serializedState.version,
+            gridRowHeight: GRID_CONFIG.ROW_HEIGHT,
             saveTime: Date.now() - now + "ms",
           });
         }
@@ -311,10 +316,12 @@ export default function useRowSystem({
         rowManager.deserialize(savedState);
 
         if (debugMode) {
-          Logger.debug("useRowSystem", "State loaded from IndexedDB", {
+          Logger.debug("useRowSystem", "Grid-aware state loaded from IndexedDB", {
             workspaceId,
             rowCount: savedState.rows.length,
             elementMappings: Object.keys(savedState.elementToRow).length,
+            gridVersion: savedState.version || 1,
+            expectedGridRowHeight: GRID_CONFIG.ROW_HEIGHT,
           });
         }
 

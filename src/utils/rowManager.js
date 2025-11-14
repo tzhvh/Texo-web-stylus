@@ -1,74 +1,77 @@
 /**
- * RowManager Class for Magic Canvas Row State Tracking
+ * Grid-Aware RowManager Class for Magic Canvas Row State Tracking
  *
- * Serves as the authoritative source for row state in Magic Canvas.
- * Provides O(1) lookup performance for row operations and maintains
- * stable identifiers across pan/zoom/reload operations.
+ * Manages row metadata and element-to-row assignments using grid-aligned
+ * coordinate system. Serves as the authoritative source for row state with
+ * O(1) lookup performance and deterministic positioning.
+ *
+ * Key improvements:
+ * - Grid-anchored positioning (no floating point drift)
+ * - Redundant assignment guards (prevents accumulation)
+ * - Smart OCR status management (only resets on actual moves)
+ * - Sparse storage (only tracks rows with content)
  *
  * @class RowManager
- * @description Manages row metadata and element-to-row assignments for Magic Canvas
  */
 
 /**
  * @typedef {Object} Row
  * @property {string} id - Stable unique identifier (format: "row-{index}")
- * @property {number} yStart - Top Y coordinate of the row
- * @property {number} yEnd - Bottom Y coordinate of the row (yStart + rowHeight)
+ * @property {number} index - Grid row index
+ * @property {number} yStart - Top Y coordinate of the row (grid-aligned)
+ * @property {number} yEnd - Bottom Y coordinate of the row (grid-aligned)
+ * @property {number} yCenter - Center Y coordinate of the row (grid-aligned)
+ * @property {number} height - Row height (from grid config)
  * @property {Set<string>} elementIds - IDs of Excalidraw elements in this row
  * @property {'pending'|'processing'|'completed'|'error'} ocrStatus - OCR processing status
  * @property {'pending'|'processing'|'validated'|'invalid'|'error'} validationStatus - Validation status
  * @property {string|null} transcribedLatex - LaTeX result from OCR
  * @property {Object|null} validationResult - Result from equivalence checking
  * @property {number} lastModified - Timestamp of last modification
+ * @property {number} created - Timestamp of row creation
  * @property {string|null} tileHash - Hash of OCR tile for caching
  * @property {string|null} errorMessage - Error message if processing failed
  */
 
-/**
- * @typedef {Object} Viewport
- * @property {number} y - Y coordinate of viewport top
- * @property {number} height - Height of viewport
- * @property {number} [width] - Width of viewport (optional)
- * @property {number} [x] - X coordinate of viewport left (optional)
- */
-
-/**
- * @typedef {Object} SerializedState
- * @property {number} rowHeight - Row height configuration
- * @property {number} startY - Starting Y position
- * @property {Array<Row>} rows - Array of serialized row objects
- * @property {Object} elementToRow - Element ID to row ID mapping
- */
-
 import Logger from "./logger.js";
+import { GridCalculator, GRID_CONFIG } from "../config/gridConfig.js";
 
 export class RowManager {
   /**
-   * Create a new RowManager instance
+   * Create a new grid-aware RowManager instance
    *
    * @param {Object} config - Configuration options
-   * @param {number} [config.rowHeight=384] - Height of each row in pixels (matches OCR tile height)
-   * @param {number} [config.startY=0] - Starting Y position for first row
+   * @param {number} [config.rowHeight=384] - Height of each row in pixels
+   * @param {number} [config.startY=0] - Starting Y position for grid origin
    */
   constructor({ rowHeight = 384, startY = 0 } = {}) {
+    // Validate that rowHeight matches grid config
+    if (rowHeight !== GRID_CONFIG.ROW_HEIGHT) {
+      Logger.warn("RowManager", "rowHeight doesn't match GRID_CONFIG", {
+        providedRowHeight: rowHeight,
+        gridRowHeight: GRID_CONFIG.ROW_HEIGHT
+      });
+    }
+
     this.rowHeight = rowHeight;
     this.startY = startY;
 
-    // Map<string, Row> - All rows by ID for O(1) lookup
+    // Sparse storage - Map<string, Row> - Only rows with data
     this.rows = new Map();
 
-    // Map<string, string> - Element ID to row ID mapping for O(1) element lookup
+    // Element assignment - Map<string, string> - Element ID to primary row ID
     this.elementToRow = new Map();
 
-    Logger.debug("RowManager", "Initialized", {
-      rowHeight,
-      startY,
+    Logger.debug("RowManager", "Initialized with grid-aware system", {
+      rowHeight: this.rowHeight,
+      startY: this.startY,
+      gridRowHeight: GRID_CONFIG.ROW_HEIGHT,
       timestamp: Date.now(),
     });
   }
 
   /**
-   * Get the row for a given Y coordinate
+   * Get the row for a given Y coordinate (grid-aligned)
    *
    * @param {number} y - Y coordinate to find row for
    * @returns {Row|null} Row containing the Y coordinate, or null if invalid
@@ -81,32 +84,26 @@ export class RowManager {
       return null;
     }
 
-    // Calculate row index based on Y position with robust bounds checking
-    // Only clamp negative coordinates to prevent issues
-    const clampedY = Math.max(0, y);
-
-    // Ensure negative Y coordinates map to row 0
-    let rowIndex = Math.floor((clampedY - this.startY) / this.rowHeight);
-    rowIndex = Math.max(0, rowIndex); // Prevent negative indices
-
-    // Generate deterministic row ID
-    const rowId = `row-${rowIndex}`;
+    // Use grid calculator for deterministic row ID
+    const rowId = GridCalculator.getRowId(y);
 
     // Return existing row or create new one
     if (this.rows.has(rowId)) {
       return this.rows.get(rowId);
     }
 
-    // Create new row if it doesn't exist
-    const newRow = this._createRow(rowIndex);
+    // Create new row at grid-aligned position
+    const rowIndex = GridCalculator.parseRowId(rowId);
+    const newRow = this._createRowAtIndex(rowIndex);
     this.rows.set(rowId, newRow);
 
-    Logger.debug("RowManager", "Created new row", {
+    Logger.debug("RowManager", "Created new grid-aligned row", {
       rowId,
       rowIndex,
       y,
       yStart: newRow.yStart,
       yEnd: newRow.yEnd,
+      yCenter: newRow.yCenter,
     });
 
     return newRow;
@@ -114,14 +111,15 @@ export class RowManager {
 
   /**
    * Assign an element to the appropriate row based on its position
+   * Uses element center for primary row assignment
    *
    * @param {Object} element - ExcalidrawElement object
    * @param {string} element.id - Unique element identifier
    * @param {number} element.x - X coordinate (top-left)
-   * @param {number} element.y - Y coordinate (top-left)
+   * @param {number} element.y - Y coordinate (top-left) or array of Y coordinates
    * @param {number} element.width - Element width
    * @param {number} element.height - Element height
-   * @returns {string} ID of the row the element was assigned to
+   * @returns {string|null} ID of the primary row the element was assigned to
    */
   assignElement(element) {
     if (!element || !element.id) {
@@ -131,65 +129,31 @@ export class RowManager {
       throw new Error("Element must have a valid id property");
     }
 
-    // Extract element center Y coordinate from bounding box
-    // Excalidraw elements have: x, y (top-left), width, height
-    // For stroke elements, y may be an array of points - extract min/max
-    let minY, maxY;
-    if (Array.isArray(element.y)) {
-      if (element.y.length === 0) {
-        Logger.warn("RowManager", "Element has empty Y coordinate array", {
-          elementId: element.id,
-          y: element.y,
-        });
-        return null;
-      }
-      if (element.y.length === 1) {
-        Logger.warn("RowManager", "Element has insufficient Y coordinates", {
-          elementId: element.id,
-          y: element.y,
-        });
-        return null;
-      }
-      // Extract min and max Y coordinates from stroke points
-      minY = Math.min(...element.y);
-      maxY = Math.max(...element.y);
-    } else if (typeof element.y === "number" && isFinite(element.y)) {
-      minY = element.y;
-      maxY = element.y + (element.height || 0);
-    } else {
-      Logger.warn("RowManager", "Element has invalid Y coordinate", {
+    // Get element bounds using grid calculator
+    const bounds = GridCalculator.getElementBounds(element);
+
+    // Validate bounds
+    if (bounds.yMin === bounds.yMax && bounds.yMin === 0) {
+      Logger.warn("RowManager", "Element has invalid bounds", {
         elementId: element.id,
-        y: element.y,
+        bounds,
       });
       return null;
     }
 
-    // Calculate center Y coordinate from element bounds with bounds validation
-    const clampedMinY = Math.max(-10000, Math.min(10000, minY)); // Clamp to reasonable bounds
-    const clampedMaxY = Math.max(-10000, Math.min(10000, maxY));
-    const centerY = (clampedMinY + clampedMaxY) / 2;
-
-    // Get target row for center Y coordinate with bounds validation
-    const clampedCenterY = Math.max(0, Math.min(10000, centerY)); // Ensure reasonable Y coordinate
-    const targetRow = this.getRowForY(clampedCenterY);
-    if (!targetRow) {
-      Logger.error("RowManager", "Could not determine target row for element", {
-        elementId: element.id,
-        centerY: clampedCenterY,
-        originalCenterY: centerY,
-      });
-      return null;
-    }
+    // Get primary row index (row with most coverage)
+    const primaryRowIndex = GridCalculator.getPrimaryRowIndex(element);
+    const targetRowId = `row-${primaryRowIndex}`;
 
     // Guard: Check if element is already assigned to the correct row
     const currentRowId = this.elementToRow.get(element.id);
-    if (currentRowId === targetRow.id) {
+    if (currentRowId === targetRowId) {
       // Element already in correct row, skip redundant reassignment
       Logger.debug("RowManager", "Element already in correct row, skipping reassignment", {
         elementId: element.id,
-        rowId: targetRow.id,
+        rowId: targetRowId,
       });
-      return targetRow.id;
+      return targetRowId;
     }
 
     // Element needs to be moved (or is new)
@@ -198,6 +162,17 @@ export class RowManager {
     // Remove element from previous row if assigned elsewhere
     if (!isNewElement) {
       this._removeElementFromPreviousRow(element.id);
+    }
+
+    // Get or create target row at grid position
+    const targetRow = this.getRowForY(bounds.yMin + (bounds.yMax - bounds.yMin) / 2);
+    if (!targetRow) {
+      Logger.error("RowManager", "Could not determine target row for element", {
+        elementId: element.id,
+        bounds,
+        primaryRowIndex,
+      });
+      return null;
     }
 
     // Add element to target row
@@ -216,7 +191,7 @@ export class RowManager {
       elementId: element.id,
       rowId: targetRow.id,
       previousRowId: currentRowId || "none",
-      centerY,
+      bounds,
       elementCount: targetRow.elementIds.size,
     });
 
@@ -286,9 +261,33 @@ export class RowManager {
   }
 
   /**
+   * Get rows in Y coordinate range (for viewport culling)
+   *
+   * @param {number} yStart - Start Y coordinate
+   * @param {number} yEnd - End Y coordinate
+   * @returns {Row[]} Array of rows in range
+   */
+  getRowsInRange(yStart, yEnd) {
+    const startIndex = GridCalculator.getRowIndex(yStart);
+    const endIndex = GridCalculator.getRowIndex(yEnd);
+
+    const rowsInRange = [];
+    for (let i = startIndex; i <= endIndex; i++) {
+      const rowId = `row-${i}`;
+      if (this.rows.has(rowId)) {
+        rowsInRange.push(this.rows.get(rowId));
+      }
+    }
+
+    return rowsInRange;
+  }
+
+  /**
    * Get rows that are visible within the given viewport
    *
-   * @param {Viewport} viewport - Viewport bounds
+   * @param {Object} viewport - Viewport bounds
+   * @param {number} viewport.y - Y coordinate of viewport top
+   * @param {number} viewport.height - Height of viewport
    * @returns {Row[]} Array of rows within viewport
    */
   getRowsInViewport(viewport) {
@@ -305,13 +304,11 @@ export class RowManager {
       return [];
     }
 
-    const viewportTop = viewport.y;
-    const viewportBottom = viewport.y + viewport.height;
+    const buffer = GRID_CONFIG.VIEWPORT_BUFFER;
+    const viewportTop = viewport.y - buffer;
+    const viewportBottom = viewport.y + viewport.height + buffer;
 
-    return this.getAllRows().filter((row) => {
-      // Row is visible if any part overlaps with viewport
-      return row.yStart < viewportBottom && row.yEnd > viewportTop;
-    });
+    return this.getRowsInRange(viewportTop, viewportBottom);
   }
 
   /**
@@ -334,12 +331,12 @@ export class RowManager {
   /**
    * Serialize RowManager state for persistence
    *
-   * @returns {SerializedState} Serialized state object
+   * @returns {Object} Serialized state object
    */
   serialize() {
     const serializedRows = this.getAllRows().map((row) => ({
       ...row,
-      elementIds: Array.from(row.elementIds), // Convert Set to Array for JSON serialization
+      elementIds: Array.from(row.elementIds), // Convert Set to Array
     }));
 
     return {
@@ -347,13 +344,18 @@ export class RowManager {
       startY: this.startY,
       rows: serializedRows,
       elementToRow: Object.fromEntries(this.elementToRow), // Convert Map to Object
+      version: 2, // Version 2: grid-aware system
+      gridConfig: {
+        ROW_HEIGHT: GRID_CONFIG.ROW_HEIGHT,
+        ORIGIN_Y: GRID_CONFIG.ORIGIN_Y
+      }
     };
   }
 
   /**
    * Deserialize and restore RowManager state from persistence
    *
-   * @param {SerializedState} state - Serialized state object
+   * @param {Object} state - Serialized state object
    * @returns {void}
    */
   deserialize(state) {
@@ -370,15 +372,20 @@ export class RowManager {
       this.elementToRow.clear();
 
       // Restore configuration
-      this.rowHeight = state.rowHeight || 384;
+      this.rowHeight = state.rowHeight || GRID_CONFIG.ROW_HEIGHT;
       this.startY = state.startY || 0;
 
-      // Restore rows
+      // Restore rows with grid-aligned coordinates
       if (Array.isArray(state.rows)) {
         state.rows.forEach((rowData) => {
+          // Ensure grid alignment for loaded rows
+          const rowIndex = GridCalculator.parseRowId(rowData.id);
+          const gridBounds = GridCalculator.getRowBounds(rowIndex);
+
           const row = {
             ...rowData,
-            elementIds: new Set(rowData.elementIds || []), // Convert Array back to Set
+            ...gridBounds, // Override with grid-aligned coordinates
+            elementIds: new Set(rowData.elementIds || []),
           };
           this.rows.set(row.id, row);
         });
@@ -389,11 +396,12 @@ export class RowManager {
         this.elementToRow = new Map(Object.entries(state.elementToRow));
       }
 
-      Logger.info("RowManager", "State deserialized successfully", {
+      Logger.info("RowManager", "State deserialized successfully with grid alignment", {
         rowCount: this.rows.size,
         elementMappings: this.elementToRow.size,
         rowHeight: this.rowHeight,
         startY: this.startY,
+        version: state.version || 1,
       });
     } catch (error) {
       Logger.error("RowManager", "Failed to deserialize state", {
@@ -407,25 +415,25 @@ export class RowManager {
   // Private helper methods
 
   /**
-   * Create a new row object with default values
+   * Create a new row object at grid-aligned position
    *
    * @private
-   * @param {number} rowIndex - Index of the row
-   * @returns {Row} New row object
+   * @param {number} rowIndex - Grid row index
+   * @returns {Row} New row object with grid-aligned coordinates
    */
-  _createRow(rowIndex) {
-    const yStart = this.startY + rowIndex * this.rowHeight;
-    const yEnd = yStart + this.rowHeight;
+  _createRowAtIndex(rowIndex) {
+    const bounds = GridCalculator.getRowBounds(rowIndex);
 
     return {
       id: `row-${rowIndex}`,
-      yStart,
-      yEnd,
+      index: rowIndex,
+      ...bounds, // yStart, yEnd, yCenter, height
       elementIds: new Set(),
       ocrStatus: "pending",
       validationStatus: "pending",
       transcribedLatex: null,
       validationResult: null,
+      created: Date.now(),
       lastModified: Date.now(),
       tileHash: null,
       errorMessage: null,
