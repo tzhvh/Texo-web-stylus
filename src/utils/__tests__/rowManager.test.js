@@ -231,14 +231,14 @@ describe('RowManager', () => {
       const result = rowManager.assignElement(invalidElement);
       expect(result).toBeNull();
       
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        'RowManager',
-        'Element has insufficient Y coordinates',
-        expect.objectContaining({
-          elementId: 'invalid-element',
-          yCoords: [50]
-        })
-      );
+        expect(mockLogger.warn).toHaveBeenCalledWith(
+          'RowManager',
+          'Element has insufficient Y coordinates',
+          expect.objectContaining({
+            elementId: 'invalid-element',
+            y: [50]
+          })
+        );
     });
 
     it('should return null if row cannot be determined', () => {

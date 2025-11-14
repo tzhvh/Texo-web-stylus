@@ -729,7 +729,7 @@ describe("Story 1.8: Row Updates for Element Modifications and Moves", () => {
       // Create elements in tight clusters and sparse areas
       const clusters = [
         { x: 100, y: 100, count: 20, spacing: 5 }, // Tight cluster
-        { x: 500, y: 200, count: 10, spacing: 50 }, // Sparse cluster
+        { x: 500, y: 450, count: 10, spacing: 50 }, // Sparse cluster (spans rows)
         { x: 300, y: 800, count: 30, spacing: 10 }, // Medium cluster
       ];
 

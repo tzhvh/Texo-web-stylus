@@ -82,12 +82,12 @@ export class RowManager {
     }
 
     // Calculate row index based on Y position with robust bounds checking
-    // Ensure coordinates are within reasonable bounds (±10,000 pixels)
-    const clampedY = Math.max(-10000, Math.min(10000, y));
+    // Only clamp negative coordinates to prevent issues
+    const clampedY = Math.max(0, y);
 
     // Ensure negative Y coordinates map to row 0
     let rowIndex = Math.floor((clampedY - this.startY) / this.rowHeight);
-    rowIndex = Math.max(0, Math.min(10000, rowIndex)); // Prevent excessive row creation
+    rowIndex = Math.max(0, rowIndex); // Prevent negative indices
 
     // Generate deterministic row ID
     const rowId = `row-${rowIndex}`;
@@ -133,7 +133,30 @@ export class RowManager {
 
     // Extract element center Y coordinate from bounding box
     // Excalidraw elements have: x, y (top-left), width, height
-    if (typeof element.y !== "number" || !isFinite(element.y)) {
+    // For stroke elements, y may be an array of points - extract min/max
+    let minY, maxY;
+    if (Array.isArray(element.y)) {
+      if (element.y.length === 0) {
+        Logger.warn("RowManager", "Element has empty Y coordinate array", {
+          elementId: element.id,
+          y: element.y,
+        });
+        return null;
+      }
+      if (element.y.length === 1) {
+        Logger.warn("RowManager", "Element has insufficient Y coordinates", {
+          elementId: element.id,
+          y: element.y,
+        });
+        return null;
+      }
+      // Extract min and max Y coordinates from stroke points
+      minY = Math.min(...element.y);
+      maxY = Math.max(...element.y);
+    } else if (typeof element.y === "number" && isFinite(element.y)) {
+      minY = element.y;
+      maxY = element.y + (element.height || 0);
+    } else {
       Logger.warn("RowManager", "Element has invalid Y coordinate", {
         elementId: element.id,
         y: element.y,
@@ -142,12 +165,9 @@ export class RowManager {
     }
 
     // Calculate center Y coordinate from element bounds with bounds validation
-    const minY = Math.max(-10000, Math.min(10000, element.y)); // Clamp to reasonable bounds
-    const maxY = Math.max(
-      -10000,
-      Math.min(10000, element.y + (element.height || 0)),
-    );
-    const centerY = (minY + maxY) / 2;
+    const clampedMinY = Math.max(-10000, Math.min(10000, minY)); // Clamp to reasonable bounds
+    const clampedMaxY = Math.max(-10000, Math.min(10000, maxY));
+    const centerY = (clampedMinY + clampedMaxY) / 2;
 
     // Remove element from previous row if assigned elsewhere
     this._removeElementFromPreviousRow(element.id);

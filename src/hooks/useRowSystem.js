@@ -10,10 +10,10 @@
  * @description React hook for managing element-to-row assignments in Magic Canvas
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
-import Logger from '../utils/logger.js';
-import RowManager from '../utils/rowManager.js';
-import { saveSessionState, loadSessionState } from '../utils/workspaceDB.js';
+import { useState, useCallback, useRef, useEffect } from "react";
+import Logger from "../utils/logger.js";
+import RowManager from "../utils/rowManager.js";
+import { saveSessionState, loadSessionState } from "../utils/workspaceDB.js";
 
 /**
  * @typedef {Object} UseRowSystemOptions
@@ -49,8 +49,8 @@ export default function useRowSystem({
   rowManager,
   debounceMs = 50,
   debugMode = false,
-  workspaceId = 'default',
-  autoSaveMs = 2000
+  workspaceId = "default",
+  autoSaveMs = 2000,
 }) {
   // Track element-to-row mappings for UI updates
   const [elementToRow, setElementToRow] = useState(new Map());
@@ -60,7 +60,7 @@ export default function useRowSystem({
     totalAssignments: 0,
     lastAssignmentTime: 0,
     averageAssignmentTime: 0,
-    errorCount: 0
+    errorCount: 0,
   });
 
   // Track persistence state
@@ -71,11 +71,19 @@ export default function useRowSystem({
   const previousElementsRef = useRef(new Map());
   const debounceTimeoutRef = useRef(null);
   const assignmentTimesRef = useRef([]);
+  const assignmentTimesIndexRef = useRef(0); // For circular buffer
+  const maxAssignmentHistory = 1000; // Keep last 1000 assignment times
+
+  // Enhanced debouncing for RowManager operations
+  const rowManagerUpdateQueueRef = useRef(new Map()); // rowId -> updates
+  const rowManagerDebounceTimeoutRef = useRef(null);
+  const rowManagerDebounceMs = 16; // ~60fps for smooth UI
   const processingRef = useRef(false);
   const autoSaveTimeoutRef = useRef(null);
   const lastSaveTimeRef = useRef(0);
   const changeQueueRef = useRef([]);
   const queueTimeoutRef = useRef(null);
+  const processElementChangesRef = useRef(null);
 
   /**
    * Memory cleanup function with circular buffer pattern
@@ -84,50 +92,10 @@ export default function useRowSystem({
     const maxHistory = 1000;
     if (assignmentTimesRef.current.length > maxHistory) {
       // Use circular buffer pattern for better performance
-      assignmentTimesRef.current = assignmentTimesRef.current.slice(-maxHistory);
+      assignmentTimesRef.current =
+        assignmentTimesRef.current.slice(-maxHistory);
     }
   }, []);
-
-  /**
-   * Queue changes for batch processing
-   *
-   * @private
-   * @param {Object} changes - Element changes to queue
-   */
-  const queueChanges = useCallback((changes) => {
-    // Add to queue
-    changeQueueRef.current.push(changes);
-
-    // Clear existing queue timeout
-    if (queueTimeoutRef.current) {
-      clearTimeout(queueTimeoutRef.current);
-    }
-
-    // Process queue after a short delay for better batching
-    queueTimeoutRef.current = setTimeout(() => {
-      const queue = changeQueueRef.current;
-      if (queue.length === 0) return;
-
-      // Merge all queued changes into a single batch
-      const mergedChanges = {
-        new: [],
-        modified: [],
-        deleted: []
-      };
-
-      for (const changes of queue) {
-        mergedChanges.new.push(...changes.new);
-        mergedChanges.modified.push(...changes.modified);
-        mergedChanges.deleted.push(...changes.deleted);
-      }
-
-      // Clear queue
-      changeQueueRef.current = [];
-
-      // Process merged changes
-      processElementChanges(mergedChanges);
-    }, 16); // ~60fps for smooth performance
-  }, [processElementChanges]);
 
   /**
    * Clear all queued changes without processing
@@ -142,30 +110,6 @@ export default function useRowSystem({
     changeQueueRef.current = [];
   }, []);
 
-  return {
-  /**
-   * Check if element has changed in ways that affect row assignment
-   *
-   * @private
-   * @param {Object} element - Current element state
-   * @param {Object} previousElement - Previous element state
-   * @returns {boolean} True if element affects row assignment
-   */
-  const hasElementChanged = useCallback((element, previousElement) => {
-    if (!element || !previousElement) return true;
-
-    // Only check properties that affect row assignment
-    const relevantProps = ['x', 'y', 'width', 'height', 'isDeleted'];
-
-    for (const prop of relevantProps) {
-      if (JSON.stringify(element[prop]) !== JSON.stringify(previousElement[prop])) {
-        return true;
-      }
-    }
-
-    return false;
-  }, []);
-
   /**
    * Queue changes for batch processing
    *
@@ -190,7 +134,7 @@ export default function useRowSystem({
       const mergedChanges = {
         new: [],
         modified: [],
-        deleted: []
+        deleted: [],
       };
 
       for (const changes of queue) {
@@ -202,10 +146,37 @@ export default function useRowSystem({
       // Clear queue
       changeQueueRef.current = [];
 
-      // Process merged changes
-      processElementChanges(mergedChanges);
+      // Process merged changes using ref to avoid circular dependency
+      if (processElementChangesRef.current) {
+        processElementChangesRef.current(mergedChanges);
+      }
     }, 16); // ~60fps for smooth performance
-  }, [processElementChanges]);
+  }, []);
+
+  /**
+   * Check if element has changed in ways that affect row assignment
+   *
+   * @private
+   * @param {Object} element - Current element state
+   * @param {Object} previousElement - Previous element state
+   * @returns {boolean} True if element affects row assignment
+   */
+  const hasElementChanged = useCallback((element, previousElement) => {
+    if (!element || !previousElement) return true;
+
+    // Only check properties that affect row assignment
+    const relevantProps = ["x", "y", "width", "height", "isDeleted"];
+
+    for (const prop of relevantProps) {
+      if (
+        JSON.stringify(element[prop]) !== JSON.stringify(previousElement[prop])
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }, []);
 
   /**
    * Detect element changes (new, modified, deleted)
@@ -215,28 +186,31 @@ export default function useRowSystem({
    * @param {Map} previousMap - Previous elements map
    * @returns {Object} Object with arrays of new, modified, and deleted elements
    */
-  const detectElementChanges = useCallback((currentElements, previousMap) => {
-    const currentMap = new Map(currentElements.map(el => [el.id, el]));
-    const changes = { new: [], modified: [], deleted: [] };
+  const detectElementChanges = useCallback(
+    (currentElements, previousMap) => {
+      const currentMap = new Map(currentElements.map((el) => [el.id, el]));
+      const changes = { new: [], modified: [], deleted: [] };
 
-    // Find new and modified elements
-    for (const [id, element] of currentMap) {
-      if (!previousMap.has(id)) {
-        changes.new.push(element);
-      } else if (hasElementChanged(element, previousMap.get(id))) {
-        changes.modified.push(element);
+      // Find new and modified elements
+      for (const [id, element] of currentMap) {
+        if (!previousMap.has(id)) {
+          changes.new.push(element);
+        } else if (hasElementChanged(element, previousMap.get(id))) {
+          changes.modified.push(element);
+        }
       }
-    }
 
-    // Find deleted elements
-    for (const [id] of previousMap) {
-      if (!currentMap.has(id)) {
-        changes.deleted.push(id);
+      // Find deleted elements
+      for (const [id] of previousMap) {
+        if (!currentMap.has(id)) {
+          changes.deleted.push(id);
+        }
       }
-    }
 
-    return changes;
-  }, [hasElementChanged]);
+      return changes;
+    },
+    [hasElementChanged],
+  );
 
   /**
    * Save current RowManager state to IndexedDB
@@ -245,53 +219,56 @@ export default function useRowSystem({
    * @param {boolean} [force=false] - Force save even if recently saved
    * @returns {Promise<void>}
    */
-  const saveState = useCallback(async (force = false) => {
-    const now = Date.now();
+  const saveState = useCallback(
+    async (force = false) => {
+      const now = Date.now();
 
-    // Throttle saves to avoid excessive writes (minimum 1s between saves unless forced)
-    if (!force && now - lastSaveTimeRef.current < 1000) {
-      if (debugMode) {
-        Logger.debug('useRowSystem', 'Save throttled - too recent', {
-          timeSinceLastSave: now - lastSaveTimeRef.current
-        });
+      // Throttle saves to avoid excessive writes (minimum 1s between saves unless forced)
+      if (!force && now - lastSaveTimeRef.current < 1000) {
+        if (debugMode) {
+          Logger.debug("useRowSystem", "Save throttled - too recent", {
+            timeSinceLastSave: now - lastSaveTimeRef.current,
+          });
+        }
+        return;
       }
-      return;
-    }
 
-    try {
-      setIsSaving(true);
+      try {
+        setIsSaving(true);
 
-      // Serialize RowManager state
-      const serializedState = rowManager.serialize();
+        // Serialize RowManager state
+        const serializedState = rowManager.serialize();
 
-      // Save to IndexedDB with workspace-specific key
-      await saveSessionState(`rowManager-${workspaceId}`, serializedState);
+        // Save to IndexedDB with workspace-specific key
+        await saveSessionState(`rowManager-${workspaceId}`, serializedState);
 
-      lastSaveTimeRef.current = now;
+        lastSaveTimeRef.current = now;
 
-      if (debugMode) {
-        Logger.debug('useRowSystem', 'State saved to IndexedDB', {
+        if (debugMode) {
+          Logger.debug("useRowSystem", "State saved to IndexedDB", {
+            workspaceId,
+            rowCount: serializedState.rows.length,
+            elementMappings: Object.keys(serializedState.elementToRow).length,
+            saveTime: Date.now() - now + "ms",
+          });
+        }
+      } catch (error) {
+        Logger.error("useRowSystem", "Failed to save state to IndexedDB", {
           workspaceId,
-          rowCount: serializedState.rows.length,
-          elementMappings: Object.keys(serializedState.elementToRow).length,
-          saveTime: (Date.now() - now) + 'ms'
+          error: error.message,
+          stack: error.stack,
         });
-      }
-    } catch (error) {
-      Logger.error('useRowSystem', 'Failed to save state to IndexedDB', {
-        workspaceId,
-        error: error.message,
-        stack: error.stack
-      });
 
-      setStats(prev => ({
-        ...prev,
-        errorCount: prev.errorCount + 1
-      }));
-    } finally {
-      setIsSaving(false);
-    }
-  }, [rowManager, workspaceId, debugMode]);
+        setStats((prev) => ({
+          ...prev,
+          errorCount: prev.errorCount + 1,
+        }));
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [rowManager, workspaceId, debugMode],
+  );
 
   /**
    * Load RowManager state from IndexedDB
@@ -311,33 +288,33 @@ export default function useRowSystem({
         rowManager.deserialize(savedState);
 
         if (debugMode) {
-          Logger.debug('useRowSystem', 'State loaded from IndexedDB', {
+          Logger.debug("useRowSystem", "State loaded from IndexedDB", {
             workspaceId,
             rowCount: savedState.rows.length,
-            elementMappings: Object.keys(savedState.elementToRow).length
+            elementMappings: Object.keys(savedState.elementToRow).length,
           });
         }
 
         return true;
       } else {
         if (debugMode) {
-          Logger.debug('useRowSystem', 'No saved state found in IndexedDB', {
-            workspaceId
+          Logger.debug("useRowSystem", "No saved state found in IndexedDB", {
+            workspaceId,
           });
         }
 
         return false;
       }
     } catch (error) {
-      Logger.error('useRowSystem', 'Failed to load state from IndexedDB', {
+      Logger.error("useRowSystem", "Failed to load state from IndexedDB", {
         workspaceId,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
 
-      setStats(prev => ({
+      setStats((prev) => ({
         ...prev,
-        errorCount: prev.errorCount + 1
+        errorCount: prev.errorCount + 1,
       }));
 
       return false;
@@ -371,205 +348,294 @@ export default function useRowSystem({
   }, [saveState, autoSaveMs, clearQueue]);
 
   /**
-   * Process element changes with optimized batch operations
+   * Process element changes and update RowManager
    *
    * @private
    * @param {Object} changes - Element changes from detectElementChanges
    */
-  const processElementChanges = useCallback((changes) => {
-    if (processingRef.current) {
-      if (debugMode) {
-        Logger.debug('useRowSystem', 'Skipping processing - already in progress');
+  const processElementChanges = useCallback(
+    (changes) => {
+      if (processingRef.current) {
+        if (debugMode) {
+          Logger.debug(
+            "useRowSystem",
+            "Skipping processing - already in progress",
+          );
+        }
+        return;
       }
-      return;
-    }
 
-    processingRef.current = true;
-    const startTime = performance.now();
+      processingRef.current = true;
+      const startTime = performance.now();
 
-    try {
-      const { new: newElements, modified: modifiedElements, deleted: deletedIds } = changes;
+      try {
+        const {
+          new: newElements,
+          modified: modifiedElements,
+          deleted: deletedIds,
+        } = changes;
 
-      // Pre-allocate Maps for O(1) lookups
-      const elementIdToCurrentRowMap = new Map();
-      const rowsToUpdate = new Map();
-      const assignmentTimes = [];
+        // Pre-allocate Maps for O(1) lookups
+        const elementIdToCurrentRowMap = new Map();
+        const rowsToUpdate = new Map();
+        const assignmentTimes = [];
 
-      // Process new elements
-      for (const element of newElements) {
-        if (element.id && !element.id.startsWith('guide-')) {
-          const assignmentStartTime = performance.now();
-          const rowId = rowManager.assignElement(element);
-          const assignmentTime = performance.now() - assignmentStartTime;
+        // Process new elements
+        for (const element of newElements) {
+          if (element.id && !element.id.startsWith("guide-")) {
+            const assignmentStartTime = performance.now();
+            const rowId = rowManager.assignElement(element);
+            const assignmentTime = performance.now() - assignmentStartTime;
 
-          if (rowId) {
-            assignmentTimes.push(assignmentTime);
-            // Batch the row update
-            rowsToUpdate.set(rowId, { ocrStatus: 'pending', lastModified: Date.now() });
+            if (rowId) {
+              assignmentTimes.push(assignmentTime);
+              // Batch the row update
+              rowsToUpdate.set(rowId, {
+                ocrStatus: "pending",
+                lastModified: Date.now(),
+              });
+
+              if (debugMode) {
+                Logger.debug("useRowSystem", "Assigned new element to row", {
+                  elementId: element.id,
+                  rowId,
+                  assignmentTime: assignmentTime.toFixed(2) + "ms",
+                });
+              }
+            }
+          }
+        }
+
+        // Process modified elements (same-row modifications)
+        for (const element of modifiedElements) {
+          if (element.id && !element.id.startsWith("guide-")) {
+            const assignmentStartTime = performance.now();
+
+            // Get current assignment to detect cross-row moves (O(1) lookup)
+            const currentRowId = rowManager.elementToRow.get(element.id);
+
+            const rowId = rowManager.assignElement(element);
+            const assignmentTime = performance.now() - assignmentStartTime;
+
+            if (rowId) {
+              assignmentTimes.push(assignmentTime);
+
+              // Check if this was a cross-row move
+              if (currentRowId && currentRowId !== rowId) {
+                // Batch updates for both source and target rows
+                rowsToUpdate.set(currentRowId, {
+                  ocrStatus: "pending",
+                  lastModified: Date.now(),
+                });
+                rowsToUpdate.set(rowId, {
+                  ocrStatus: "pending",
+                  lastModified: Date.now(),
+                });
+
+                if (debugMode) {
+                  Logger.debug(
+                    "useRowSystem",
+                    "Processed cross-row element move",
+                    {
+                      elementId: element.id,
+                      sourceRowId: currentRowId,
+                      targetRowId: rowId,
+                      assignmentTime: assignmentTime.toFixed(2) + "ms",
+                    },
+                  );
+                }
+              } else if (rowId) {
+                // Same-row modification - batch update
+                rowsToUpdate.set(rowId, {
+                  ocrStatus: "pending",
+                  lastModified: Date.now(),
+                });
+
+                if (debugMode) {
+                  Logger.debug(
+                    "useRowSystem",
+                    "Processed same-row element modification",
+                    {
+                      elementId: element.id,
+                      rowId,
+                      assignmentTime: assignmentTime.toFixed(2) + "ms",
+                    },
+                  );
+                }
+              }
+            }
+          }
+        }
+
+        // Process deleted elements
+        for (const elementId of deletedIds) {
+          if (!elementId.startsWith("guide-")) {
+            // Get row ID before removal for metadata update
+            const previousRowId = rowManager.elementToRow.get(elementId);
+
+            rowManager.removeElement(elementId);
+
+            // Batch update for element deletion
+            if (previousRowId) {
+              rowsToUpdate.set(previousRowId, {
+                ocrStatus: "pending",
+                lastModified: Date.now(),
+              });
+            }
 
             if (debugMode) {
-              Logger.debug('useRowSystem', 'Assigned new element to row', {
-                elementId: element.id,
-                rowId,
-                assignmentTime: assignmentTime.toFixed(2) + 'ms'
+              Logger.debug("useRowSystem", "Removed deleted element from row", {
+                elementId,
+                previousRowId,
               });
             }
           }
         }
-      }
 
-
-
-      // Build element ID to current row map for O(1) lookups
-      for (const element of modifiedElements) {
-        if (element.id && !element.id.startsWith('guide-')) {
-          const currentRowId = rowManager.elementToRow.get(element.id);
-          if (currentRowId) {
-            elementIdToCurrentRowMap.set(element.id, currentRowId);
-          }
+        // Apply all batched row updates with enhanced debouncing
+        for (const [rowId, updates] of rowsToUpdate) {
+          // Merge with existing queued updates for this row
+          const existingUpdates =
+            rowManagerUpdateQueueRef.current.get(rowId) || {};
+          const mergedUpdates = { ...existingUpdates, ...updates };
+          rowManagerUpdateQueueRef.current.set(rowId, mergedUpdates);
         }
-      }
 
-      // Process modified elements (same-row modifications)
-      for (const element of modifiedElements) {
-        if (element.id && !element.id.startsWith('guide-')) {
-          const assignmentStartTime = performance.now();
+        // Debounce RowManager updates to prevent excessive processing during rapid modifications
+        if (rowManagerDebounceTimeoutRef.current) {
+          clearTimeout(rowManagerDebounceTimeoutRef.current);
+        }
 
-          // Get current assignment to detect cross-row moves (O(1) lookup)
-          const currentRowId = elementIdToCurrentRowMap.get(element.id);
+        rowManagerDebounceTimeoutRef.current = setTimeout(() => {
+          // Apply all queued RowManager updates in single batch
+          for (const [rowId, updates] of rowManagerUpdateQueueRef.current) {
+            rowManager.updateRow(rowId, updates);
+          }
+          rowManagerUpdateQueueRef.current.clear();
+          rowManagerDebounceTimeoutRef.current = null;
+        }, rowManagerDebounceMs);
 
-          const rowId = rowManager.assignElement(element);
-          const assignmentTime = performance.now() - assignmentStartTime;
+        // Update element-to-row mapping incrementally (O(k) instead of O(n*m))
+        setElementToRow((prevMapping) => {
+          const updatedMapping = new Map(prevMapping);
 
-          if (rowId) {
-            assignmentTimes.push(assignmentTime);
-
-            // Check if this was a cross-row move
-            if (currentRowId && currentRowId !== rowId) {
-              // Batch updates for both source and target rows
-              rowsToUpdate.set(currentRowId, { ocrStatus: 'pending', lastModified: Date.now() });
-              rowsToUpdate.set(rowId, { ocrStatus: 'pending', lastModified: Date.now() });
-
-              if (debugMode) {
-                Logger.debug('useRowSystem', 'Processed cross-row element move', {
-                  elementId: element.id,
-                  sourceRowId: currentRowId,
-                  targetRowId: rowId,
-                  assignmentTime: assignmentTime.toFixed(2) + 'ms'
-                });
-              }
-            } else if (rowId) {
-              // Same-row modification - batch update
-              rowsToUpdate.set(rowId, { ocrStatus: 'pending', lastModified: Date.now() });
-
-              if (debugMode) {
-                Logger.debug('useRowSystem', 'Processed same-row element modification', {
-                  elementId: element.id,
-                  rowId,
-                  assignmentTime: assignmentTime.toFixed(2) + 'ms'
-                });
+          // Process new elements - add to mapping
+          for (const element of newElements) {
+            if (element.id && !element.id.startsWith("guide-")) {
+              const rowId = rowManager.elementToRow.get(element.id);
+              if (rowId) {
+                updatedMapping.set(element.id, rowId);
               }
             }
           }
-        }
-      }
 
-      // Process deleted elements
-      for (const elementId of deletedIds) {
-        if (!elementId.startsWith('guide-')) {
-          // Get row ID before removal for metadata update
-          const previousRowId = rowManager.elementToRow.get(elementId);
+          // Process modified elements - update mapping if row changed
+          for (const element of modifiedElements) {
+            if (element.id && !element.id.startsWith("guide-")) {
+              const currentRowId = elementIdToCurrentRowMap.get(element.id);
+              const newRowId = rowManager.elementToRow.get(element.id);
 
-          rowManager.removeElement(elementId);
-
-          // Batch update for element deletion
-          if (previousRowId) {
-            rowsToUpdate.set(previousRowId, { ocrStatus: 'pending', lastModified: Date.now() });
+              // Only update if row actually changed or element is new
+              if (newRowId && currentRowId !== newRowId) {
+                updatedMapping.set(element.id, newRowId);
+              }
+            }
           }
 
-          if (debugMode) {
-            Logger.debug('useRowSystem', 'Removed deleted element from row', {
-              elementId,
-              previousRowId
-            });
+          // Process deleted elements - remove from mapping
+          for (const elementId of deletedIds) {
+            if (!elementId.startsWith("guide-")) {
+              updatedMapping.delete(elementId);
+            }
           }
-        }
-      }
 
-      // Apply all batched row updates in single pass
-      for (const [rowId, updates] of rowsToUpdate) {
-        rowManager.updateRow(rowId, updates);
-      }
-
-      // Update element-to-row mapping for UI (single pass)
-      const updatedMapping = new Map();
-      const allRows = rowManager.getAllRows();
-
-      for (let i = 0; i < allRows.length; i++) {
-        const row = allRows[i];
-        const elementIds = Array.from(row.elementIds);
-        for (let j = 0; j < elementIds.length; j++) {
-          updatedMapping.set(elementIds[j], row.id);
-        }
-      }
-
-      setElementToRow(updatedMapping);
-
-      // Update statistics
-      const totalProcessingTime = performance.now() - startTime;
-
-      // Update assignment times with memory management (circular buffer)
-      assignmentTimesRef.current.push(...assignmentTimes);
-      const maxHistory = 1000; // Keep last 1000 assignment times
-      if (assignmentTimesRef.current.length > maxHistory) {
-        assignmentTimesRef.current = assignmentTimesRef.current.slice(-maxHistory);
-      }
-
-      const avgAssignmentTime = assignmentTimesRef.current.length > 0
-        ? assignmentTimesRef.current.reduce((a, b) => a + b, 0) / assignmentTimesRef.current.length
-        : 0;
-
-      setStats(prev => ({
-        totalAssignments: prev.totalAssignments + newElements.length + modifiedElements.length,
-        lastAssignmentTime: Date.now(),
-        averageAssignmentTime: avgAssignmentTime,
-        errorCount: prev.errorCount
-      }));
-
-      // Schedule auto-save if there were changes
-      if (newElements.length > 0 || modifiedElements.length > 0 || deletedIds.length > 0) {
-        scheduleAutoSave();
-      }
-
-      if (debugMode) {
-        Logger.info('useRowSystem', 'Processed element changes', {
-          newElements: newElements.length,
-          modifiedElements: modifiedElements.length,
-          deletedElements: deletedIds.length,
-          totalProcessingTime: totalProcessingTime.toFixed(2) + 'ms',
-          averageAssignmentTime: avgAssignmentTime.toFixed(2) + 'ms',
-          totalRows: allRows.length
+          return updatedMapping;
         });
-  }
 
-  // Periodic memory cleanup
-  if (assignmentTimesRef.current.length > 500) {
-    cleanupAssignmentTimes();
-  }
-} catch (error) {
-      Logger.error('useRowSystem', 'Error processing element changes', {
-        error: error.message,
-        stack: error.stack
-      });
+        // Update statistics
+        const totalProcessingTime = performance.now() - startTime;
 
-      setStats(prev => ({
-        ...prev,
-        errorCount: prev.errorCount + 1
-      }));
-    } finally {
-      processingRef.current = false;
-    }
-  }, [rowManager, debugMode, cleanupAssignmentTimes]);
+        // Update assignment times with memory management (circular buffer)
+        const currentArray = assignmentTimesRef.current;
+        let currentIndex = assignmentTimesIndexRef.current;
+
+        // Add new times to circular buffer
+        for (const time of assignmentTimes) {
+          currentArray[currentIndex] = time;
+          currentIndex = (currentIndex + 1) % maxAssignmentHistory;
+        }
+
+        // Update refs
+        assignmentTimesRef.current = currentArray;
+        assignmentTimesIndexRef.current = currentIndex;
+
+        // Calculate average from circular buffer
+        const actualLength = Math.min(
+          currentArray.length,
+          maxAssignmentHistory,
+        );
+        const avgAssignmentTime =
+          actualLength > 0
+            ? currentArray.slice(0, actualLength).reduce((a, b) => a + b, 0) /
+              actualLength
+            : 0;
+
+        setStats((prev) => ({
+          totalAssignments:
+            prev.totalAssignments +
+            newElements.length +
+            modifiedElements.length,
+          lastAssignmentTime: Date.now(),
+          averageAssignmentTime: avgAssignmentTime,
+          errorCount: prev.errorCount,
+        }));
+
+        // Schedule auto-save if there were changes
+        if (
+          newElements.length > 0 ||
+          modifiedElements.length > 0 ||
+          deletedIds.length > 0
+        ) {
+          scheduleAutoSave();
+        }
+
+        if (debugMode) {
+          const allRows = rowManager.getAllRows();
+          Logger.info("useRowSystem", "Processed element changes", {
+            newElements: newElements.length,
+            modifiedElements: modifiedElements.length,
+            deletedElements: deletedIds.length,
+            totalProcessingTime: totalProcessingTime.toFixed(2) + "ms",
+            averageAssignmentTime: avgAssignmentTime.toFixed(2) + "ms",
+            totalRows: allRows.length,
+          });
+        }
+
+        // Periodic memory cleanup
+        if (assignmentTimesRef.current.length > 500) {
+          cleanupAssignmentTimes();
+        }
+      } catch (error) {
+        Logger.error("useRowSystem", "Error processing element changes", {
+          error: error.message,
+          stack: error.stack,
+        });
+
+        setStats((prev) => ({
+          ...prev,
+          errorCount: prev.errorCount + 1,
+        }));
+      } finally {
+        processingRef.current = false;
+      }
+    },
+    [rowManager, debugMode, cleanupAssignmentTimes],
+  );
+
+  // Set the ref after processElementChanges is defined
+  useEffect(() => {
+    processElementChangesRef.current = processElementChanges;
+  }, [processElementChanges]);
 
   /**
    * Debounced handler for Excalidraw onChange events with RAF optimization
@@ -578,29 +644,41 @@ export default function useRowSystem({
    * @param {Object} appState - Current application state
    * @param {Array} files - Files (if any)
    */
-  const handleCanvasChange = useCallback((elements, appState, files) => {
-    // Clear existing timeouts
-    if (debounceTimeoutRef.current) {
-      clearTimeout(debounceTimeoutRef.current);
-    }
+  const handleCanvasChange = useCallback(
+    (elements, appState, files) => {
+      // Clear existing timeouts
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
 
-    // Use requestAnimationFrame for smoother performance during rapid changes
-    debounceTimeoutRef.current = setTimeout(() => {
-      // Use requestAnimationFrame to batch DOM updates
-      requestAnimationFrame(() => {
-        const changes = detectElementChanges(elements, previousElementsRef.current);
+      // Use requestAnimationFrame for smoother performance during rapid changes
+      debounceTimeoutRef.current = setTimeout(() => {
+        // Use requestAnimationFrame to batch DOM updates
+        requestAnimationFrame(() => {
+          const changes = detectElementChanges(
+            elements,
+            previousElementsRef.current,
+          );
 
-        // Only process if there are actual changes
-        if (changes.new.length > 0 || changes.modified.length > 0 || changes.deleted.length > 0) {
-          // Add to processing queue instead of immediate processing for better batching
-          queueChanges(changes);
-        }
+          // Only process if there are actual changes
+          if (
+            changes.new.length > 0 ||
+            changes.modified.length > 0 ||
+            changes.deleted.length > 0
+          ) {
+            // Add to processing queue instead of immediate processing for better batching
+            queueChanges(changes);
+          }
 
-        // Update previous elements reference
-        previousElementsRef.current = new Map(elements.map(el => [el.id, el]));
-      });
-    }, debounceMs);
-  }, [detectElementChanges, queueChanges, debounceMs]);
+          // Update previous elements reference
+          previousElementsRef.current = new Map(
+            elements.map((el) => [el.id, el]),
+          );
+        });
+      }, debounceMs);
+    },
+    [detectElementChanges, queueChanges, debounceMs],
+  );
 
   /**
    * Get row ID for a specific element
@@ -608,9 +686,12 @@ export default function useRowSystem({
    * @param {string} elementId - ID of element to look up
    * @returns {string|null} Row ID or null if element not assigned
    */
-  const getElementRow = useCallback((elementId) => {
-    return elementToRow.get(elementId) || null;
-  }, [elementToRow]);
+  const getElementRow = useCallback(
+    (elementId) => {
+      return elementToRow.get(elementId) || null;
+    },
+    [elementToRow],
+  );
 
   /**
    * Get total number of rows that have elements assigned
@@ -619,7 +700,7 @@ export default function useRowSystem({
    */
   const getRowCount = useCallback(() => {
     const allRows = rowManager.getAllRows();
-    return allRows.filter(row => row.elementIds.size > 0).length;
+    return allRows.filter((row) => row.elementIds.size > 0).length;
   }, [rowManager]);
 
   // Cleanup on unmount
@@ -668,7 +749,7 @@ export default function useRowSystem({
             }
 
             for (const element of elements) {
-              if (element.id && !element.id.startsWith('guide-')) {
+              if (element.id && !element.id.startsWith("guide-")) {
                 if (!loadedElementIds.has(element.id)) {
                   changes.new.push(element);
                 }
@@ -676,8 +757,8 @@ export default function useRowSystem({
             }
 
             // Process only new elements
-            if (changes.new.length > 0) {
-              processElementChanges(changes);
+            if (changes.new.length > 0 && processElementChangesRef.current) {
+              processElementChangesRef.current(changes);
             }
 
             // Update element-to-row mapping from loaded state
@@ -690,45 +771,62 @@ export default function useRowSystem({
             setElementToRow(updatedMapping);
 
             if (debugMode) {
-              Logger.info('useRowSystem', 'Initialized from saved state', {
+              Logger.info("useRowSystem", "Initialized from saved state", {
                 elementCount: elements.length,
                 rowCount: getRowCount(),
-                newElements: changes.new.length
+                newElements: changes.new.length,
               });
             }
           } else {
             // No saved state, process all elements as new
-            const changes = { new: elements, modified: [], deleted: [], moved: [] };
-            processElementChanges(changes);
+            const changes = {
+              new: elements,
+              modified: [],
+              deleted: [],
+              moved: [],
+            };
+            if (processElementChangesRef.current) {
+              processElementChangesRef.current(changes);
+            }
 
             if (debugMode) {
-              Logger.info('useRowSystem', 'Initialized with fresh state', {
+              Logger.info("useRowSystem", "Initialized with fresh state", {
                 elementCount: elements.length,
-                rowCount: getRowCount()
+                rowCount: getRowCount(),
               });
             }
           }
 
           // Set initial previous elements reference
-          previousElementsRef.current = new Map(elements.map(el => [el.id, el]));
-
+          previousElementsRef.current = new Map(
+            elements.map((el) => [el.id, el]),
+          );
         } catch (error) {
-          Logger.error('useRowSystem', 'Failed to initialize', {
+          Logger.error("useRowSystem", "Failed to initialize", {
             error: error.message,
-            stack: error.stack
+            stack: error.stack,
           });
 
           // Fallback to fresh initialization
           const elements = excalidrawAPI.getSceneElements() || [];
-          const changes = { new: elements, modified: [], deleted: [], moved: [] };
-          processElementChanges(changes);
-          previousElementsRef.current = new Map(elements.map(el => [el.id, el]));
+          const changes = {
+            new: elements,
+            modified: [],
+            deleted: [],
+            moved: [],
+          };
+          if (processElementChangesRef.current) {
+            processElementChangesRef.current(changes);
+          }
+          previousElementsRef.current = new Map(
+            elements.map((el) => [el.id, el]),
+          );
         }
       }
     };
 
     initialize();
-  }, [excalidrawAPI, rowManager, processElementChanges, getRowCount, debugMode, loadState]);
+  }, [excalidrawAPI, rowManager, getRowCount, debugMode, loadState]);
 
   return {
     elementToRow,
@@ -739,6 +837,6 @@ export default function useRowSystem({
     saveState: () => saveState(true), // Expose manual save with force flag
     loadState,
     isSaving,
-    isLoading
+    isLoading,
   };
 }
