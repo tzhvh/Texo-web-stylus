@@ -13,9 +13,11 @@ import {
 import "@excalidraw/excalidraw/index.css";
 import { useDebug } from "../contexts/DebugContext";
 import useRowSystem from "../hooks/useRowSystem.js";
+import useControlledNavigation from "../hooks/useControlledNavigation.js";
 import RowManager from "../utils/rowManager.js";
 import { saveMagicCanvasState, loadMagicCanvasState } from "../utils/workspaceDB.js";
 import { MemoizedRowHeader } from "../components/RowHeader.jsx";
+import DPadControl from "../components/DPadControl.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import Notification from "../components/Notification.jsx";
 import { getUserElements } from "../utils/canvasHelpers.js";
@@ -134,10 +136,10 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
   }));
 
   // Initialize useRowSystem hook for canvas-row synchronization (Story 1.5)
-  const { 
-    elementToRow, 
-    handleCanvasChange: handleRowSystemChange, 
-    getElementRow, 
+  const {
+    elementToRow,
+    handleCanvasChange: handleRowSystemChange,
+    getElementRow,
     getRowCount,
     stats: rowStats,
     saveState,
@@ -151,6 +153,22 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
     debugMode,
     workspaceId,
     autoSaveMs: CANVAS_CONFIG.AUTO_SAVE_DELAY_MS
+  });
+
+  // Initialize controlled navigation hook for d-pad system
+  const {
+    currentRowIndex,
+    xOffset,
+    zoomLevel: controlledZoom,
+    drawingEnabled,
+    navigateToRow,
+    setZoom,
+    toggleDrawing,
+    getViewportBounds,
+    getDrawingConstraints
+  } = useControlledNavigation({
+    excalidrawAPI,
+    debugMode
   });
 
   // Safeguard: Track render count to detect infinite loops
@@ -196,6 +214,11 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
         zoom: { value: 1 },
         scrollX: 0,
         scrollY: 0,
+        // Lock to freedraw tool (disable selection)
+        activeTool: { type: 'freedraw', locked: true },
+        // Disable native pan/zoom gestures
+        zenModeEnabled: false,
+        gridModeEnabled: false,
       },
       elements: [],
       scrollToContent: false,
@@ -496,10 +519,51 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
 
         // Count user-drawn elements (exclude guide lines)
         const userElements = getUserElements(elements);
-        setElementCount(userElements.length);
+
+        // Apply drawing constraints if drawing is enabled
+        let constrainedElements = elements;
+        if (drawingEnabled) {
+          const constraints = getDrawingConstraints();
+
+          // Filter elements to only those within current row bounds
+          constrainedElements = elements.filter(el => {
+            // Always keep guide lines
+            if (el.id && el.id.startsWith('guide-')) {
+              return true;
+            }
+
+            // Get element bounds
+            const bounds = GridCalculator.getElementBounds(el);
+
+            // Check if element is within current row bounds
+            const isInCurrentRow = bounds.yMin >= constraints.yMin &&
+                                   bounds.yMax <= constraints.yMax;
+
+            if (!isInCurrentRow && debugMode) {
+              console.log('MagicCanvas: Filtered out-of-bounds element', {
+                elementId: el.id,
+                elementBounds: bounds,
+                rowBounds: { yMin: constraints.yMin, yMax: constraints.yMax },
+                currentRow: constraints.rowId
+              });
+            }
+
+            return isInCurrentRow;
+          });
+
+          // Update Excalidraw if elements were filtered
+          if (constrainedElements.length !== elements.length && excalidrawAPI) {
+            excalidrawAPI.updateScene({
+              elements: constrainedElements,
+              storeAction: 'capture' // Capture for undo/redo
+            });
+          }
+        }
+
+        setElementCount(getUserElements(constrainedElements).length);
 
         // Delegate element assignment to useRowSystem hook (Story 1.5)
-        handleRowSystemChange(elements, appState, files);
+        handleRowSystemChange(constrainedElements, appState, files);
 
         // Schedule unified canvas state auto-save (debounced)
         if (canvasSaveTimeoutRef.current) {
@@ -510,7 +574,7 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
           saveCanvasState();
         }, CANVAS_CONFIG.AUTO_SAVE_DELAY_MS);
       }, CANVAS_CONFIG.THROTTLE_MS),
-    [handleRowSystemChange, saveCanvasState, debugMode],
+    [handleRowSystemChange, saveCanvasState, debugMode, drawingEnabled, getDrawingConstraints, excalidrawAPI],
   );
 
   // Clear canvas (keep guide lines)
@@ -726,9 +790,16 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
         <div className="border-b border-gray-200 bg-white px-6 py-4 shadow-sm">
           <h1 className="text-2xl font-bold text-gray-800">Magic Canvas</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Draw mathematical expressions on an infinite vertical canvas. Pan,
-            zoom, and draw freely.
+            Draw mathematical expressions row-by-row on a grid-aligned canvas.
+            Use arrow keys or d-pad to navigate between rows.
           </p>
+          {drawingEnabled && (
+            <div className="mt-2 inline-block bg-green-100 border border-green-300 rounded px-3 py-1">
+              <span className="text-green-700 text-sm font-medium">
+                ✏️ Drawing enabled in row-{currentRowIndex}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Canvas Container */}
@@ -764,9 +835,35 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
           {/* RowHeader Components */}
           <div className="absolute inset-0">
             <div className="relative w-full h-full pointer-events-none">
+              {/* Current row highlight */}
+              {excalidrawAPI && (
+                <div
+                  className="absolute pointer-events-none transition-all duration-300"
+                  style={{
+                    left: '0px',
+                    top: `${GridCalculator.getRowBounds(currentRowIndex).yStart}px`,
+                    width: `${GRID_CONFIG.CANVAS_WIDTH}px`,
+                    height: `${GRID_CONFIG.ROW_HEIGHT}px`,
+                    backgroundColor: drawingEnabled ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.08)',
+                    border: drawingEnabled ? '2px solid rgba(34, 197, 94, 0.3)' : '2px solid rgba(59, 130, 246, 0.2)',
+                    zIndex: 998,
+                  }}
+                />
+              )}
+
               {rowHeaders}
             </div>
           </div>
+
+          {/* D-Pad Control */}
+          <DPadControl
+            excalidrawAPI={excalidrawAPI}
+            currentRowIndex={currentRowIndex}
+            onNavigate={navigateToRow}
+            onZoomChange={setZoom}
+            drawingEnabled={drawingEnabled}
+            onDrawingToggle={toggleDrawing}
+          />
         </div>
 
         {/* Control Panel (Bottom) */}
@@ -774,6 +871,12 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
           <div className="flex items-center justify-between max-w-7xl mx-auto">
             {/* Status Info */}
             <div className="flex items-center gap-6">
+              <div className="text-sm">
+                <p className="text-gray-600">Current Row</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  row-{currentRowIndex}
+                </p>
+              </div>
               <div className="text-sm">
                 <p className="text-gray-600">Elements drawn</p>
                 <p className="text-2xl font-bold text-blue-600">
@@ -783,13 +886,13 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
               <div className="text-sm">
                 <p className="text-gray-600">Zoom level</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {Math.round(canvasState.zoomLevel * 100)}%
+                  {Math.round(controlledZoom * 100)}%
                 </p>
               </div>
               <div className="text-sm">
-                <p className="text-gray-600">Position</p>
-                <p className="font-mono text-xs text-gray-600">
-                  Y: {Math.round(canvasState.scrollY)}
+                <p className="text-gray-600">Drawing</p>
+                <p className={`text-xl font-bold ${drawingEnabled ? 'text-green-600' : 'text-gray-400'}`}>
+                  {drawingEnabled ? 'ON' : 'OFF'}
                 </p>
               </div>
             </div>
@@ -842,6 +945,16 @@ function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
                 <p>Grid origin: {GRID_CONFIG.ORIGIN_Y}</p>
                 <p>Guide lines visible: {viewportGuideLinesRef.current?.length || 0}</p>
                 <p>Canvas width: {GRID_CONFIG.CANVAS_WIDTH}px</p>
+              </div>
+
+              {/* D-Pad Navigation Debug Info */}
+              <div className="border-t border-gray-300 pt-2 mt-2">
+                <p className="font-bold text-orange-600 mb-1">D-Pad Navigation</p>
+                <p>Current row index: {currentRowIndex}</p>
+                <p>Current row ID: row-{currentRowIndex}</p>
+                <p>X offset: {xOffset}px</p>
+                <p>Controlled zoom: {Math.round(controlledZoom * 100)}%</p>
+                <p>Drawing enabled: {drawingEnabled ? 'YES' : 'NO'}</p>
               </div>
 
               {/* Row System Debug Info */}
