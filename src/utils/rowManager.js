@@ -109,11 +109,13 @@ export class RowManager {
 
   /**
    * Assign an element to the appropriate row based on its position
-   * 
+   *
    * @param {Object} element - ExcalidrawElement object
    * @param {string} element.id - Unique element identifier
-   * @param {Array<number>} element.x - X coordinates of element bounds [x1, x2, x3, x4]
-   * @param {Array<number>} element.y - Y coordinates of element bounds [y1, y2, y3, y4]
+   * @param {number} element.x - X coordinate (top-left)
+   * @param {number} element.y - Y coordinate (top-left)
+   * @param {number} element.width - Element width
+   * @param {number} element.height - Element height
    * @returns {string} ID of the row the element was assigned to
    */
   assignElement(element) {
@@ -123,18 +125,18 @@ export class RowManager {
     }
 
     // Extract element center Y coordinate from bounding box
-    const yCoords = element.y || [];
-    if (yCoords.length < 4) {
-      Logger.warn('RowManager', 'Element has insufficient Y coordinates', { 
-        elementId: element.id, 
-        yCoords 
+    // Excalidraw elements have: x, y (top-left), width, height
+    if (typeof element.y !== 'number') {
+      Logger.warn('RowManager', 'Element has invalid Y coordinate', {
+        elementId: element.id,
+        y: element.y
       });
       return null;
     }
 
-    // Calculate center Y coordinate (average of min and max Y)
-    const minY = Math.min(...yCoords);
-    const maxY = Math.max(...yCoords);
+    // Calculate center Y coordinate from element bounds
+    const minY = element.y;
+    const maxY = element.y + (element.height || 0);
     const centerY = (minY + maxY) / 2;
 
     // Remove element from previous row if assigned elsewhere
