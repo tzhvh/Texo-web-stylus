@@ -17,6 +17,8 @@ import RowManager from "../utils/rowManager.js";
 import { saveMagicCanvasState, loadMagicCanvasState } from "../utils/workspaceDB.js";
 import { MemoizedRowHeader } from "../components/RowHeader.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
+import Notification from "../components/Notification.jsx";
+import { getUserElements } from "../utils/canvasHelpers.js";
 
 // Infinite canvas configuration
 const CANVAS_CONFIG = {
@@ -24,6 +26,25 @@ const CANVAS_CONFIG = {
   MAX_Y: 50000,
   MAX_WIDTH: 2000,
   BACKGROUND_COLOR: "#f5f5f5", // Light gray per design
+
+  // Performance timing (ms)
+  THROTTLE_MS: 50, // Canvas onChange throttle
+  DEBOUNCE_MS: 100, // Guide line update debounce
+  AUTO_SAVE_DELAY_MS: 2000, // Auto-save debounce
+
+  // Viewport calculations
+  VIEWPORT_HEIGHT_RATIO: 0.6, // Approximate canvas viewport as % of window height
+  VIEWPORT_BUFFER_PX: 500, // Buffer for smooth scrolling
+
+  // Performance targets (ms)
+  GUIDE_LINE_UPDATE_TARGET_MS: 16, // 60fps target
+  STATE_RESTORE_TARGET_MS: 1000, // Story 1.7 AC6 requirement
+
+  // Guide lines
+  GUIDE_LINE_SPACING_PX: 384, // OCR tile alignment
+  GUIDE_LINE_COLOR: "#d3d3d3",
+  GUIDE_LINE_OPACITY: 30,
+  GUIDE_LINE_STROKE_WIDTH: 1,
 };
 
 // Create guide lines (horizontal ruled lines for row guidance - Story 1.3)
@@ -35,12 +56,12 @@ const createGuideLine = (y, id) => {
       y: y,
       width: CANVAS_CONFIG.MAX_WIDTH,
       height: 0,
-      strokeColor: "#d3d3d3", // Light gray per Story 1.3, Task 2.1
+      strokeColor: CANVAS_CONFIG.GUIDE_LINE_COLOR,
       backgroundColor: "transparent",
-      strokeWidth: 1, // 1px stroke per Story 1.3, Task 2.2
+      strokeWidth: CANVAS_CONFIG.GUIDE_LINE_STROKE_WIDTH,
       strokeStyle: "solid",
       roughness: 0,
-      opacity: 30, // Subtle opacity for non-interference per Story 1.3, Task 2.1
+      opacity: CANVAS_CONFIG.GUIDE_LINE_OPACITY,
       locked: true, // Prevent user interaction per Story 1.3, Task 2.3
       isDeleted: false,
       id: id || `guide-${y}`,
@@ -49,8 +70,8 @@ const createGuideLine = (y, id) => {
   return guideLine[0];
 };
 
-// Generate guide lines with correct 384px spacing for OCR alignment (Story 1.3)
-const generateGuideLines = (spacing = 384) => {
+// Generate guide lines with correct spacing for OCR alignment (Story 1.3)
+const generateGuideLines = (spacing = CANVAS_CONFIG.GUIDE_LINE_SPACING_PX) => {
   const guideLines = [];
   for (let y = CANVAS_CONFIG.MIN_Y; y <= CANVAS_CONFIG.MAX_Y; y += spacing) {
     guideLines.push(createGuideLine(y));
@@ -58,14 +79,14 @@ const generateGuideLines = (spacing = 384) => {
   return guideLines;
 };
 
-const initialGuideLines = generateGuideLines(384); // Explicit 384px spacing for OCR tile alignment
+const initialGuideLines = generateGuideLines(CANVAS_CONFIG.GUIDE_LINE_SPACING_PX);
 
 // Viewport culling: Only generate guide lines visible in current view + buffer (Story 1.3, Task 4.1)
 const generateViewportGuideLines = (
   viewportY,
   viewportHeight,
-  spacing = 384,
-  buffer = 2000,
+  spacing = CANVAS_CONFIG.GUIDE_LINE_SPACING_PX,
+  buffer = CANVAS_CONFIG.VIEWPORT_BUFFER_PX,
 ) => {
   const startY = Math.floor((viewportY - buffer) / spacing) * spacing;
   const endY =
@@ -91,7 +112,32 @@ const debounce = (func, wait) => {
   };
 };
 
-function MagicCanvasComponent() {
+// Throttle utility for limiting function execution rate
+const throttle = (func, limit) => {
+  let inThrottle;
+  let lastArgs;
+  let lastContext;
+
+  return function(...args) {
+    const context = this;
+    if (!inThrottle) {
+      func.apply(context, args);
+      inThrottle = true;
+      setTimeout(() => {
+        inThrottle = false;
+        if (lastArgs) {
+          func.apply(lastContext, lastArgs);
+          lastArgs = lastContext = null;
+        }
+      }, limit);
+    } else {
+      lastArgs = args;
+      lastContext = context;
+    }
+  };
+};
+
+function MagicCanvasComponent({ workspaceId = 'magic-canvas-default' }) {
   const { debugMode } = useDebug();
   const [excalidrawAPI, setExcalidrawAPI] = useState(null);
   const [canvasState, setCanvasState] = useState({
@@ -99,8 +145,12 @@ function MagicCanvasComponent() {
     scrollX: 0,
     scrollY: 0,
   });
+  // Element count tracked in state for efficient UI updates
+  // Alternative: derive from excalidrawAPI.getSceneElements() on-demand, but that's
+  // more expensive and requires additional re-render triggers
   const [elementCount, setElementCount] = useState(0);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [notification, setNotification] = useState(null);
 
   // Track viewport for RowHeader rendering
   const [viewport, setViewport] = useState({
@@ -108,14 +158,14 @@ function MagicCanvasComponent() {
     height: 600, // Default viewport height
     width: CANVAS_CONFIG.MAX_WIDTH
   });
-  const [guideLineSpacing] = useState(384); // Story 1.3: 384px spacing for OCR alignment
+  const [guideLineSpacing] = useState(CANVAS_CONFIG.GUIDE_LINE_SPACING_PX);
   const guideLineRef = useRef(initialGuideLines);
   const viewportGuideLinesRef = useRef(null); // Cache for viewport-culled lines
 
   // Initialize RowManager for element-to-row assignments (Story 1.5)
-  const [rowManager] = useState(() => new RowManager({ 
-    rowHeight: 384, 
-    startY: 0 
+  const [rowManager] = useState(() => new RowManager({
+    rowHeight: CANVAS_CONFIG.GUIDE_LINE_SPACING_PX,
+    startY: 0
   }));
 
   // Initialize useRowSystem hook for canvas-row synchronization (Story 1.5)
@@ -129,18 +179,17 @@ function MagicCanvasComponent() {
     loadState,
     isSaving,
     isLoading
-  } = useRowSystem({ 
-    excalidrawAPI, 
-    rowManager, 
-    debounceMs: 50, 
+  } = useRowSystem({
+    excalidrawAPI,
+    rowManager,
+    debounceMs: CANVAS_CONFIG.THROTTLE_MS,
     debugMode,
-    workspaceId: 'magic-canvas-default',
-    autoSaveMs: 2000
+    workspaceId,
+    autoSaveMs: CANVAS_CONFIG.AUTO_SAVE_DELAY_MS
   });
 
   // Safeguard: Track render count to detect infinite loops
   const renderCountRef = useRef(0);
-  const lastOnChangeTimeRef = useRef(0);
   const canvasSaveTimeoutRef = useRef(null);
 
   // Track render count in useEffect, not during render
@@ -182,8 +231,8 @@ function MagicCanvasComponent() {
   const updateViewportGuideLines = useCallback(() => {
     if (!excalidrawAPI) return;
 
-    // Performance monitoring (Story 1.3, Task 4.3)
-    const startTime = performance.now();
+    // Performance monitoring (Story 1.3, Task 4.3) - only when debug mode enabled
+    const startTime = debugMode ? performance.now() : 0;
 
     try {
       // Get current viewport bounds
@@ -200,13 +249,13 @@ function MagicCanvasComponent() {
 
       // Get existing user elements (exclude guide lines)
       const allElements = excalidrawAPI.getSceneElements();
-      const userElements = allElements.filter(
-        (el) => !el.id?.startsWith("guide-") && !el.isDeleted,
-      );
+      const userElements = getUserElements(allElements);
 
       // Update scene with user elements + viewport guide lines
+      // Use storeAction: 'none' to prevent onChange callbacks and infinite render loops
       excalidrawAPI.updateScene({
         elements: [...userElements, ...viewportGuideLines],
+        storeAction: 'none', // Prevent history updates and onChange triggers
       });
 
       // Cache for performance comparison
@@ -220,10 +269,10 @@ function MagicCanvasComponent() {
           `Guide lines: Generated ${viewportGuideLines.length} for viewport Y=${Math.round(viewportY)}, height=${viewportHeight} in ${duration.toFixed(2)}ms`,
         );
 
-        // Performance warning if >16ms (60fps target)
-        if (duration > 16) {
+        // Performance warning if exceeds 60fps target
+        if (duration > CANVAS_CONFIG.GUIDE_LINE_UPDATE_TARGET_MS) {
           console.warn(
-            `Guide line update took ${duration.toFixed(2)}ms (>16ms target for 60fps)`,
+            `Guide line update took ${duration.toFixed(2)}ms (>${CANVAS_CONFIG.GUIDE_LINE_UPDATE_TARGET_MS}ms target for 60fps)`,
           );
         }
       }
@@ -271,7 +320,7 @@ function MagicCanvasComponent() {
     if (!excalidrawAPI) return false;
 
     setIsRestoring(true);
-    const startTime = performance.now();
+    const startTime = debugMode ? performance.now() : 0;
 
     try {
       const savedState = await loadMagicCanvasState('current', 1);
@@ -286,9 +335,8 @@ function MagicCanvasComponent() {
         // Restore RowManager state
         rowManager.deserialize(savedState.rowManagerState);
 
-        const loadTime = performance.now() - startTime;
-
         if (debugMode) {
+          const loadTime = performance.now() - startTime;
           console.log('MagicCanvas: Unified canvas state loaded from IndexedDB', {
             elementCount: savedState.canvasState.length,
             rowCount: savedState.rowManagerState.rows.length,
@@ -300,11 +348,11 @@ function MagicCanvasComponent() {
             savedTimestamp: new Date(savedState.timestamp).toISOString(),
             loadTime: `${loadTime.toFixed(2)}ms`
           });
-        }
 
-        // Performance warning if >1s (AC6 requirement)
-        if (loadTime > 1000) {
-          console.warn(`MagicCanvas: State restoration took ${loadTime.toFixed(2)}ms (>1000ms target for <500 elements)`);
+          // Performance warning if exceeds target (AC6 requirement)
+          if (loadTime > CANVAS_CONFIG.STATE_RESTORE_TARGET_MS) {
+            console.warn(`MagicCanvas: State restoration took ${loadTime.toFixed(2)}ms (>${CANVAS_CONFIG.STATE_RESTORE_TARGET_MS}ms target for <500 elements)`);
+          }
         }
 
         return true;
@@ -320,6 +368,7 @@ function MagicCanvasComponent() {
   }, [excalidrawAPI, rowManager, debugMode]);
 
   // Initialize canvas with guide lines and load saved state (Story 1.3, Task 3.1, 3.2)
+  // Stabilized with minimal dependencies to prevent re-initialization loops
   useEffect(() => {
     const initialize = async () => {
       if (!excalidrawAPI) return;
@@ -361,26 +410,29 @@ function MagicCanvasComponent() {
         // Fallback to basic initialization
         try {
           updateViewportGuideLines();
-          
+
           if (debugMode) {
             console.log("MagicCanvas: Fallback initialization successful - starting with empty canvas");
           }
         } catch (fallbackError) {
           console.error("Fallback initialization also failed:", fallbackError);
-          
-          if (debugMode) {
-            alert("Canvas initialization failed. Please refresh the page.");
-          }
+
+          setNotification({
+            type: 'error',
+            message: 'Canvas initialization failed. Please refresh the page.',
+          });
         }
       }
     };
 
     initialize();
-  }, [excalidrawAPI, loadCanvasState, updateViewportGuideLines, debugMode]);
+    // Only depend on excalidrawAPI - functions are stable via useCallback memoization
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excalidrawAPI]);
 
   // Debounced version to prevent excessive updates during rapid pan/zoom
   const debouncedUpdateGuideLines = useMemo(
-    () => debounce(updateViewportGuideLines, 100), // 100ms debounce per Story 1.3, Task 4.2
+    () => debounce(updateViewportGuideLines, CANVAS_CONFIG.DEBOUNCE_MS),
     [updateViewportGuideLines],
   );
 
@@ -407,56 +459,51 @@ function MagicCanvasComponent() {
 
   // Handle canvas state changes (track zoom, pan, elements)
   // Integrates with useRowSystem for element-to-row assignments (Story 1.5)
-  const handleCanvasChange = useCallback((elements, appState, files) => {
-    const now = Date.now();
+  // Wrapped in useMemo to create a stable throttled function
+  const handleCanvasChange = useMemo(
+    () =>
+      throttle((elements, appState, files) => {
+        const now = Date.now();
 
-    // Throttle: only process if at least 50ms have passed since last update
-    if (now - lastOnChangeTimeRef.current < 50) {
-      return;
-    }
+        // Log for debug mode
+        if (debugMode) {
+          console.log("MagicCanvas: onChange processed (", now, "ms)");
+        }
 
-    // Update last call time
-    lastOnChangeTimeRef.current = now;
+        // Update zoom level and pan position
+        const newCanvasState = {
+          zoomLevel: appState.zoom?.value || 1,
+          scrollX: appState.scrollX || 0,
+          scrollY: appState.scrollY || 0,
+        };
+        setCanvasState(newCanvasState);
 
-    // Log warning for debug mode if calls are too frequent
-    if (debugMode) {
-      console.log("MagicCanvas: onChange processed (", now, "ms)");
-    }
+        // Update viewport for RowHeader rendering
+        const viewportHeight = window.innerHeight * CANVAS_CONFIG.VIEWPORT_HEIGHT_RATIO;
+        setViewport({
+          y: newCanvasState.scrollY,
+          height: viewportHeight,
+          width: CANVAS_CONFIG.MAX_WIDTH,
+        });
 
-    // Update zoom level and pan position
-    const newCanvasState = {
-      zoomLevel: appState.zoom?.value || 1,
-      scrollX: appState.scrollX || 0,
-      scrollY: appState.scrollY || 0,
-    };
-    setCanvasState(newCanvasState);
+        // Count user-drawn elements (exclude guide lines)
+        const userElements = getUserElements(elements);
+        setElementCount(userElements.length);
 
-    // Update viewport for RowHeader rendering
-    const viewportHeight = window.innerHeight * 0.6; // Approximate canvas viewport height
-    setViewport({
-      y: newCanvasState.scrollY,
-      height: viewportHeight,
-      width: CANVAS_CONFIG.MAX_WIDTH
-    });
+        // Delegate element assignment to useRowSystem hook (Story 1.5)
+        handleRowSystemChange(elements, appState, files);
 
-    // Count user-drawn elements (exclude guide lines)
-    const userElements = elements.filter(
-      (el) => !el.id?.startsWith("guide-") && !el.isDeleted,
-    );
-    setElementCount(userElements.length);
+        // Schedule unified canvas state auto-save (debounced)
+        if (canvasSaveTimeoutRef.current) {
+          clearTimeout(canvasSaveTimeoutRef.current);
+        }
 
-    // Delegate element assignment to useRowSystem hook (Story 1.5)
-    handleRowSystemChange(elements, appState, files);
-
-    // Schedule unified canvas state auto-save (debounced)
-    if (canvasSaveTimeoutRef.current) {
-      clearTimeout(canvasSaveTimeoutRef.current);
-    }
-
-    canvasSaveTimeoutRef.current = setTimeout(() => {
-      saveCanvasState();
-    }, 2000); // 2 second debounce for unified canvas state
-  }, [handleRowSystemChange, saveCanvasState, debugMode]); // Include saveCanvasState dependency
+        canvasSaveTimeoutRef.current = setTimeout(() => {
+          saveCanvasState();
+        }, CANVAS_CONFIG.AUTO_SAVE_DELAY_MS);
+      }, CANVAS_CONFIG.THROTTLE_MS),
+    [handleRowSystemChange, saveCanvasState, debugMode],
+  );
 
   // Clear canvas (keep guide lines)
   const clearCanvas = useCallback(() => {
@@ -477,27 +524,32 @@ function MagicCanvasComponent() {
   // Export canvas as PNG (future: integrate with OCR pipeline)
   const exportCanvas = useCallback(async () => {
     if (!excalidrawAPI) {
-      alert("Canvas not ready");
+      setNotification({
+        type: 'warning',
+        message: 'Canvas not ready. Please wait for initialization.',
+      });
       return;
     }
 
     try {
       // Get all user-drawn elements (exclude guide lines)
       const allElements = excalidrawAPI.getSceneElements();
-      const userElements = allElements.filter(
-        (el) => !el.id?.startsWith("guide-") && !el.isDeleted,
-      );
+      const userElements = getUserElements(allElements);
 
       if (userElements.length === 0) {
-        alert("Nothing to export! Draw something first.");
+        setNotification({
+          type: 'warning',
+          message: 'Nothing to export! Draw something first.',
+        });
         return;
       }
 
       // Create a link to export (future: send to OCR pipeline)
       const appState = excalidrawAPI.getAppState();
-      alert(
-        `Export ready: ${userElements.length} elements drawn.\n\nIntegration with OCR pipeline coming in Story 2.x`,
-      );
+      setNotification({
+        type: 'info',
+        message: `Export ready: ${userElements.length} elements drawn.\n\nIntegration with OCR pipeline coming in Story 2.x`,
+      });
 
       if (debugMode) {
         console.log("Export data:", {
@@ -517,34 +569,33 @@ function MagicCanvasComponent() {
       }
     } catch (error) {
       console.error("Export error:", error);
-      alert("Export failed: " + error.message);
+      setNotification({
+        type: 'error',
+        message: 'Export failed: ' + error.message,
+      });
     }
-  }, [
-    excalidrawAPI,
-    debugMode,
-    canvasState.zoomLevel,
-    canvasState.scrollX,
-    canvasState.scrollY,
-  ]);
+  }, [excalidrawAPI, debugMode, canvasState.zoomLevel, canvasState.scrollX, canvasState.scrollY]);
 
   // Open settings panel (Story 1.6 placeholder)
   const openSettings = useCallback(() => {
-    alert(
-      "Settings panel coming in Story 1.6\n\n" +
+    setNotification({
+      type: 'info',
+      message: "Settings panel coming in Story 1.6\n\n" +
         "Future features:\n" +
         "- Background color preferences\n" +
         "- Guide line spacing\n" +
         "- Toolbar visibility\n" +
         "- Zoom/pan presets",
-    );
+      duration: 8000, // Longer duration for more content
+    });
   }, []);
 
-  // Get visible rows based on current viewport
-  const getVisibleRows = useCallback(() => {
+  // Get visible rows based on current viewport - memoized for performance
+  const visibleRows = useMemo(() => {
     if (!rowManager) return [];
 
     const { y: viewportY, height: viewportHeight } = viewport;
-    const buffer = 500; // Buffer for smooth scrolling
+    const buffer = CANVAS_CONFIG.VIEWPORT_BUFFER_PX;
     const startY = viewportY - buffer;
     const endY = viewportY + viewportHeight + buffer;
 
@@ -555,12 +606,10 @@ function MagicCanvasComponent() {
     return allRows.filter(row => {
       return row.yEnd >= startY && row.yStart <= endY;
     });
-  }, [rowManager, viewport]);
+  }, [rowManager, viewport.y, viewport.height]);
 
-  // Render RowHeader components for visible rows
-  const renderRowHeaders = useCallback(() => {
-    const visibleRows = getVisibleRows();
-
+  // Render RowHeader components for visible rows - memoized
+  const rowHeaders = useMemo(() => {
     return visibleRows.map(row => (
       <MemoizedRowHeader
         key={row.id}
@@ -570,26 +619,98 @@ function MagicCanvasComponent() {
         debugMode={debugMode}
       />
     ));
-  }, [getVisibleRows, debugMode]);
+  }, [visibleRows, debugMode]);
 
-  // Cleanup on unmount
+  // Keyboard shortcuts for common actions
   useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+E or Cmd+E - Export
+      if ((e.ctrlKey || e.metaKey) && e.key === 'e') {
+        e.preventDefault();
+        exportCanvas();
+      }
+      // Ctrl+Shift+C or Cmd+Shift+C - Clear Canvas
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        clearCanvas();
+      }
+      // Ctrl+, or Cmd+, - Settings
+      if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+        e.preventDefault();
+        openSettings();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [exportCanvas, clearCanvas, openSettings]);
+
+  // Cleanup on unmount and handle beforeunload for guaranteed final save
+  useEffect(() => {
+    // Handle page unload/refresh - synchronous save attempt
+    const handleBeforeUnload = () => {
+      if (!excalidrawAPI || !rowManager) return;
+
+      try {
+        const elements = excalidrawAPI.getSceneElements();
+        const appState = excalidrawAPI.getAppState();
+        const rowManagerState = rowManager.serialize();
+
+        // Attempt synchronous IndexedDB write
+        // Note: Modern browsers may not guarantee completion, but we try
+        const request = indexedDB.open('texo-workspace-db', 2);
+        request.onsuccess = (e) => {
+          const db = e.target.result;
+          const tx = db.transaction(['magic-canvas-state'], 'readwrite');
+          const store = tx.objectStore('magic-canvas-state');
+          store.put({
+            key: 'current',
+            canvasState: elements,
+            appState,
+            rowManagerState,
+            timestamp: Date.now(),
+            version: 1
+          });
+        };
+      } catch (error) {
+        console.error('Failed to save on beforeunload:', error);
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
+      // Clear pending save timeout
       if (canvasSaveTimeoutRef.current) {
         clearTimeout(canvasSaveTimeoutRef.current);
       }
-      // Save final canvas state on unmount
+      // Remove event listener
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      // Trigger final async save (best effort)
+      // Note: This may not complete if component unmounts quickly
       if (excalidrawAPI) {
         saveCanvasState();
       }
     };
-  }, [excalidrawAPI, saveCanvasState]);
+    // Empty deps - setup once, cleanup uses latest refs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <>
       <Helmet>
         <title>Magic Canvas - Draw Infinitely</title>
       </Helmet>
+
+      {/* Notification Toast */}
+      {notification && (
+        <Notification
+          message={notification.message}
+          type={notification.type}
+          duration={notification.duration || 5000}
+          onClose={() => setNotification(null)}
+        />
+      )}
 
       <div className="h-screen w-full flex flex-col bg-gray-50">
         {/* Header */}
@@ -634,7 +755,7 @@ function MagicCanvasComponent() {
           {/* RowHeader Components */}
           <div className="absolute inset-0">
             <div className="relative w-full h-full pointer-events-none">
-              {renderRowHeaders()}
+              {rowHeaders}
             </div>
           </div>
         </div>
@@ -668,19 +789,22 @@ function MagicCanvasComponent() {
             <div className="flex gap-3">
               <button
                 onClick={clearCanvas}
-                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded transition font-medium text-sm"
+                aria-label="Clear all drawings from canvas"
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded transition font-medium text-sm focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
               >
                 Clear Canvas
               </button>
               <button
                 onClick={exportCanvas}
-                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded transition font-medium text-sm"
+                aria-label="Export canvas to OCR pipeline (coming soon)"
+                className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded transition font-medium text-sm focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
               >
                 Export
               </button>
               <button
                 onClick={openSettings}
-                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded transition font-medium text-sm"
+                aria-label="Open canvas settings"
+                className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded transition font-medium text-sm focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2"
               >
                 Settings
               </button>
