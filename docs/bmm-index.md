@@ -1,9 +1,10 @@
 # Texo-web-stylus Documentation Index
 
-**Generated:** 2025-11-13
+**Generated:** 2025-11-21 (Updated from 2025-11-13)
 **Project:** Texo-web-stylus
 **Type:** Web Application (Vite + React)
 **Scan Level:** Deep
+**Workflow Mode:** Full Rescan
 
 ---
 
@@ -17,7 +18,7 @@
 - **Language:** JavaScript (ES Modules)
 - **Architecture:** Component-based SPA with Web Workers
 - **Entry Point:** src/main.jsx → src/App.jsx
-- **Pages:** 4 (Sketch, OCR, Compose, Database)
+- **Pages:** 5 (Sketch, OCR, Compose, Database, Magic Canvas)
 - **Testing:** Vitest with jsdom
 
 ### Key Characteristics
