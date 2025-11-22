@@ -60,6 +60,9 @@ export class RowManager {
     // Map<string, string> - Element ID to row ID mapping for O(1) element lookup
     this.elementToRow = new Map();
     
+    // Single active row management (Story 1.2: single-active-row model)
+    this.activeRowId = null;
+    
     Logger.debug('RowManager', 'Initialized', {
       rowHeight,
       startY,
@@ -108,7 +111,8 @@ export class RowManager {
   }
 
   /**
-   * Assign an element to the appropriate row based on its position
+   * Assign an element to appropriate row based on its position
+   * Enforces single-active-row drawing constraints (Story 1.2, Task 2)
    *
    * @param {Object} element - ExcalidrawElement object
    * @param {string} element.id - Unique element identifier
@@ -116,7 +120,7 @@ export class RowManager {
    * @param {number} element.y - Y coordinate (top-left)
    * @param {number} element.width - Element width
    * @param {number} element.height - Element height
-   * @returns {string} ID of the row the element was assigned to
+   * @returns {string|null} ID of row element was assigned to, or null if constrained
    */
   assignElement(element) {
     if (!element || !element.id) {
@@ -132,6 +136,19 @@ export class RowManager {
         y: element.y
       });
       return null;
+    }
+
+    // Story 1.2, Task 2: Enforce drawing constraints within active row bounds
+    if (!this.isElementInActiveRow(element)) {
+      const activeRow = this.getActiveRow();
+      Logger.debug('RowManager', 'Element constrained outside active row bounds', {
+        elementId: element.id,
+        elementY: element.y,
+        elementHeight: element.height,
+        activeRowId: this.activeRowId,
+        activeRowBounds: activeRow ? { yStart: activeRow.yStart, yEnd: activeRow.yEnd } : null
+      });
+      return null; // Reject element assignment (constraint enforcement)
     }
 
     // Calculate center Y coordinate from element bounds
@@ -225,6 +242,83 @@ export class RowManager {
    */
   getAllRows() {
     return Array.from(this.rows.values());
+  }
+
+  /**
+   * Set the active row (single-active-row model)
+   * 
+   * @param {string} rowId - ID of row to activate
+   * @returns {boolean} True if row was activated successfully
+   */
+  setActiveRow(rowId) {
+    if (!rowId || typeof rowId !== 'string') {
+      Logger.warn('RowManager', 'Invalid rowId provided to setActiveRow', { rowId });
+      return false;
+    }
+
+    const row = this.getRow(rowId);
+    if (!row) {
+      Logger.warn('RowManager', 'Attempted to activate non-existent row', { rowId });
+      return false;
+    }
+
+    const previousActiveRowId = this.activeRowId;
+    this.activeRowId = rowId;
+
+    Logger.debug('RowManager', 'Active row changed', {
+      previousActiveRowId,
+      newActiveRowId: rowId,
+      rowBounds: { yStart: row.yStart, yEnd: row.yEnd }
+    });
+
+    return true;
+  }
+
+  /**
+   * Get the currently active row
+   * 
+   * @returns {Row|null} Active row object or null if no active row
+   */
+  getActiveRow() {
+    if (!this.activeRowId) {
+      return null;
+    }
+
+    return this.getRow(this.activeRowId);
+  }
+
+  /**
+   * Check if a specific row is currently active
+   * 
+   * @param {string} rowId - ID of row to check
+   * @returns {boolean} True if row is currently active
+   */
+  isRowActive(rowId) {
+    return this.activeRowId === rowId;
+  }
+
+  /**
+   * Check if an element's position is within active row bounds
+   * 
+   * @param {Object} element - Excalidraw element with y, height properties
+   * @returns {boolean} True if element is within active row bounds
+   */
+  isElementInActiveRow(element) {
+    const activeRow = this.getActiveRow();
+    if (!activeRow) {
+      // No active row, allow drawing anywhere
+      return true;
+    }
+
+    if (!element || typeof element.y !== 'number') {
+      return false;
+    }
+
+    const elementTop = element.y;
+    const elementBottom = element.y + (element.height || 0);
+
+    // Element is within active row if it overlaps with row bounds
+    return elementBottom > activeRow.yStart && elementTop < activeRow.yEnd;
   }
 
   /**

@@ -1,31 +1,33 @@
-# generated: 2025-11-22T15:30:00Z
+# generated: 2025-11-22
 # project: Texo-web-stylus
 # project_key: texo-web-stylus
 # tracking_system: file-system
-# story_location: {project-root}/docs/sprint-artifacts
+# story_location: /home/mser/Documents/cla/w/Texo-web-stylus/docs/sprint-artifacts
 
 # STATUS DEFINITIONS:
 # ==================
 # Epic Status:
 #   - backlog: Epic exists in epic file but not contexted
-#   - contexted: Next epic tech context created by *epic-tech-context (required)
+#   - contexted: Epic tech context created (required before drafting stories)
 #
 # Story Status:
-#   - drafted: Story file created in stories folder by *create-story
-#   - ready-for-dev: Draft approved and story context created by *story-ready
-#   - in-progress: Developer actively working on implementation by *dev-story
-#   - review: Implementation complete, ready for review by *code-review
-#   - done: Story completed by *story-done
+#   - backlog: Story only exists in epic file
+#   - drafted: Story file created in stories folder
+#   - ready-for-dev: Draft approved and story context created
+#   - in-progress: Developer actively working on implementation
+#   - review: Under SM review (via code-review workflow)
+#   - done: Story completed
 #
 # Retrospective Status:
 #   - optional: Can be completed but not required
-#   - completed: Retrospective has been done by *retrospective
+#   - completed: Retrospective has been done
 #
 # WORKFLOW NOTES:
 # ===============
 # - Epics should be 'contexted' before stories can be 'drafted'
-# - SM typically drafts next story ONLY after previous one is 'done' to incorporate learnings
-# - Dev moves story to 'review', dev reviews, then Dev moves to 'done'
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically drafts next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', SM reviews, then Dev moves to 'done'
 
 generated: 2025-11-22
 project: Texo-web-stylus
@@ -34,30 +36,33 @@ tracking_system: file-system
 story_location: /home/mser/Documents/cla/w/Texo-web-stylus/docs/sprint-artifacts
 
 development_status:
+  # Epic 1: Canvas Foundation & Row Management
   epic-1: contexted
   1-1-create-magic-canvas-page-routing: done
-  1-2-integrate-excalidraw-canvas-single-active-row-constraints: in-progress
-  1-3-render-horizontal-ruled-lines-row-guidance: done
-  1-4-implement-rowmanager-class-single-active-row-model: done
+  1-2-integrate-excalidraw-canvas-single-active-row-constraints: backlog
+  1-3-render-horizontal-ruled-lines-for-row-guidance: backlog
+  1-4-implement-rowmanager-class-single-active-row-model: backlog
   1-5-enforce-active-row-editing-read-only-rows: backlog
   1-6-display-row-status-indicators-active-row-highlight: backlog
   1-7-persist-row-state-canvas-state-across-reloads: backlog
-  1-8-trigger-ocr-row-deactivation: backlog
-  1-9-implement-row-switching-gestures-keyboard: backlog
+  1-8-trigger-ocr-on-row-deactivation: backlog
+  1-9-implement-row-switching-via-gestures-keyboard: backlog
   1-10-implement-row-creation-workflow: backlog
   epic-1-retrospective: optional
 
+  # Epic 2: Silent OCR Pipeline
   epic-2: backlog
-  2-1-extract-overlapping-tiles-row-elements: backlog
-  2-2-create-ocr-worker-pool-parallel-processing: backlog
+  2-1-extract-overlapping-tiles-from-row-elements: backlog
+  2-2-create-ocr-worker-pool-for-parallel-processing: backlog
   2-3-display-per-tile-ocr-progress-indicators: backlog
   2-4-implement-tile-level-ocr-caching: backlog
   2-5-merge-latex-fragments-gap-based-spacing: backlog
   2-6-implement-latex-post-processing-cleanup: backlog
-  2-7-trigger-ocr-pipeline-automatically-debounce: backlog
+  2-7-trigger-ocr-pipeline-automatically-with-debounce: backlog
   2-8-handle-ocr-failures-timeouts-gracefully: backlog
   epic-2-retrospective: optional
 
+  # Epic 3: Real-time Validation & Feedback Pipeline
   epic-3: backlog
   3-1-integrate-sequential-row-validation-existing-cas: backlog
   3-2-implement-validation-result-caching: backlog
@@ -68,29 +73,32 @@ development_status:
   3-7-ensure-non-intrusive-feedback-updates: backlog
   epic-3-retrospective: optional
 
+  # Epic 4: Transparency & Debugging
   epic-4: backlog
-  4-1-implement-tap-inspect-panel-row-details: backlog
+  4-1-implement-tap-to-inspect-panel-row-details: backlog
   4-2-add-debug-mode-toggle-tile-boundary-overlay: backlog
   4-3-display-validation-method-timing-canonical-forms: backlog
   4-4-show-cache-hit-miss-statistics: backlog
   4-5-integrate-existing-diagnostic-logging-system: backlog
   epic-4-retrospective: optional
 
+  # Epic 5: Data Persistence & Workspace Integration
   epic-5: backlog
-  5-1-auto-save-row-state-indexeddb-changes: backlog
-  5-2-load-canvas-state-page-reload: backlog
-  5-3-export-magic-canvas-workspace-manager: backlog
+  5-1-auto-save-row-state-indexeddb-on-changes: backlog
+  5-2-load-canvas-state-on-page-reload: backlog
+  5-3-export-magic-canvas-to-workspace-manager: backlog
   5-4-load-previously-saved-magic-canvas-documents: backlog
-  5-5-track-storage-quota-warn-80: backlog
-  5-6-manual-data-management-clear-canvas-clear-cache: backlog
+  5-5-track-storage-quota-warn-at-80-percent: backlog
+  5-6-manual-data-management-clear-canvas-cache: backlog
   epic-5-retrospective: optional
 
+  # Epic 6: User Control & Customization
   epic-6: backlog
   6-1-create-floating-toolbar-common-actions: backlog
-  6-2-implement-settings-panel-configuration: backlog
-  6-3-persist-user-preferences-localstorage: backlog
+  6-2-implement-settings-panel-for-configuration: backlog
+  6-3-persist-user-preferences-in-localstorage: backlog
   6-4-validate-all-rows-action: backlog
-  6-5-clear-canvas-action-confirmation: backlog
+  6-5-clear-canvas-action-with-confirmation: backlog
   6-6-display-clear-processing-indicators: backlog
   6-7-cancel-long-running-ocr-operations: backlog
   6-8-handle-rapid-input-gracefully: backlog

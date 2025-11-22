@@ -112,10 +112,17 @@ function MagicCanvasComponent() {
   const viewportGuideLinesRef = useRef(null); // Cache for viewport-culled lines
 
   // Initialize RowManager for element-to-row assignments (Story 1.5)
-  const [rowManager] = useState(() => new RowManager({ 
-    rowHeight: 384, 
-    startY: 0 
-  }));
+  const [rowManager] = useState(() => {
+    const manager = new RowManager({ 
+      rowHeight: 384, 
+      startY: 0 
+    });
+    
+    // Story 1.2: Initialize with row 0 as active (single-active-row model)
+    manager.setActiveRow('row-0');
+    
+    return manager;
+  });
 
   // Initialize useRowSystem hook for canvas-row synchronization (Story 1.5)
   const { 
@@ -368,6 +375,7 @@ function MagicCanvasComponent() {
 
   // Handle canvas state changes (track zoom, pan, elements)
   // Integrates with useRowSystem for element-to-row assignments (Story 1.5)
+  // Enforces drawing constraints within active row bounds (Story 1.2, Task 2)
   const handleCanvasChange = useCallback((elements, appState, files) => {
     const now = Date.now();
 
@@ -382,6 +390,65 @@ function MagicCanvasComponent() {
     // Log warning for debug mode if calls are too frequent
     if (debugMode) {
       console.log("MagicCanvas: onChange processed (", now, "ms)");
+    }
+
+    // Story 1.2, Task 2: Apply drawing constraints before processing elements
+    const activeRow = rowManager.getActiveRow();
+    let constrainedElements = elements;
+
+    if (activeRow) {
+      // Filter elements to only those within active row bounds
+      constrainedElements = elements.filter(element => {
+        // Always allow guide lines and deleted elements
+        if (element.id?.startsWith("guide-") || element.isDeleted) {
+          return true;
+        }
+
+        // Check if element is within active row bounds
+        const elementTop = element.y;
+        const elementBottom = element.y + (element.height || 0);
+        
+        const isInBounds = elementBottom > activeRow.yStart && elementTop < activeRow.yEnd;
+        
+        if (!isInBounds && debugMode) {
+          console.log("MagicCanvas: Element constrained outside active row", {
+            elementId: element.id,
+            elementBounds: { top: elementTop, bottom: elementBottom },
+            activeRowBounds: { yStart: activeRow.yStart, yEnd: activeRow.yEnd }
+          });
+        }
+        
+        return isInBounds;
+      });
+
+      // Update Excalidraw scene to remove constrained elements
+      if (constrainedElements.length !== elements.length) {
+        // Get current elements from API to avoid infinite loops
+        const currentElements = excalidrawAPI.getSceneElements();
+        const elementsToRemove = currentElements.filter(el => 
+          !constrainedElements.some(kept => kept.id === el.id) &&
+          !el.id?.startsWith("guide-") && 
+          !el.isDeleted
+        );
+
+        if (elementsToRemove.length > 0) {
+          // Mark constrained elements as deleted
+          const updatedElements = constrainedElements.map(el => 
+            elementsToRemove.some(removed => removed.id === el.id) 
+              ? { ...el, isDeleted: true }
+              : el
+          );
+          
+          excalidrawAPI.updateScene({ elements: updatedElements });
+          
+          if (debugMode) {
+            console.log("MagicCanvas: Removed constrained elements", {
+              constrainedCount: elementsToRemove.length,
+              remainingCount: constrainedElements.length
+            });
+          }
+        }
+      }
     }
 
     // Update zoom level and pan position
@@ -401,13 +468,13 @@ function MagicCanvasComponent() {
     });
 
     // Count user-drawn elements (exclude guide lines)
-    const userElements = elements.filter(
+    const userElements = constrainedElements.filter(
       (el) => !el.id?.startsWith("guide-") && !el.isDeleted,
     );
     setElementCount(userElements.length);
 
     // Delegate element assignment to useRowSystem hook (Story 1.5)
-    handleRowSystemChange(elements, appState, files);
+    handleRowSystemChange(constrainedElements, appState, files);
 
     // Schedule canvas state auto-save (debounced)
     if (canvasSaveTimeoutRef.current) {
@@ -417,7 +484,7 @@ function MagicCanvasComponent() {
     canvasSaveTimeoutRef.current = setTimeout(() => {
       saveCanvasState();
     }, 2000); // 2 second debounce for canvas state
-  }, [handleRowSystemChange, saveCanvasState, debugMode]); // Include saveCanvasState dependency
+  }, [handleRowSystemChange, saveCanvasState, debugMode, rowManager]); // Include rowManager dependency
 
   // Clear canvas (keep guide lines)
   const clearCanvas = useCallback(() => {
@@ -499,6 +566,167 @@ function MagicCanvasComponent() {
         "- Zoom/pan presets",
     );
   }, []);
+
+  // Story 1.2, Task 5: Row switching capabilities
+  const switchToRow = useCallback((rowId) => {
+    if (!rowManager || !excalidrawAPI) return;
+
+    const success = rowManager.setActiveRow(rowId);
+    if (!success) {
+      if (debugMode) {
+        console.warn('MagicCanvas: Failed to switch to row', { rowId });
+      }
+      return;
+    }
+
+    const targetRow = rowManager.getRow(rowId);
+    if (targetRow) {
+      // Scroll viewport to center the new active row
+      const appState = excalidrawAPI.getAppState();
+      const viewportHeight = window.innerHeight * 0.6; // Approximate canvas viewport height
+      const targetScrollY = targetRow.yStart - (viewportHeight / 2) + (rowManager.rowHeight / 2);
+      
+      excalidrawAPI.updateScene({
+        appState: {
+          ...appState,
+          scrollY: targetScrollY
+        }
+      });
+
+      if (debugMode) {
+        console.log('MagicCanvas: Switched to row', {
+          rowId,
+          targetScrollY,
+          rowBounds: { yStart: targetRow.yStart, yEnd: targetRow.yEnd }
+        });
+      }
+    }
+  }, [rowManager, excalidrawAPI, debugMode]);
+
+  // Handle swipe gestures for row switching (Story 1.2, Task 5.1)
+  useEffect(() => {
+    if (!excalidrawAPI) return;
+
+    let touchStartY = null;
+    let touchStartTime = null;
+    const SWIPE_THRESHOLD = 50; // Minimum vertical distance for swipe
+    const SWIPE_TIME_THRESHOLD = 300; // Maximum time for swipe gesture
+
+    const handleTouchStart = (event) => {
+      if (event.touches.length !== 1) return; // Only handle single finger touches
+      
+      touchStartY = event.touches[0].clientY;
+      touchStartTime = Date.now();
+    };
+
+    const handleTouchEnd = (event) => {
+      if (!touchStartY || !touchStartTime) return;
+      
+      const touchEndY = event.changedTouches[0].clientY;
+      const deltaY = touchStartY - touchEndY;
+      const deltaTime = Date.now() - touchStartTime;
+
+      // Check if this is a valid swipe gesture
+      if (Math.abs(deltaY) > SWIPE_THRESHOLD && deltaTime < SWIPE_TIME_THRESHOLD) {
+        const activeRow = rowManager.getActiveRow();
+        if (!activeRow) return;
+
+        let targetRowId = null;
+
+        if (deltaY > 0) {
+          // Swipe up - go to previous row
+          const currentRowIndex = parseInt(activeRow.id.replace('row-', ''));
+          if (currentRowIndex > 0) {
+            targetRowId = `row-${currentRowIndex - 1}`;
+          }
+        } else {
+          // Swipe down - go to next row
+          const nextRowIndex = parseInt(activeRow.id.replace('row-', '')) + 1;
+          targetRowId = `row-${nextRowIndex}`;
+          
+          // Ensure the target row exists
+          if (!rowManager.getRow(targetRowId)) {
+            rowManager.getRowForY(nextRowIndex * rowManager.rowHeight);
+          }
+        }
+
+        if (targetRowId) {
+          switchToRow(targetRowId);
+        }
+      }
+
+      // Reset touch tracking
+      touchStartY = null;
+      touchStartTime = null;
+    };
+
+    // Add touch event listeners to the canvas container
+    const canvasElement = excalidrawAPI.getContainer?.();
+    if (canvasElement) {
+      canvasElement.addEventListener('touchstart', handleTouchStart, { passive: true });
+      canvasElement.addEventListener('touchend', handleTouchEnd, { passive: true });
+    }
+
+    return () => {
+      if (canvasElement) {
+        canvasElement.removeEventListener('touchstart', handleTouchStart);
+        canvasElement.removeEventListener('touchend', handleTouchEnd);
+      }
+    };
+  }, [excalidrawAPI, rowManager, switchToRow, debugMode]);
+
+  // Handle keyboard navigation for row switching (Story 1.2, Task 5.2)
+  useEffect(() => {
+    const handleKeyDown = (event) => {
+      if (!rowManager || !excalidrawAPI) return;
+
+      // Only handle arrow keys when not focused on input elements
+      if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+        return;
+      }
+
+      const activeRow = rowManager.getActiveRow();
+      if (!activeRow) return;
+
+      let targetRowId = null;
+
+      switch (event.key) {
+        case 'ArrowUp':
+          event.preventDefault();
+          // Switch to previous row
+          const currentRowIndex = parseInt(activeRow.id.replace('row-', ''));
+          if (currentRowIndex > 0) {
+            targetRowId = `row-${currentRowIndex - 1}`;
+          }
+          break;
+        
+        case 'ArrowDown':
+          event.preventDefault();
+          // Switch to next row (create if needed)
+          const nextRowIndex = parseInt(activeRow.id.replace('row-', '')) + 1;
+          targetRowId = `row-${nextRowIndex}`;
+          
+          // Ensure the target row exists
+          if (!rowManager.getRow(targetRowId)) {
+            // Create new row by getting it (will auto-create)
+            rowManager.getRowForY(nextRowIndex * rowManager.rowHeight);
+          }
+          break;
+        
+        default:
+          return; // Don't prevent default for other keys
+      }
+
+      if (targetRowId) {
+        switchToRow(targetRowId);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [rowManager, excalidrawAPI, switchToRow, debugMode]);
 
   // Get visible rows based on current viewport
   const getVisibleRows = useCallback(() => {
@@ -663,12 +891,29 @@ function MagicCanvasComponent() {
               {/* Row System Debug Info (Story 1.5) */}
               <div className="border-t border-gray-300 pt-2 mt-2">
                 <p className="font-bold text-blue-600 mb-1">Row System</p>
+                <p>Active row: {rowManager.getActiveRow()?.id || 'None'}</p>
                 <p>Rows with elements: {getRowCount()}</p>
                 <p>Element assignments: {elementToRow.size}</p>
                 <p>Total assignments: {rowStats.totalAssignments}</p>
                 <p>Avg assignment time: {rowStats.averageAssignmentTime.toFixed(2)}ms</p>
                 <p>Last assignment: {rowStats.lastAssignmentTime > 0 ? new Date(rowStats.lastAssignmentTime).toLocaleTimeString() : 'Never'}</p>
                 <p>Assignment errors: {rowStats.errorCount}</p>
+                
+                {/* Active Row Bounds (Story 1.2, Task 2) */}
+                {rowManager.getActiveRow() && (
+                  <div className="border-t border-gray-300 pt-1 mt-1">
+                    <p className="font-bold text-green-600 mb-1">Active Row Bounds</p>
+                    <p>Y: {Math.round(rowManager.getActiveRow().yStart)} - {Math.round(rowManager.getActiveRow().yEnd)}</p>
+                    <p>Height: {rowManager.getActiveRow().yEnd - rowManager.getActiveRow().yStart}px</p>
+                  </div>
+                )}
+                
+                {/* Row Switching Info (Story 1.2, Task 5) */}
+                <div className="border-t border-gray-300 pt-1 mt-1">
+                  <p className="font-bold text-purple-600 mb-1">Row Switching</p>
+                  <p>Use ↑↓ arrow keys or swipe gestures</p>
+                  <p>Active: {rowManager.getActiveRow()?.id || 'None'}</p>
+                </div>
               </div>
             </div>
           </div>
