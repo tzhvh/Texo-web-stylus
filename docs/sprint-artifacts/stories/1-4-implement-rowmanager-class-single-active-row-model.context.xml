@@ -1,0 +1,256 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>4</storyId>
+    <title>Implement RowManager Class with Single-Active-Row Model</title>
+    <status>drafted</status>
+    <generatedAt>2025-11-22</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/stories/1-4-implement-rowmanager-class-single-active-row-model.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>system component</asA>
+    <iWant>a RowManager class that manages active row selection and activation timeline</iWant>
+    <soThat>row state can be managed consistently throughout the application</soThat>
+    <tasks>
+      - Task 1: Create RowManager class with core data structures (AC: #1, #9, #13)
+      - Task 2: Implement row retrieval methods (AC: #3, #5, #7)
+      - Task 3: Implement row activation methods (AC: #2, #10, #12)
+      - Task 4: Implement row creation method (AC: #4, #11)
+      - Task 5: Implement row update method (AC: #6)
+      - Task 6: Implement activation timeline tracking (AC: #8, #12)
+      - Task 7: Implement state serialization methods (AC: #11)
+      - Task 8: Testing and validation
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <ac id="1">Given the Magic Canvas page needs to track rows with single-active-row model, When RowManager is instantiated with configuration (row height, starting Y position), Then it provides methods to:</ac>
+    <ac id="2">And setActiveRow(rowId: string): void - activates specified row, deactivates previous</ac>
+    <ac id="3">And getActiveRow(): Row | null - returns currently active row</ac>
+    <ac id="4">And createNewRow(): string - creates new row below active row, returns rowId</ac>
+    <ac id="5">And getRow(rowId: string): Row - retrieves row metadata by ID</ac>
+    <ac id="6">And updateRow(rowId: string, updates: Partial&lt;Row&gt;): void - updates row metadata</ac>
+    <ac id="7">And getAllRows(): Row[] - returns all tracked rows</ac>
+    <ac id="8">And getActivationTimeline(): Array&lt;ActivationEvent&gt; - returns row activation history</ac>
+    <ac id="9">And each Row object includes: id (string), yStart (number), yEnd (number), isActive (boolean), ocrStatus, validationStatus, transcribedLatex, activatedAt, errorMessage</ac>
+    <ac id="10">And only one row can be active at a time (enforced by setActiveRow)</ac>
+    <ac id="11">And row IDs remain stable across zoom/reload operations</ac>
+    <ac id="12">And activation timeline tracks: {rowId, activatedAt, deactivatedAt} for each activation event</ac>
+    <ac id="13">And RowManager uses Map&lt;string, Row&gt; for O(1) lookups</ac>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/epic_1_complete_breakdown.md</path>
+        <title>Epic 1: Canvas Foundation &amp; Row Management</title>
+        <section>Story 1.4: Implement RowManager Class with Single-Active-Row Model</section>
+        <snippet>As a system component, I want a RowManager class that manages active row selection and activation timeline, so that row state can be managed consistently throughout the application. Story 1.4 defines the core RowManager class responsible for tracking rows, enforcing single-active-row constraints, and maintaining activation timeline for OCR attribution.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Canvas Foundation &amp; Row Management</title>
+        <section>Services and Modules - RowManager</section>
+        <snippet>RowManager provides row state management, activation timeline tracking, and single-active-row enforcement. Implements Map-based O(1) lookup for row operations. Row interface includes: id, yStart, yEnd, isActive, ocrStatus, validationStatus, transcribedLatex, activatedAt, errorMessage.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Texo-web-stylus - Product Requirements Document</title>
+        <section>FR11-FR23: Row System Capabilities</section>
+        <snippet>Row system manages single-active-row editing model with stable unique IDs, row metadata (OCR status, validation status, transcribed LaTeX), activation timeline tracking, and viewport scrolling. Default row height: 384px (matches OCR tile height). Only active row editable, all others read-only.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Architecture and ADRs</title>
+        <section>Epic 1 - ADR-001: Single-Active-Row Model</section>
+        <snippet>Architectural decision to use single-active-row constraint: only one row editable at a time. RowManager is single source of truth for active row state. Activation timeline tracks row activation history for OCR attribution and erase operations. Stateless active-row selector with O(1) lookups using Map data structure.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/stories/1-3-render-horizontal-ruled-lines-for-row-guidance.md</path>
+        <title>Story 1.3: Render Horizontal Ruled Lines for Row Guidance</title>
+        <section>Learnings from Previous Story</section>
+        <snippet>Story 1.2 already implemented substantial functionality in src/pages/MagicCanvas.jsx (934 lines). Existing files: src/utils/rowManager.js (PARTIALLY EXISTS), src/hooks/useRowSystem.js (EXISTING), src/components/RowHeader.jsx (EXISTING). Architectural patterns established: 384px row spacing, single-active-row constraint, viewport culling optimization.</snippet>
+      </doc>
+    </docs>
+
+    <code>
+      <artifact>
+        <path>src/utils/rowManager.js</path>
+        <kind>class</kind>
+        <symbol>RowManager</symbol>
+        <lines>45-520</lines>
+        <reason>EXISTING - Core RowManager class. Already implements: constructor, getRow(), updateRow(), getAllRows(), setActiveRow(), getActiveRow(), createNewRow(), serialize(), deserialize(). MISSING: getActivationTimeline() method (AC #8). Also includes Row typedef with id, yStart, yEnd, elementIds, ocrStatus, validationStatus, transcribedLatex, validationResult, lastModified, tileHash, errorMessage. Needs enhancement to add isActive and activatedAt fields per AC #9, and implement getActivationTimeline().</reason>
+      </artifact>
+      <artifact>
+        <path>src/hooks/useRowSystem.js</path>
+        <kind>hook</kind>
+        <symbol>useRowSystem</symbol>
+        <lines>1-200</lines>
+        <reason>EXISTING - React hook for row system orchestration. Integrates RowManager with Excalidraw API and user gestures. Provides row switching, read-only enforcement, and state management for Magic Canvas component.</reason>
+      </artifact>
+      <artifact>
+        <path>src/pages/MagicCanvas.jsx</path>
+        <kind>component</kind>
+        <symbol>MagicCanvas</symbol>
+        <lines>1-934</lines>
+        <reason>EXISTING - Main Magic Canvas page component using RowManager. Lines 115-125 show row state management with single-active-row model. Uses RowManager for row creation, activation, and state tracking.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/RowHeader.jsx</path>
+        <kind>component</kind>
+        <symbol>RowHeader</symbol>
+        <lines>1-100</lines>
+        <reason>EXISTING - Row status indicators component. Displays row status based on RowManager state (ocrStatus, validationStatus). Provides visual highlighting for active row.</reason>
+      </artifact>
+      <artifact>
+        <path>src/utils/__tests__/rowManager.test.js</path>
+        <kind>test</kind>
+        <symbol>RowManager tests</symbol>
+        <lines>1-500</lines>
+        <reason>EXISTING - Unit tests for RowManager class. Tests constructor, row assignment, getRow, updateRow, getAllRows. Needs enhancement to test: getActivationTimeline(), setActiveRow timeline tracking, single-active-row constraint enforcement, serialize/deserialize with timeline.</reason>
+      </artifact>
+      <artifact>
+        <path>src/utils/logger.js</path>
+        <kind>utility</kind>
+        <symbol>Logger</symbol>
+        <lines>1-100</lines>
+        <reason>EXISTING - Diagnostic logging system used by RowManager for debug events, warnings, and errors. Provides structured logging for row operations (creation, activation, assignment).</reason>
+      </artifact>
+    </code>
+
+    <dependencies>
+      <ecosystem name="node">
+        <package name="react" version="^18.3.1" />
+        <package name="react-dom" version="^18.3.1" />
+        <package name="@excalidraw/excalidraw" version="^0.18.0" />
+        <package name="react-router-dom" version="^7.1.1" />
+        <package name="vitest" version="^2.1.8" dev="true" />
+        <package name="@testing-library/react" version="^16.3.0" dev="true" />
+        <package name="@testing-library/jest-dom" version="^6.9.1" dev="true" />
+      </ecosystem>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>Single-active-row model: Only one row can be active at any time. RowManager.setActiveRow() must enforce this by deactivating previous active row before activating new row.</constraint>
+    <constraint>Stable row IDs: Use sequential format "row-{index}" that persists across zoom, pan, and reload operations. IDs generated deterministically based on row index.</constraint>
+    <constraint>O(1) lookups: Use Map&lt;string, Row&gt; for constant-time row retrieval by ID. Critical for performance with many rows.</constraint>
+    <constraint>Activation timeline: Maintain chronological log of all row activation/deactivation events. Format: Array&lt;{rowId, activatedAt, deactivatedAt}&gt;. Used for OCR attribution and erase operations in Epic 2.</constraint>
+    <constraint>Row height: Default 384px (matches OCR tile height from FR14). Configurable via constructor parameter.</constraint>
+    <constraint>State serialization: RowManager state must be serializable to JSON for IndexedDB persistence (Story 1.7). Include rows, activeRowId, activationTimeline, rowHeight, startY.</constraint>
+    <constraint>Error handling: Validate rowId exists before activation or update operations. Throw descriptive errors for invalid rowId.</constraint>
+    <constraint>Logging: Use existing Logger utility for all RowManager operations (creation, activation, updates, errors). Maintain debug/warn/error levels.</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>Row</name>
+      <kind>TypeScript Interface / JSDoc typedef</kind>
+      <signature>
+        interface Row {
+          id: string;                    // Format: "row-{index}"
+          yStart: number;                // Top Y coordinate
+          yEnd: number;                  // Bottom Y coordinate (yStart + rowHeight)
+          isActive: boolean;             // True if currently active row
+          ocrStatus: 'pending' | 'processing' | 'complete' | 'error';
+          validationStatus: 'pending' | 'processing' | 'validated' | 'invalid' | 'error';
+          transcribedLatex: string | null;
+          activatedAt: Date | null;      // When row was last activated
+          errorMessage: string | null;
+        }
+      </signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>ActivationEvent</name>
+      <kind>TypeScript Interface / JSDoc typedef</kind>
+      <signature>
+        interface ActivationEvent {
+          rowId: string;
+          activatedAt: Date;
+          deactivatedAt: Date | null;    // null for currently active row
+        }
+      </signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.setActiveRow</name>
+      <kind>Method signature</kind>
+      <signature>setActiveRow(rowId: string): void</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.getActiveRow</name>
+      <kind>Method signature</kind>
+      <signature>getActiveRow(): Row | null</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.createNewRow</name>
+      <kind>Method signature</kind>
+      <signature>createNewRow(): string</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.getRow</name>
+      <kind>Method signature</kind>
+      <signature>getRow(rowId: string): Row | undefined</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.updateRow</name>
+      <kind>Method signature</kind>
+      <signature>updateRow(rowId: string, updates: Partial&lt;Row&gt;): void</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.getAllRows</name>
+      <kind>Method signature</kind>
+      <signature>getAllRows(): Row[]</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.getActivationTimeline</name>
+      <kind>Method signature</kind>
+      <signature>getActivationTimeline(): Array&lt;ActivationEvent&gt;</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.serialize</name>
+      <kind>Method signature</kind>
+      <signature>serialize(): RowManagerState</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>RowManager.deserialize</name>
+      <kind>Method signature</kind>
+      <signature>deserialize(state: RowManagerState): void</signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Vitest testing framework with React Testing Library. Unit tests in src/utils/__tests__/*.test.js. Test file naming: {moduleName}.test.js. Use describe/it/expect pattern. Mock external dependencies (Logger, IndexedDB). Integration tests in src/utils/__tests__/*.integration.test.js for RowManager with useRowSystem hook. Performance tests in src/utils/__tests__/*.performance.test.js for O(1) lookup validation and timeline tracking overhead.
+    </standards>
+    <locations>
+      src/utils/__tests__/rowManager.test.js
+      src/utils/__tests__/useRowSystem.integration.test.js
+      src/utils/__tests__/useRowSystem.performance.test.js
+    </locations>
+    <ideas>
+      <test ac="1,9,13">Unit test: RowManager constructor initializes with correct default values (rowHeight=384, startY=0, empty Map, empty timeline). Test custom configuration.</test>
+      <test ac="3,5,7">Unit test: getActiveRow returns currently active row or null. getRow retrieves row by ID. getAllRows returns array of all rows. Verify O(1) Map lookups.</test>
+      <test ac="2,10,12">Unit test: setActiveRow activates specified row, deactivates previous. Enforce single-active-row constraint (only one row.isActive=true). Log activation event in timeline with activatedAt and deactivatedAt.</test>
+      <test ac="4,11">Unit test: createNewRow generates stable sequential IDs (row-0, row-1, row-2). Positions row below active row. Returns new rowId. Does NOT auto-activate.</test>
+      <test ac="6">Unit test: updateRow applies partial updates to existing row. Preserves fields not in updates. Validates single-active-row constraint if isActive updated. Throws error for invalid rowId.</test>
+      <test ac="8,12">Unit test: getActivationTimeline returns chronological array of activation events. Verify timeline immutability (return copy). Test timeline tracking across multiple setActiveRow calls.</test>
+      <test ac="11">Unit test: serialize/deserialize roundtrip preserves RowManager state (rows, activeRowId, activationTimeline, rowHeight, startY). Test Map reconstruction from serialized data.</test>
+      <test ac="all">Integration test: RowManager with useRowSystem hook. Test row switching updates active row. Verify timeline logging. Test state persistence to IndexedDB.</test>
+      <test ac="2,5,6">Edge case test: setActiveRow with non-existent rowId throws error. updateRow with non-existent rowId throws error. Multiple rapid setActiveRow calls handle gracefully.</test>
+      <test ac="11">Edge case test: deserialize corrupted state validates and handles gracefully (fallback or error). Test state versioning for future migrations.</test>
+    </ideas>
+  </tests>
+</story-context>

@@ -722,11 +722,11 @@ describe('RowManager', () => {
       for (let i = 0; i < 1000; i++) {
         rowManager.getRowForY(i * 384);
       }
-      
+
       const startTime = performance.now();
       const allRows = rowManager.getAllRows();
       const endTime = performance.now();
-      
+
       expect(allRows.length).toBe(1000);
       expect(endTime - startTime).toBeLessThan(50); // Should be very fast
     });
@@ -736,9 +736,9 @@ describe('RowManager', () => {
       for (let i = 0; i < 100; i++) {
         rowManager.getRowForY(i * 384);
       }
-      
+
       const startTime = performance.now();
-      
+
       // Assign many elements
       for (let i = 0; i < 1000; i++) {
         const element = {
@@ -748,11 +748,370 @@ describe('RowManager', () => {
         };
         rowManager.assignElement(element);
       }
-      
+
       const endTime = performance.now();
-      
+
       expect(endTime - startTime).toBeLessThan(100); // Should be reasonably fast
       expect(rowManager.elementToRow.size).toBe(1000);
+    });
+  });
+
+  // Story 1.4 Tests: Single-Active-Row Model & Activation Timeline
+  describe('Story 1.4: setActiveRow with single-active-row constraint', () => {
+    beforeEach(() => {
+      // Create test rows
+      rowManager.getRowForY(100);  // row-0
+      rowManager.getRowForY(500);  // row-1
+      rowManager.getRowForY(900);  // row-2
+    });
+
+    it('should activate row and set isActive flag (AC #2, #10)', () => {
+      rowManager.setActiveRow('row-1');
+
+      const row = rowManager.getRow('row-1');
+      expect(row.isActive).toBe(true);
+      expect(rowManager.activeRowId).toBe('row-1');
+    });
+
+    it('should deactivate previous active row when activating new row (AC #10)', () => {
+      rowManager.setActiveRow('row-0');
+      rowManager.setActiveRow('row-1');
+
+      const row0 = rowManager.getRow('row-0');
+      const row1 = rowManager.getRow('row-1');
+
+      expect(row0.isActive).toBe(false);
+      expect(row1.isActive).toBe(true);
+    });
+
+    it('should enforce single-active-row constraint (AC #10)', () => {
+      rowManager.setActiveRow('row-0');
+      rowManager.setActiveRow('row-1');
+      rowManager.setActiveRow('row-2');
+
+      const allRows = rowManager.getAllRows();
+      const activeRows = allRows.filter(r => r.isActive);
+
+      expect(activeRows.length).toBe(1);
+      expect(activeRows[0].id).toBe('row-2');
+    });
+
+    it('should set activatedAt timestamp when activating row (AC #9)', () => {
+      const beforeActivation = new Date();
+      rowManager.setActiveRow('row-1');
+      const afterActivation = new Date();
+
+      const row = rowManager.getRow('row-1');
+      expect(row.activatedAt).toBeInstanceOf(Date);
+      expect(row.activatedAt.getTime()).toBeGreaterThanOrEqual(beforeActivation.getTime());
+      expect(row.activatedAt.getTime()).toBeLessThanOrEqual(afterActivation.getTime());
+    });
+
+    it('should throw error for invalid rowId (AC #2)', () => {
+      expect(() => rowManager.setActiveRow(null)).toThrow('Invalid rowId provided to setActiveRow');
+      expect(() => rowManager.setActiveRow('')).toThrow('Invalid rowId provided to setActiveRow');
+      expect(() => rowManager.setActiveRow(123)).toThrow('Invalid rowId provided to setActiveRow');
+    });
+
+    it('should throw error for non-existent rowId (AC #2)', () => {
+      expect(() => rowManager.setActiveRow('row-999')).toThrow('Row row-999 not found');
+    });
+
+    it('should log error for invalid activation attempts', () => {
+      try {
+        rowManager.setActiveRow('non-existent');
+      } catch (e) {
+        // Expected error
+      }
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'RowManager',
+        'Row non-existent not found',
+        expect.any(Object)
+      );
+    });
+  });
+
+  describe('Story 1.4: getActivationTimeline (AC #8, #12)', () => {
+    beforeEach(() => {
+      rowManager.getRowForY(100);  // row-0
+      rowManager.getRowForY(500);  // row-1
+      rowManager.getRowForY(900);  // row-2
+    });
+
+    it('should return activation timeline array', () => {
+      rowManager.setActiveRow('row-0');
+      rowManager.setActiveRow('row-1');
+
+      const timeline = rowManager.getActivationTimeline();
+
+      expect(Array.isArray(timeline)).toBe(true);
+      expect(timeline.length).toBe(2);
+    });
+
+    it('should track activation events with rowId, activatedAt, deactivatedAt (AC #12)', () => {
+      rowManager.setActiveRow('row-0');
+      rowManager.setActiveRow('row-1');
+
+      const timeline = rowManager.getActivationTimeline();
+
+      // First activation (row-0)
+      expect(timeline[0].rowId).toBe('row-0');
+      expect(timeline[0].activatedAt).toBeGreaterThan(0);
+      expect(timeline[0].deactivatedAt).toBeGreaterThan(0); // Deactivated when row-1 was activated
+
+      // Second activation (row-1)
+      expect(timeline[1].rowId).toBe('row-1');
+      expect(timeline[1].activatedAt).toBeGreaterThan(timeline[0].activatedAt);
+      expect(timeline[1].deactivatedAt).toBe(null); // Currently active
+    });
+
+    it('should maintain chronological order of activation events (AC #12)', () => {
+      rowManager.setActiveRow('row-0');
+      rowManager.setActiveRow('row-1');
+      rowManager.setActiveRow('row-2');
+
+      const timeline = rowManager.getActivationTimeline();
+
+      expect(timeline.length).toBe(3);
+      expect(timeline[0].activatedAt).toBeLessThan(timeline[1].activatedAt);
+      expect(timeline[1].activatedAt).toBeLessThan(timeline[2].activatedAt);
+    });
+
+    it('should return immutable copy of timeline (AC #8)', () => {
+      rowManager.setActiveRow('row-0');
+
+      const timeline1 = rowManager.getActivationTimeline();
+      const timeline2 = rowManager.getActivationTimeline();
+
+      // Should be different array instances (copies)
+      expect(timeline1).not.toBe(timeline2);
+
+      // But have same content
+      expect(timeline1.length).toBe(timeline2.length);
+      expect(timeline1[0].rowId).toBe(timeline2[0].rowId);
+
+      // Modifying returned timeline should not affect internal timeline
+      timeline1.push({ rowId: 'fake', activatedAt: 999, deactivatedAt: null });
+      const timeline3 = rowManager.getActivationTimeline();
+      expect(timeline3.length).toBe(1); // Original length, not modified
+    });
+
+    it('should return empty array if no activations', () => {
+      const timeline = rowManager.getActivationTimeline();
+      expect(timeline).toEqual([]);
+    });
+  });
+
+  describe('Story 1.4: updateRow with single-active-row constraint (AC #6, #10)', () => {
+    beforeEach(() => {
+      rowManager.getRowForY(100);  // row-0
+      rowManager.getRowForY(500);  // row-1
+    });
+
+    it('should apply partial updates to row (AC #6)', () => {
+      rowManager.updateRow('row-0', {
+        ocrStatus: 'complete',
+        transcribedLatex: 'x^2 + 1'
+      });
+
+      const row = rowManager.getRow('row-0');
+      expect(row.ocrStatus).toBe('complete');
+      expect(row.transcribedLatex).toBe('x^2 + 1');
+      expect(row.validationStatus).toBe('pending'); // Unchanged
+    });
+
+    it('should enforce single-active-row constraint when isActive is updated (AC #10)', () => {
+      rowManager.setActiveRow('row-0');
+
+      // Update row-1 to be active via updateRow
+      rowManager.updateRow('row-1', { isActive: true });
+
+      const row0 = rowManager.getRow('row-0');
+      const row1 = rowManager.getRow('row-1');
+
+      expect(row0.isActive).toBe(false); // Auto-deactivated
+      expect(row1.isActive).toBe(true);
+    });
+
+    it('should throw error for invalid rowId (AC #6)', () => {
+      expect(() => rowManager.updateRow('non-existent', { ocrStatus: 'complete' }))
+        .toThrow('Row non-existent not found');
+    });
+
+    it('should throw error for invalid updates object (AC #6)', () => {
+      expect(() => rowManager.updateRow('row-0', null))
+        .toThrow('Invalid updates provided to updateRow');
+      expect(() => rowManager.updateRow('row-0', 'invalid'))
+        .toThrow('Invalid updates provided to updateRow');
+    });
+
+    it('should preserve fields not included in updates (AC #6)', () => {
+      rowManager.updateRow('row-0', { ocrStatus: 'complete' });
+
+      const row = rowManager.getRow('row-0');
+      expect(row.id).toBe('row-0');
+      expect(row.yStart).toBe(0);
+      expect(row.yEnd).toBe(384);
+      expect(row.validationStatus).toBe('pending');
+    });
+  });
+
+  describe('Story 1.4: Row interface with isActive and activatedAt (AC #9)', () => {
+    it('should create rows with isActive field defaulting to false', () => {
+      const row = rowManager.getRowForY(100);
+
+      expect(row).toHaveProperty('isActive');
+      expect(row.isActive).toBe(false);
+    });
+
+    it('should create rows with activatedAt field defaulting to null', () => {
+      const row = rowManager.getRowForY(100);
+
+      expect(row).toHaveProperty('activatedAt');
+      expect(row.activatedAt).toBe(null);
+    });
+
+    it('should include all required Row interface fields (AC #9)', () => {
+      const row = rowManager.getRowForY(100);
+
+      expect(row).toHaveProperty('id');
+      expect(row).toHaveProperty('yStart');
+      expect(row).toHaveProperty('yEnd');
+      expect(row).toHaveProperty('isActive');
+      expect(row).toHaveProperty('ocrStatus');
+      expect(row).toHaveProperty('validationStatus');
+      expect(row).toHaveProperty('transcribedLatex');
+      expect(row).toHaveProperty('activatedAt');
+      expect(row).toHaveProperty('errorMessage');
+    });
+  });
+
+  describe('Story 1.4: serialize/deserialize with activeRowId and activationTimeline (AC #11)', () => {
+    beforeEach(() => {
+      rowManager.getRowForY(100);  // row-0
+      rowManager.getRowForY(500);  // row-1
+      rowManager.setActiveRow('row-0');
+      rowManager.setActiveRow('row-1');
+    });
+
+    it('should serialize activeRowId (AC #11)', () => {
+      const serialized = rowManager.serialize();
+
+      expect(serialized).toHaveProperty('activeRowId', 'row-1');
+    });
+
+    it('should serialize activationTimeline (AC #12)', () => {
+      const serialized = rowManager.serialize();
+
+      expect(serialized).toHaveProperty('activationTimeline');
+      expect(Array.isArray(serialized.activationTimeline)).toBe(true);
+      expect(serialized.activationTimeline.length).toBe(2);
+      expect(serialized.activationTimeline[0].rowId).toBe('row-0');
+      expect(serialized.activationTimeline[1].rowId).toBe('row-1');
+    });
+
+    it('should serialize activatedAt as ISO string', () => {
+      const serialized = rowManager.serialize();
+
+      const row1 = serialized.rows.find(r => r.id === 'row-1');
+      expect(typeof row1.activatedAt).toBe('string');
+      expect(row1.activatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/); // ISO format
+    });
+
+    it('should deserialize activeRowId (AC #11)', () => {
+      const serialized = rowManager.serialize();
+      const newManager = new RowManager();
+
+      newManager.deserialize(serialized);
+
+      expect(newManager.activeRowId).toBe('row-1');
+    });
+
+    it('should deserialize activationTimeline (AC #12)', () => {
+      const serialized = rowManager.serialize();
+      const newManager = new RowManager();
+
+      newManager.deserialize(serialized);
+
+      const timeline = newManager.getActivationTimeline();
+      expect(timeline.length).toBe(2);
+      expect(timeline[0].rowId).toBe('row-0');
+      expect(timeline[1].rowId).toBe('row-1');
+    });
+
+    it('should deserialize activatedAt as Date object', () => {
+      const serialized = rowManager.serialize();
+      const newManager = new RowManager();
+
+      newManager.deserialize(serialized);
+
+      const row1 = newManager.getRow('row-1');
+      expect(row1.activatedAt).toBeInstanceOf(Date);
+    });
+
+    it('should preserve isActive flags after serialize/deserialize roundtrip (AC #11)', () => {
+      const serialized = rowManager.serialize();
+      const newManager = new RowManager();
+
+      newManager.deserialize(serialized);
+
+      const row0 = newManager.getRow('row-0');
+      const row1 = newManager.getRow('row-1');
+
+      expect(row0.isActive).toBe(false);
+      expect(row1.isActive).toBe(true);
+    });
+
+    it('should handle missing activeRowId and activationTimeline in legacy state', () => {
+      const legacyState = {
+        rowHeight: 384,
+        startY: 0,
+        rows: [{
+          id: 'row-0',
+          yStart: 0,
+          yEnd: 384,
+          elementIds: [],
+          ocrStatus: 'pending',
+          validationStatus: 'pending',
+          transcribedLatex: null,
+          validationResult: null,
+          lastModified: Date.now(),
+          tileHash: null,
+          errorMessage: null
+        }],
+        elementToRow: {}
+      };
+
+      expect(() => rowManager.deserialize(legacyState)).not.toThrow();
+
+      expect(rowManager.activeRowId).toBe(null);
+      expect(rowManager.getActivationTimeline()).toEqual([]);
+    });
+  });
+
+  describe('Story 1.4: O(1) lookups with Map (AC #13)', () => {
+    it('should use Map for rows storage', () => {
+      expect(rowManager.rows).toBeInstanceOf(Map);
+    });
+
+    it('should perform O(1) getRow lookups', () => {
+      // Create many rows
+      for (let i = 0; i < 1000; i++) {
+        rowManager.getRowForY(i * 384);
+      }
+
+      // Measure lookup time for first vs last row
+      const startTime1 = performance.now();
+      rowManager.getRow('row-0');
+      const time1 = performance.now() - startTime1;
+
+      const startTime2 = performance.now();
+      rowManager.getRow('row-999');
+      const time2 = performance.now() - startTime2;
+
+      // Lookup times should be similar (O(1)), not linear
+      expect(Math.abs(time1 - time2)).toBeLessThan(1); // Within 1ms
     });
   });
 });
