@@ -1,6 +1,6 @@
 # Story 1.8: Trigger OCR on Row Deactivation
 
-Status: review
+Status: done
 
 ## Story
 
