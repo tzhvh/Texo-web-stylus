@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import useRowSystem from '../useRowSystem.js';
-import RowManager from '../../utils/rowManager.js';
+import { RowManager } from '../../utils/rowManager.js';
 
 // Mock Logger to avoid console spam
 vi.mock('../../utils/logger.js', () => ({
@@ -176,6 +176,9 @@ describe('Story 1.5: Active Row Editing and Read-Only Enforcement', () => {
 
   describe('Task 4: Row Tap Activation (AC #5)', () => {
     it('should activate row when tapped within bounds', () => {
+      // Create row-1 so it exists in the rowManager
+      rowManager.getRowForY(500); // Creates row-1
+
       const { result } = renderHook(() => useRowSystem({
         excalidrawAPI: mockExcalidrawAPI,
         rowManager,
@@ -258,6 +261,9 @@ describe('Story 1.5: Active Row Editing and Read-Only Enforcement', () => {
 
   describe('Integration: Stroke Constraints + Read-Only + Activation', () => {
     it('should enforce constraints after row switch', () => {
+      // Create row-1 so it exists in the rowManager
+      rowManager.getRowForY(500); // Creates row-1
+
       const { result } = renderHook(() => useRowSystem({
         excalidrawAPI: mockExcalidrawAPI,
         rowManager,
@@ -315,7 +321,7 @@ describe('Story 1.5: Active Row Editing and Read-Only Enforcement', () => {
           height: 50,
           width: 100
         });
-      });
+      }
 
       const startTime = performance.now();
 
