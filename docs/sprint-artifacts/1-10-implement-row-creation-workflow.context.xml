@@ -1,0 +1,196 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1.10</storyId>
+    <title>Implement Row Creation Workflow</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-22</generatedAt>
+    <generator>BMAD Story Context Workflow - Autonomous v6</generator>
+    <sourceStoryPath>docs/sprint-artifacts/1-10-implement-row-creation-workflow.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>to create new rows below my current work</iWant>
+    <soThat>I can continue my mathematical derivation</soThat>
+    <tasks>
+      <task id="1" acs="1,2,3,4,7,10,11,12">Implement RowManager.createNewRow() method</task>
+      <task id="2" acs="1,2,4,5,6">Integrate row creation trigger in RowNavigator</task>
+      <task id="3" acs="8">Create "New Row" toolbar button</task>
+      <task id="4" acs="9,10">Handle mid-canvas row creation and row shifting</task>
+      <task id="5" acs="11,12">Ensure OCR trigger and state persistence</task>
+      <task id="6" acs="all">Integration testing and performance validation</task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <ac id="1">Given I am on the Magic Canvas, When I press Down arrow or swipe down while on the last row, Then a new row is created immediately below the current last row</ac>
+    <ac id="2">And the new row becomes the active row</ac>
+    <ac id="3">And the new row has a unique sequential ID (e.g., if last row was "row-4", new row is "row-5")</ac>
+    <ac id="4">And the new row is positioned exactly 384px below the previous row (default spacing)</ac>
+    <ac id="5">And I can immediately start drawing in the new row</ac>
+    <ac id="6">And viewport auto-scrolls to show new row if created off-screen</ac>
+    <ac id="7">And new row metadata initialized: {ocrStatus: 'pending', validationStatus: 'pending', isActive: true}</ac>
+    <ac id="8">Alternative Trigger: When I click a "New Row" button in the toolbar, Then a new row is created below the currently active row and activated</ac>
+    <ac id="9">And if creating a row mid-canvas (not at the bottom), subsequent rows shift down by 384px (row height)</ac>
+    <ac id="10">And existing row IDs remain stable (no renumbering)</ac>
+    <ac id="11">And new row creation is logged in the activation timeline</ac>
+    <ac id="12">And the previous active row is deactivated (triggers OCR per Story 1.8)</ac>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/epics.md</path>
+        <title>Texo-web-stylus - Epic Breakdown</title>
+        <section>Story 1.10: Implement Row Creation Workflow</section>
+        <snippet>Complete specification for row creation workflow including sequential ID generation, row positioning, viewport auto-scroll, and integration with activation timeline. Covers both keyboard/gesture triggers and toolbar button.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Magic Canvas - Decision Architecture</title>
+        <section>Row Management System</section>
+        <snippet>Single-active-row architectural model with activation timeline tracking. Row ID format: "row-${index}", row height: 384px (matches OCR tile height). Performance target: <100ms row creation time.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Canvas Foundation & Row Management</title>
+        <section>Row Creation Workflow</section>
+        <snippet>Detailed design for RowManager.createNewRow() method, row positioning calculation, activation timeline logging, and mid-canvas insertion with row shifting logic.</snippet>
+      </doc>
+      <doc>
+        <path>docs/PRD.md</path>
+        <title>Texo-web-stylus - Product Requirements Document</title>
+        <section>Row System (FR11-FR23)</section>
+        <snippet>Users can create new rows below the current active row via button or gesture. Row creation workflow should feel natural and maintain flow state during mathematical note-taking.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <file>
+        <path>src/utils/rowManager.js</path>
+        <kind>service</kind>
+        <symbol>RowManager</symbol>
+        <lines>219-264</lines>
+        <reason>EXTEND - Core row management class. Contains setActiveRow() method that will be called by createNewRow(). Add createNewRow() method following existing patterns. Activation timeline tracking already implemented.</reason>
+      </file>
+      <file>
+        <path>src/components/RowNavigator.jsx</path>
+        <kind>component</kind>
+        <symbol>RowNavigator</symbol>
+        <lines>218-234, 239-252</lines>
+        <reason>EXTEND - Gesture and keyboard navigation component. Replace Story 1.10 placeholder (line 232) with createNewRow() call when Down pressed on last row. Mirror logic in swipe handler.</reason>
+      </file>
+      <file>
+        <path>src/utils/scrollToRow.js</path>
+        <kind>utility</kind>
+        <symbol>scrollToRow</symbol>
+        <lines>294-306</lines>
+        <reason>REUSE - Viewport auto-scroll utility from Story 1.9. Call after createNewRow() to center new row in viewport. Handles smooth scroll animation.</reason>
+      </file>
+      <file>
+        <path>src/pages/MagicCanvas.jsx</path>
+        <kind>page</kind>
+        <symbol>MagicCanvas</symbol>
+        <lines>full</lines>
+        <reason>EXTEND - Main canvas page component. Integrate MagicCanvasToolbar component with "+ Row" button. Pass rowManager and scrollToRow props to toolbar.</reason>
+      </file>
+      <file>
+        <path>src/hooks/useRowSystem.js</path>
+        <kind>hook</kind>
+        <symbol>useRowSystem</symbol>
+        <lines>full</lines>
+        <reason>REFERENCE - Row state management hook. May need to expose createNewRow from rowManager. Check if additional handlers needed for toolbar integration.</reason>
+      </file>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="19.2.0" />
+        <package name="react-dom" version="19.2.0" />
+        <package name="react-swipeable" version="^7.0.2" usage="Row navigation gesture detection" />
+        <package name="@excalidraw/excalidraw" version="0.18.0" usage="Canvas rendering engine" />
+        <package name="react-router-dom" version="7.9.6" usage="Page routing" />
+      </node>
+      <dev>
+        <package name="vitest" usage="Unit testing framework" />
+        <package name="@testing-library/react" version="16.3.0" usage="Component testing" />
+        <package name="@testing-library/user-event" version="^14.6.1" usage="User interaction simulation" />
+      </dev>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint type="architectural">Single-active-row model: Only one row can be active at a time. New row creation must deactivate previous row and activate new row via setActiveRow().</constraint>
+    <constraint type="performance">Row creation must complete in <100ms (target from epics.md:595). Includes ID generation, metadata initialization, and Map insertion.</constraint>
+    <constraint type="data">Row ID format must be sequential: "row-${rows.size}" for stability and predictability (architecture.md:131).</constraint>
+    <constraint type="data">Row height fixed at 384px (matches OCR tile height). New row positioned at previousRow.yEnd (architecture.md:132).</constraint>
+    <constraint type="integration">createNewRow() must call setActiveRow(newRowId) to trigger OCR on previous row (Story 1.8 integration).</constraint>
+    <constraint type="state">Activation timeline must log row creation event: {rowId, activatedAt, deactivatedAt}. Timeline provides OCR attribution.</constraint>
+    <constraint type="persistence">New row state must be saved to IndexedDB via existing auto-save mechanism from Story 1.7 (2s debounce).</constraint>
+    <constraint type="ui">Viewport must auto-scroll to center new row if created off-screen. Use scrollToRow() utility from Story 1.9.</constraint>
+    <constraint type="accessibility">Toolbar "+ Row" button must meet 44x44px minimum tap target (WCAG 2.1 AA). Keyboard accessible via Tab + Enter.</constraint>
+    <constraint type="edge-case">Mid-canvas insertion: If insertAfterRowId provided, shift all subsequent rows down by rowHeight (384px). Row IDs remain stable (no renumbering).</constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>RowManager.createNewRow</name>
+      <kind>class-method</kind>
+      <signature>createNewRow(insertAfterRowId?: string): string</signature>
+      <path>src/utils/rowManager.js</path>
+      <description>NEW - Create new row below active row or at specified position. Returns newRowId. Calls setActiveRow() to activate and trigger OCR on previous row.</description>
+    </interface>
+    <interface>
+      <name>RowManager.setActiveRow</name>
+      <kind>class-method</kind>
+      <signature>setActiveRow(rowId: string): void</signature>
+      <path>src/utils/rowManager.js</path>
+      <lines>219-264</lines>
+      <description>EXISTING - Activates specified row, deactivates previous. Triggers OCR on deactivated row (Story 1.8). Logs activation timeline event.</description>
+    </interface>
+    <interface>
+      <name>RowManager.getAllRows</name>
+      <kind>class-method</kind>
+      <signature>getAllRows(): Row[]</signature>
+      <path>src/utils/rowManager.js</path>
+      <description>EXISTING - Returns all rows as array. Used to determine last row for creation logic.</description>
+    </interface>
+    <interface>
+      <name>scrollToRow</name>
+      <kind>utility-function</kind>
+      <signature>scrollToRow(rowId: string, rowManager: RowManager): void</signature>
+      <path>src/utils/scrollToRow.js</path>
+      <lines>294-306</lines>
+      <description>EXISTING - Smooth scroll viewport to center specified row. Uses window.scrollTo with smooth behavior. Call after createNewRow().</description>
+    </interface>
+    <interface>
+      <name>MagicCanvasToolbar</name>
+      <kind>react-component</kind>
+      <signature>&lt;MagicCanvasToolbar rowManager={RowManager} onRowCreate={(rowId) => void} /&gt;</signature>
+      <path>src/components/MagicCanvasToolbar.jsx</path>
+      <description>NEW - Minimalist floating toolbar with "+ Row" button. Auto-hides after 3s inactivity. Calls rowManager.createNewRow() on button click.</description>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Vitest for unit tests, @testing-library/react for component tests. Tests located in src/**/__tests__/ directories or co-located with .test.js suffix. Test coverage should validate all acceptance criteria. Performance tests use performance.now() for timing assertions. Accessibility tests verify WCAG 2.1 Level AA compliance (tap targets, keyboard navigation).
+    </standards>
+    <locations>
+      <location>src/utils/__tests__/rowManager.test.js</location>
+      <location>src/components/__tests__/RowNavigator.test.js</location>
+      <location>src/components/__tests__/MagicCanvasToolbar.test.js</location>
+    </locations>
+    <ideas>
+      <idea ac="1,2,3,4,7">Unit test RowManager.createNewRow(): generates sequential ID (row-5 after row-4), positions at lastRow.yEnd, initializes metadata {ocrStatus: 'pending', validationStatus: 'pending', isActive: false}, calls setActiveRow(), returns newRowId</idea>
+      <idea ac="1,2,5,6">Integration test keyboard trigger: Press Down on last row → createNewRow() called → new row active → viewport auto-scrolls → can draw in new row</idea>
+      <idea ac="1,2,5,6">Integration test swipe trigger: Swipe down on last row → createNewRow() called → new row active → viewport auto-scrolls</idea>
+      <idea ac="8">Component test toolbar: Click "+ Row" button → createNewRow() called → onRowCreate callback fired → viewport scrolls</idea>
+      <idea ac="9,10">Unit test mid-canvas insertion: createNewRow('row-2') → row-3, row-4 shift down 384px → row IDs stable (row-3 stays row-3)</idea>
+      <idea ac="11">Unit test timeline logging: createNewRow() → activation timeline includes {rowId: 'row-5', activatedAt: Date, deactivatedAt: null}</idea>
+      <idea ac="12">Integration test OCR trigger: createNewRow() → previous row deactivated → OCR triggered after 1.5s (Story 1.8)</idea>
+      <idea ac="all">Performance test: createNewRow() completes <100ms. Rapid creation (spam Down key) doesn't corrupt state or lag UI</idea>
+      <idea ac="8">Accessibility test: Toolbar button meets 44x44px minimum, keyboard accessible (Tab + Enter), screen reader announces creation</idea>
+      <idea ac="all">Persistence test: createNewRow() → reload page → new row restored from IndexedDB with correct state</idea>
+    </ideas>
+  </tests>
+</story-context>

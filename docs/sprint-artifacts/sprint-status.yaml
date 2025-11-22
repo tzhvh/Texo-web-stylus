@@ -47,7 +47,7 @@ development_status:
   1-7-persist-row-state-canvas-state-across-reloads: done
   1-8-trigger-ocr-on-row-deactivation: done
   1-9-implement-row-switching-via-gestures-keyboard: done
-  1-10-implement-row-creation-workflow: backlog
+  1-10-implement-row-creation-workflow: done
   epic-1-retrospective: optional
 
   # Epic 2: Silent OCR Pipeline
