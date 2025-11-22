@@ -386,8 +386,89 @@ export default function useRowSystem({
   }, [rowManager, debugMode]);
 
   /**
+   * Filter elements to only include those in active row (Story 1.5 constraint enforcement)
+   *
+   * @private
+   * @param {Array} elements - Elements to filter
+   * @returns {Array} Filtered elements within active row bounds
+   */
+  const filterToActiveRow = useCallback((elements) => {
+    const activeRow = rowManager.getActiveRow();
+    if (!activeRow) return elements;
+
+    return elements.filter(el => {
+      // Always allow guide lines and highlights
+      if (el.id?.startsWith('guide-') || el.id?.startsWith('highlight-')) {
+        return true;
+      }
+
+      // Check if element center is within active row bounds
+      const elementCenterY = el.y + (el.height / 2);
+      return elementCenterY >= activeRow.yStart && elementCenterY <= activeRow.yEnd;
+    });
+  }, [rowManager]);
+
+  /**
+   * Enforce read-only state on inactive row elements (Story 1.5)
+   *
+   * @private
+   * @param {Array} elements - Elements to process
+   * @returns {Array} Elements with locked property set appropriately
+   */
+  const enforceReadOnlyRows = useCallback((elements) => {
+    const activeRow = rowManager.getActiveRow();
+    if (!activeRow) return elements;
+
+    return elements.map(el => {
+      // Never lock guide lines or highlights
+      if (el.id?.startsWith('guide-') || el.id?.startsWith('highlight-')) {
+        return el;
+      }
+
+      // Determine element's row by Y-coordinate
+      const elementCenterY = el.y + (el.height / 2);
+      const isInActiveRow = elementCenterY >= activeRow.yStart && elementCenterY <= activeRow.yEnd;
+
+      // Lock elements not in active row
+      return {
+        ...el,
+        locked: !isInActiveRow
+      };
+    });
+  }, [rowManager]);
+
+  /**
+   * Handle row tap/click activation (Story 1.5, AC #5)
+   *
+   * @param {number} clickY - Y-coordinate of click in canvas space
+   * @returns {boolean} True if row was activated
+   */
+  const handleRowTap = useCallback((clickY) => {
+    const allRows = rowManager.getAllRows();
+    const targetRow = allRows.find(row =>
+      clickY >= row.yStart && clickY <= row.yEnd
+    );
+
+    if (targetRow && targetRow.id !== rowManager.getActiveRow()?.id) {
+      rowManager.setActiveRow(targetRow.id);
+
+      if (debugMode) {
+        Logger.info('useRowSystem', 'Row activated by tap', {
+          rowId: targetRow.id,
+          clickY,
+          rowBounds: { yStart: targetRow.yStart, yEnd: targetRow.yEnd }
+        });
+      }
+
+      return true;
+    }
+
+    return false;
+  }, [rowManager, debugMode]);
+
+  /**
    * Debounced handler for Excalidraw onChange events
-   * 
+   *
    * @param {Array} elements - Current elements from Excalidraw
    * @param {Object} appState - Current application state
    * @param {Array} files - Files (if any)
@@ -397,21 +478,27 @@ export default function useRowSystem({
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
-    
+
+    // Story 1.5: Apply stroke constraints - filter to active row only
+    const filteredElements = filterToActiveRow(elements);
+
+    // Story 1.5: Enforce read-only state on inactive rows
+    const finalElements = enforceReadOnlyRows(filteredElements);
+
     // Schedule debounced processing
     debounceTimeoutRef.current = setTimeout(() => {
-      const changes = detectElementChanges(elements, previousElementsRef.current);
-      
+      const changes = detectElementChanges(finalElements, previousElementsRef.current);
+
       // Only process if there are actual changes
       if (changes.new.length > 0 || changes.modified.length > 0 || changes.deleted.length > 0) {
         processElementChanges(changes);
       }
-      
+
       // Update previous elements reference
-      previousElementsRef.current = new Map(elements.map(el => [el.id, el]));
-      
+      previousElementsRef.current = new Map(finalElements.map(el => [el.id, el]));
+
     }, debounceMs);
-  }, [detectElementChanges, processElementChanges, debounceMs]);
+  }, [detectElementChanges, processElementChanges, debounceMs, filterToActiveRow, enforceReadOnlyRows]);
 
   /**
    * Get row ID for a specific element
@@ -545,6 +632,8 @@ export default function useRowSystem({
     saveState: () => saveState(true), // Expose manual save with force flag
     loadState,
     isSaving,
-    isLoading
+    isLoading,
+    handleRowTap, // Story 1.5: Row tap activation handler
+    getActiveRow: () => rowManager.getActiveRow() // Story 1.5: Get active row for visual highlighting
   };
 }

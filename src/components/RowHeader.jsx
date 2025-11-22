@@ -14,6 +14,7 @@ import React from 'react';
  * @typedef {Object} RowHeaderProps
  * @property {Object} row - Row object with status information
  * @property {string} row.id - Row identifier
+ * @property {boolean} row.isActive - Whether this row is the active row (Story 1.5)
  * @property {string} row.ocrStatus - OCR processing status ('pending'|'processing'|'completed'|'error')
  * @property {string} row.validationStatus - Validation status ('pending'|'processing'|'validated'|'invalid'|'error')
  * @property {string|null} row.errorMessage - Error message if processing failed
@@ -106,14 +107,21 @@ export default function RowHeader({
   }
   
   const statusIcon = getStatusIcon(row);
-  
+
   // Position header at right edge of canvas with some padding
   const headerX = canvasWidth - 60; // 60px from right edge
   const headerY = y; // Align with row start
-  
+
+  // Story 1.5: Active row highlighting - distinct visual style
+  const activeStyle = row.isActive
+    ? "border-blue-500 shadow-lg ring-2 ring-blue-300"
+    : "border-white";
+
+  const scaleHover = row.isActive ? "hover:scale-105" : "hover:scale-110";
+
   return (
     <div
-      className={`absolute flex items-center justify-center w-8 h-8 rounded-full border-2 border-white shadow-md cursor-pointer transition-all duration-200 hover:scale-110 ${statusIcon.bgColor} ${statusIcon.color}`}
+      className={`absolute flex items-center justify-center w-8 h-8 rounded-full border-2 shadow-md cursor-pointer transition-all duration-200 ${activeStyle} ${scaleHover} ${statusIcon.bgColor} ${statusIcon.color}`}
       style={{
         left: `${headerX}px`,
         top: `${headerY}px`,
@@ -126,6 +134,7 @@ export default function RowHeader({
         e.stopPropagation(); // Prevent canvas interaction
         if (debugMode) {
           console.log(`RowHeader clicked: ${row.id}`, {
+            isActive: row.isActive,
             ocrStatus: row.ocrStatus,
             validationStatus: row.validationStatus,
             elementCount: row.elementIds?.size || 0,
@@ -164,9 +173,10 @@ export default function RowHeader({
  * @returns {React.ReactElement} Memoized component
  */
 export const MemoizedRowHeader = React.memo(RowHeader, (prevProps, nextProps) => {
-  // Only re-render if relevant props change
+  // Only re-render if relevant props change (Story 1.5: added isActive check)
   return (
     prevProps.row.id === nextProps.row.id &&
+    prevProps.row.isActive === nextProps.row.isActive &&
     prevProps.row.ocrStatus === nextProps.row.ocrStatus &&
     prevProps.row.validationStatus === nextProps.row.validationStatus &&
     prevProps.row.errorMessage === nextProps.row.errorMessage &&
