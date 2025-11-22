@@ -631,18 +631,66 @@ export class RowManager {
   }
 
   /**
-   * Explicitly create a new row below the current active row (Story 1.10)
-   * @returns {string} ID of the newly created row
+   * Create a new row below the currently active row or at the end
+   * Story 1.10: Complete implementation with mid-canvas insertion support
+   * @param {string} insertAfterRowId - Optional row ID to insert after (default: last row)
+   * @returns {string} New row ID
    */
-  createNewRow() {
-    const activeRow = this.getActiveRow();
-    const newIndex = activeRow ? parseInt(activeRow.id.replace('row-', '')) + 1 : this.rows.size;
-    const newRowId = `row-${newIndex}`;
-    const newRow = this._createRow(newIndex);
+  createNewRow(insertAfterRowId = null) {
+    const allRows = this.getAllRows();
+
+    // Determine insertion point
+    let insertIndex = allRows.length; // Default: append at end
+    let yPosition = this.startY + (allRows.length * this.rowHeight);
+
+    if (insertAfterRowId) {
+      const insertAfterIndex = allRows.findIndex(r => r.id === insertAfterRowId);
+      if (insertAfterIndex !== -1) {
+        insertIndex = insertAfterIndex + 1;
+        const insertAfterRow = allRows[insertAfterIndex];
+        yPosition = insertAfterRow.yEnd; // Position right below specified row
+
+        // Shift all subsequent rows down by rowHeight (Story 1.10, AC #9)
+        for (let i = insertIndex; i < allRows.length; i++) {
+          const row = allRows[i];
+          row.yStart += this.rowHeight;
+          row.yEnd += this.rowHeight;
+          this.rows.set(row.id, row); // Update in Map
+        }
+      }
+    }
+
+    // Generate sequential ID (Story 1.10, AC #3)
+    const newRowId = `row-${this.rows.size}`;
+
+    // Initialize new row metadata (Story 1.10, AC #7)
+    const newRow = {
+      id: newRowId,
+      yStart: yPosition,
+      yEnd: yPosition + this.rowHeight,
+      isActive: false, // Will be set true by setActiveRow() below
+      elementIds: new Set(),
+      ocrStatus: 'pending',
+      validationStatus: 'pending',
+      transcribedLatex: null,
+      validationResult: null,
+      lastModified: Date.now(),
+      activatedAt: null,
+      tileHash: null,
+      errorMessage: null
+    };
+
     this.rows.set(newRowId, newRow);
 
-    // Log creation for debugging / timeline purposes
-    Logger.info('RowManager', 'Created new row via createNewRow', { newRowId, newIndex });
+    // Activate new row (triggers OCR on previous active row via Story 1.8, AC #12)
+    this.setActiveRow(newRowId);
+
+    Logger.info('RowManager', 'Row created', {
+      rowId: newRowId,
+      yPosition,
+      insertAfter: insertAfterRowId || 'end'
+    });
+
     return newRowId;
   }
 

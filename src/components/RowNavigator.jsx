@@ -50,9 +50,9 @@ export default function RowNavigator({ rowManager, onRowChange, children }) {
         rowManager.setActiveRow(nextRow.id);
         onRowChange?.(nextRow.id);
       } else {
-        // TODO: Story 1.10 - Create new row here - AC #5
-        // rowManager.createNewRow();
-        console.log('Down on last row - Story 1.10 integration point');
+        // Story 1.10: Create new row when Down pressed on last row - AC #1, #2, #5
+        const newRowId = rowManager.createNewRow();
+        onRowChange?.(newRowId); // Trigger viewport scroll and logging
       }
     }
   }, [rowManager, onRowChange]);
@@ -60,7 +60,7 @@ export default function RowNavigator({ rowManager, onRowChange, children }) {
   // Swipe gesture navigation
   const swipeHandlers = useSwipeable({
     onSwipedUp: () => {
-      // Swipe up = activate next row (row N+1) - AC #1, #3
+      // Swipe up = activate next row (row N+1) or create new row - AC #1, #3
       const currentRow = rowManager.getActiveRow();
       if (!currentRow) return;
 
@@ -71,6 +71,10 @@ export default function RowNavigator({ rowManager, onRowChange, children }) {
         const nextRow = allRows[currentIndex + 1];
         rowManager.setActiveRow(nextRow.id);
         onRowChange?.(nextRow.id);
+      } else {
+        // Story 1.10: Create new row when swipe up on last row
+        const newRowId = rowManager.createNewRow();
+        onRowChange?.(newRowId);
       }
     },
     onSwipedDown: () => {

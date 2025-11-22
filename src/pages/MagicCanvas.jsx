@@ -25,6 +25,7 @@ import { MemoizedRowHeader } from "../components/RowHeader.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import RowNavigator from "../components/RowNavigator.jsx";
 import RowAnnouncer from "../components/RowAnnouncer.jsx";
+import MagicCanvasToolbar from "../components/MagicCanvasToolbar.jsx";
 import { scrollToRow } from "../utils/scrollToRow.js";
 import Logger from "../utils/logger.js";
 
@@ -999,6 +1000,12 @@ function MagicCanvasComponent() {
     updateViewportGuideLines();
   }, [rowManager, updateViewportGuideLines, debugMode]);
 
+  // Story 1.10: Handle row creation (reuses row change logic)
+  const handleRowCreate = useCallback((newRowId) => {
+    // Row creation triggers the same viewport scroll and logging as navigation
+    handleRowChange(newRowId);
+  }, [handleRowChange]);
+
   // Story 1.9: Update total rows when rows change
   useEffect(() => {
     const allRows = rowManager.getAllRows ? rowManager.getAllRows() : [];
@@ -1069,6 +1076,12 @@ function MagicCanvasComponent() {
           <RowAnnouncer
             activeRow={rowManager.getActiveRow()}
             totalRows={totalRows}
+          />
+
+          {/* Story 1.10: MagicCanvasToolbar with "+ Row" button - AC #8 */}
+          <MagicCanvasToolbar
+            rowManager={rowManager}
+            onRowCreate={handleRowCreate}
           />
         </div>
 
