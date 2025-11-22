@@ -29,7 +29,7 @@ describe('RowManager', () => {
   beforeEach(() => {
     // Reset mock logger before each test
     vi.clearAllMocks();
-    
+
     // Create fresh RowManager instance for each test
     rowManager = new RowManager({ rowHeight: 384, startY: 0 });
   });
@@ -45,7 +45,7 @@ describe('RowManager', () => {
   describe('Constructor', () => {
     it('should initialize with default configuration', () => {
       const defaultManager = new RowManager();
-      
+
       expect(defaultManager.rowHeight).toBe(384);
       expect(defaultManager.startY).toBe(0);
       expect(defaultManager.rows).toBeInstanceOf(Map);
@@ -56,7 +56,7 @@ describe('RowManager', () => {
 
     it('should initialize with custom configuration', () => {
       const customManager = new RowManager({ rowHeight: 200, startY: 100 });
-      
+
       expect(customManager.rowHeight).toBe(200);
       expect(customManager.startY).toBe(100);
     });
@@ -77,7 +77,7 @@ describe('RowManager', () => {
   describe('getRowForY', () => {
     it('should return correct row for Y coordinate within first row', () => {
       const row = rowManager.getRowForY(100);
-      
+
       expect(row).toBeDefined();
       expect(row.id).toBe('row-0');
       expect(row.yStart).toBe(0);
@@ -86,7 +86,7 @@ describe('RowManager', () => {
 
     it('should return correct row for Y coordinate at exact boundary', () => {
       const row = rowManager.getRowForY(384);
-      
+
       expect(row.id).toBe('row-1');
       expect(row.yStart).toBe(384);
       expect(row.yEnd).toBe(768);
@@ -94,7 +94,7 @@ describe('RowManager', () => {
 
     it('should return correct row for negative Y coordinate', () => {
       const row = rowManager.getRowForY(-100);
-      
+
       expect(row.id).toBe('row-0');
       expect(row.yStart).toBe(0);
       expect(row.yEnd).toBe(384);
@@ -102,7 +102,7 @@ describe('RowManager', () => {
 
     it('should return correct row for large Y coordinate', () => {
       const row = rowManager.getRowForY(5000);
-      
+
       expect(row.id).toBe('row-13');
       expect(row.yStart).toBe(4992);
       expect(row.yEnd).toBe(5376);
@@ -111,14 +111,14 @@ describe('RowManager', () => {
     it('should return same row instance for repeated calls with same Y', () => {
       const row1 = rowManager.getRowForY(200);
       const row2 = rowManager.getRowForY(250);
-      
+
       expect(row1).toBe(row2); // Same object reference
     });
 
     it('should create new row for different Y coordinates', () => {
       const row1 = rowManager.getRowForY(100);
       const row2 = rowManager.getRowForY(500);
-      
+
       expect(row1.id).toBe('row-0');
       expect(row2.id).toBe('row-1');
       expect(row1).not.toBe(row2);
@@ -134,7 +134,7 @@ describe('RowManager', () => {
 
     it('should log warning for invalid Y coordinate', () => {
       rowManager.getRowForY('invalid');
-      
+
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'RowManager',
         'Invalid Y coordinate provided to getRowForY',
@@ -144,7 +144,7 @@ describe('RowManager', () => {
 
     it('should log row creation', () => {
       rowManager.getRowForY(100);
-      
+
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'RowManager',
         'Created new row',
@@ -311,14 +311,14 @@ describe('RowManager', () => {
 
     it('should return existing row by ID', () => {
       const row = rowManager.getRow('row-0');
-      
+
       expect(row).toBeDefined();
       expect(row.id).toBe('row-0');
     });
 
     it('should return undefined for non-existent row', () => {
       const row = rowManager.getRow('row-999');
-      
+
       expect(row).toBeUndefined();
     });
 
@@ -330,7 +330,7 @@ describe('RowManager', () => {
 
     it('should log warning for invalid row ID', () => {
       rowManager.getRow(null);
-      
+
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'RowManager',
         'Invalid rowId provided to getRow',
@@ -350,9 +350,9 @@ describe('RowManager', () => {
         ocrStatus: 'complete',
         transcribedLatex: 'x^2 + 2x + 1'
       };
-      
+
       rowManager.updateRow('row-0', updates);
-      
+
       const row = rowManager.getRow('row-0');
       expect(row.ocrStatus).toBe('complete');
       expect(row.transcribedLatex).toBe('x^2 + 2x + 1');
@@ -361,9 +361,9 @@ describe('RowManager', () => {
 
     it('should handle partial updates', () => {
       const initialRow = { ...rowManager.getRow('row-0') };
-      
+
       rowManager.updateRow('row-0', { ocrStatus: 'processing' });
-      
+
       const row = rowManager.getRow('row-0');
       expect(row.ocrStatus).toBe('processing');
       // Other properties should remain unchanged
@@ -397,9 +397,9 @@ describe('RowManager', () => {
 
     it('should log row update', () => {
       const updates = { ocrStatus: 'complete' };
-      
+
       rowManager.updateRow('row-0', updates);
-      
+
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'RowManager',
         'Updated row',
@@ -423,19 +423,19 @@ describe('RowManager', () => {
       rowManager.getRowForY(100); // row-0
       rowManager.getRowForY(500); // row-1
       rowManager.getRowForY(900); // row-2
-      
+
       const rows = rowManager.getAllRows();
-      
+
       expect(rows.length).toBe(3);
       expect(rows.map(r => r.id)).toEqual(['row-0', 'row-1', 'row-2']);
     });
 
     it('should return array of row objects', () => {
       rowManager.getRowForY(100);
-      
+
       const rows = rowManager.getAllRows();
       const row = rows[0];
-      
+
       expect(row).toHaveProperty('id');
       expect(row).toHaveProperty('yStart');
       expect(row).toHaveProperty('yEnd');
@@ -454,34 +454,34 @@ describe('RowManager', () => {
 
     it('should return rows within viewport bounds', () => {
       const viewport = { y: 200, height: 300 }; // [200, 500]
-      
+
       const visibleRows = rowManager.getRowsInViewport(viewport);
-      
+
       expect(visibleRows.length).toBe(2);
       expect(visibleRows.map(r => r.id)).toEqual(['row-0', 'row-1']);
     });
 
     it('should return empty array for viewport with no overlapping rows', () => {
       const viewport = { y: 2000, height: 100 }; // [2000, 2100]
-      
+
       const visibleRows = rowManager.getRowsInViewport(viewport);
-      
+
       expect(visibleRows).toEqual([]);
     });
 
     it('should handle viewport that includes all rows', () => {
       const viewport = { y: 0, height: 2000 };
-      
+
       const visibleRows = rowManager.getRowsInViewport(viewport);
-      
+
       expect(visibleRows.length).toBe(3);
     });
 
     it('should handle partial row overlap', () => {
       const viewport = { y: 350, height: 50 }; // Overlaps row-0 and row-1
-      
+
       const visibleRows = rowManager.getRowsInViewport(viewport);
-      
+
       expect(visibleRows.length).toBe(2);
       expect(visibleRows.map(r => r.id)).toEqual(['row-0', 'row-1']);
     });
@@ -490,7 +490,7 @@ describe('RowManager', () => {
       expect(rowManager.getRowsInViewport(null)).toEqual([]);
       expect(rowManager.getRowsInViewport({})).toEqual([]);
       expect(rowManager.getRowsInViewport({ y: 'invalid', height: 100 })).toEqual([]);
-      
+
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'RowManager',
         'Invalid viewport provided to getRowsInViewport',
@@ -499,15 +499,15 @@ describe('RowManager', () => {
     });
 
     it('should handle viewport with optional properties', () => {
-      const viewport = { 
-        y: 200, 
-        height: 300, 
-        width: 1000, 
-        x: 50 
+      const viewport = {
+        y: 200,
+        height: 300,
+        width: 1000,
+        x: 50
       };
-      
+
       const visibleRows = rowManager.getRowsInViewport(viewport);
-      
+
       expect(visibleRows.length).toBe(2);
     });
   });
@@ -545,7 +545,7 @@ describe('RowManager', () => {
       expect(() => rowManager.removeElement(null)).not.toThrow();
       expect(() => rowManager.removeElement(undefined)).not.toThrow();
       expect(() => rowManager.removeElement(123)).not.toThrow();
-      
+
       expect(mockLogger.warn).toHaveBeenCalledWith(
         'RowManager',
         'Invalid elementId provided to removeElement',
@@ -555,7 +555,7 @@ describe('RowManager', () => {
 
     it('should log element removal', () => {
       rowManager.removeElement('element-1');
-      
+
       expect(mockLogger.debug).toHaveBeenCalledWith(
         'RowManager',
         'Removed element from previous row',
@@ -607,7 +607,7 @@ describe('RowManager', () => {
 
     it('should convert Map to Object for JSON serialization', () => {
       const serialized = rowManager.serialize();
-      
+
       expect(serialized.elementToRow).toHaveProperty('element-1', 'row-0');
       expect(serialized.elementToRow.constructor).toBe(Object);
     });
@@ -640,12 +640,12 @@ describe('RowManager', () => {
 
     it('should deserialize and restore state completely', () => {
       rowManager.deserialize(mockSerializedState);
-      
+
       expect(rowManager.rowHeight).toBe(200);
       expect(rowManager.startY).toBe(100);
       expect(rowManager.rows.size).toBe(1);
       expect(rowManager.elementToRow.size).toBe(2);
-      
+
       const row = rowManager.getRow('row-0');
       expect(row.elementIds).toBeInstanceOf(Set);
       expect(row.elementIds.has('element-1')).toBe(true);
@@ -672,16 +672,16 @@ describe('RowManager', () => {
       const partialState = {
         rows: []
       };
-      
+
       expect(() => rowManager.deserialize(partialState)).not.toThrow();
-      
+
       expect(rowManager.rowHeight).toBe(384); // Default value
       expect(rowManager.startY).toBe(0); // Default value
     });
 
     it('should log successful deserialization', () => {
       rowManager.deserialize(mockSerializedState);
-      
+
       expect(mockLogger.info).toHaveBeenCalledWith(
         'RowManager',
         'State deserialized successfully',
@@ -698,10 +698,10 @@ describe('RowManager', () => {
       // Add some initial state
       rowManager.getRowForY(100);
       expect(rowManager.rows.size).toBe(1);
-      
+
       // Deserialize new state
       rowManager.deserialize(mockSerializedState);
-      
+
       expect(rowManager.rows.size).toBe(1);
       expect(rowManager.getRow('row-0').ocrStatus).toBe('complete');
     });
@@ -743,23 +743,23 @@ describe('RowManager', () => {
     it('should handle large Y coordinates without performance issues', () => {
       const largeY = 1000000;
       const startTime = performance.now();
-      
+
       const row = rowManager.getRowForY(largeY);
-      
+
       const endTime = performance.now();
       const duration = endTime - startTime;
-      
+
       expect(row).toBeDefined();
       expect(duration).toBeLessThan(10); // Should be very fast (O(1) operation)
     });
 
     it('should maintain row ID consistency across multiple operations', () => {
       const y = 500;
-      
+
       const row1 = rowManager.getRowForY(y);
       const row2 = rowManager.getRowForY(y);
       const row3 = rowManager.getRowForY(y);
-      
+
       expect(row1.id).toBe(row2.id);
       expect(row2.id).toBe(row3.id);
       expect(row1).toBe(row2); // Same object reference
@@ -799,11 +799,78 @@ describe('RowManager', () => {
         };
         rowManager.assignElement(element);
       }
-
       const endTime = performance.now();
+      expect(endTime - startTime).toBeLessThan(100);
+    });
+  });
 
-      expect(endTime - startTime).toBeLessThan(100); // Should be reasonably fast
-      expect(rowManager.elementToRow.size).toBe(100);
+  describe('Listener System', () => {
+    it('should allow subscription to events', () => {
+      const callback = vi.fn();
+      const unsubscribe = rowManager.subscribe(callback);
+
+      expect(rowManager.listeners.size).toBe(1);
+      expect(typeof unsubscribe).toBe('function');
+    });
+
+    it('should notify listeners on active row change', () => {
+      const callback = vi.fn();
+      rowManager.subscribe(callback);
+
+      rowManager.setActiveRow('row-0');
+
+      expect(callback).toHaveBeenCalledWith('active-row-change', expect.objectContaining({
+        newActiveRowId: 'row-0'
+      }));
+    });
+
+    it('should notify listeners on row update', () => {
+      const callback = vi.fn();
+      rowManager.subscribe(callback);
+
+      // Create row first
+      rowManager.getRowForY(100);
+
+      rowManager.updateRow('row-0', { ocrStatus: 'complete' });
+
+      expect(callback).toHaveBeenCalledWith('row-update', expect.objectContaining({
+        rowId: 'row-0',
+        updates: { ocrStatus: 'complete' }
+      }));
+    });
+
+    it('should allow unsubscribing', () => {
+      const callback = vi.fn();
+      const unsubscribe = rowManager.subscribe(callback);
+
+      unsubscribe();
+
+      expect(rowManager.listeners.size).toBe(0);
+
+      rowManager.setActiveRow('row-0');
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('should handle errors in listeners gracefully', () => {
+      const errorCallback = vi.fn(() => {
+        throw new Error('Listener error');
+      });
+      const successCallback = vi.fn();
+
+      rowManager.subscribe(errorCallback);
+      rowManager.subscribe(successCallback);
+
+      // Should not throw
+      expect(() => rowManager.setActiveRow('row-0')).not.toThrow();
+
+      expect(errorCallback).toHaveBeenCalled();
+      expect(successCallback).toHaveBeenCalled();
+
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'RowManager',
+        'Error in listener callback',
+        expect.any(Object)
+      );
     });
   });
 

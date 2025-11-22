@@ -687,6 +687,33 @@ export default function useRowSystem({
     initialize();
   }, [excalidrawAPI, rowManager, processElementChanges, getRowCount, debugMode, loadState]);
 
+  // Track active row ID for reactive UI updates (Story 1.4)
+  const [activeRowId, setActiveRowId] = useState(() => rowManager ? rowManager.activeRowId : null);
+
+  // Subscribe to RowManager events (Story 1.4)
+  useEffect(() => {
+    if (!rowManager) return;
+
+    // Initial sync
+    setActiveRowId(rowManager.activeRowId);
+
+    const unsubscribe = rowManager.subscribe((eventType, data) => {
+      if (eventType === 'active-row-change') {
+        setActiveRowId(data.newActiveRowId);
+
+        if (debugMode) {
+          Logger.debug('useRowSystem', 'Active row changed (reactive)', {
+            newActiveRowId: data.newActiveRowId
+          });
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [rowManager, debugMode]);
+
   return {
     elementToRow,
     handleCanvasChange,
@@ -698,6 +725,7 @@ export default function useRowSystem({
     isSaving,
     isLoading,
     handleRowTap, // Story 1.5: Row tap activation handler
-    getActiveRow: () => rowManager.getActiveRow() // Story 1.5: Get active row for visual highlighting
+    getActiveRow: () => rowManager.getActiveRow(), // Story 1.5: Get active row for visual highlighting
+    activeRowId // Story 1.4: Reactive active row ID
   };
 }
