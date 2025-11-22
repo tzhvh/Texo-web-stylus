@@ -1,8 +1,14 @@
 # Component Inventory
 
-**Project**: Texo-web-stylus
-**Generated**: 2025-11-13
-**Total Components**: 7 React components
+**Generated:** 2025-11-22  
+**Project:** Texo-web-stylus  
+**Type:** Web Application (React + Vite)  
+
+---
+
+## Overview
+
+This document provides a comprehensive inventory of all React components in the Texo-web-stylus application, including their purpose, props, dependencies, and usage patterns.
 
 ---
 

@@ -1,7 +1,7 @@
 installation:
   version: 6.0.0-alpha.12
-  installDate: '2025-11-22T03:06:33.555Z'
-  lastUpdated: '2025-11-22T03:06:33.555Z'
+  installDate: '2025-11-22T16:14:50.259Z'
+  lastUpdated: '2025-11-22T16:14:50.259Z'
 modules:
   - core
   - bmm
@@ -13,3 +13,4 @@ ides:
   - qwen
   - roo
   - github-copilot
+  - antigravity

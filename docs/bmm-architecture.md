@@ -1,8 +1,17 @@
-# Texo-web-stylus Architecture
+# Architecture Documentation
 
-**Version:** 0.0.1
-**Last Updated:** 2025-11-13
-**License:** AGPL-3.0
+**Generated:** 2025-11-22  
+**Project:** Texo-web-stylus  
+**Type:** Web Application (React + Vite)  
+**Architecture Pattern:** Component-based SPA with Web Workers  
+
+---
+
+## Executive Summary
+
+**Texo-web-stylus** implements a sophisticated client-side mathematical processing architecture combining modern web technologies with advanced computer algebra systems. The architecture prioritizes privacy, performance, and offline capability through intelligent use of Web Workers, IndexedDB storage, and a two-tier equivalence checking system.
+
+The application processes handwritten mathematical inputs through OCR, converts them to LaTeX, and provides real-time equivalence checking using a hybrid approach of fast rule-based canonicalization and symbolic computation fallback.
 
 ---
 

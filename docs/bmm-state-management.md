@@ -1,7 +1,8 @@
 # State Management Documentation
 
-**Project**: Texo-web-stylus
-**Generated**: 2025-11-13
+**Generated:** 2025-11-22  
+**Project:** Texo-web-stylus  
+**Type:** Web Application (React + Vite)  
 
 ---
 
