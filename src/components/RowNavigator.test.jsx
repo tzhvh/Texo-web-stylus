@@ -28,7 +28,8 @@ describe('RowNavigator', () => {
     mockRowManager = {
       getActiveRow: vi.fn(),
       getAllRows: vi.fn(),
-      setActiveRow: vi.fn()
+      setActiveRow: vi.fn(),
+      createNewRow: vi.fn(() => 'row-3') // Story 1.10: Returns new row ID
     };
 
     // Create mock callback
@@ -117,8 +118,8 @@ describe('RowNavigator', () => {
     expect(mockOnRowChange).not.toHaveBeenCalled();
   });
 
-  // AC #5: Down on last row logs Story 1.10 integration message
-  it('logs Story 1.10 integration point when Down is pressed on last row', () => {
+  // AC #5: Down on last row creates new row (Story 1.10)
+  it('creates new row when Down is pressed on last row', () => {
     const mockRows = [
       { id: 'row-0' },
       { id: 'row-1' },
@@ -127,8 +128,6 @@ describe('RowNavigator', () => {
 
     mockRowManager.getActiveRow.mockReturnValue({ id: 'row-2' });
     mockRowManager.getAllRows.mockReturnValue(mockRows);
-
-    const consoleLogSpy = vi.spyOn(console, 'log');
 
     render(
       <RowNavigator rowManager={mockRowManager} onRowChange={mockOnRowChange}>
@@ -139,15 +138,11 @@ describe('RowNavigator', () => {
     // Simulate Down arrow key press on last row
     fireEvent.keyDown(document, { key: 'ArrowDown', code: 'ArrowDown' });
 
-    // Should NOT call setActiveRow
-    expect(mockRowManager.setActiveRow).not.toHaveBeenCalled();
+    // Should call createNewRow
+    expect(mockRowManager.createNewRow).toHaveBeenCalled();
 
-    // Should log integration message
-    expect(consoleLogSpy).toHaveBeenCalledWith(
-      'Down on last row - Story 1.10 integration point'
-    );
-
-    consoleLogSpy.mockRestore();
+    // Should call onRowChange with new row ID
+    expect(mockOnRowChange).toHaveBeenCalledWith('row-3');
   });
 
   // AC #10: Swipe gesture configuration has 50px threshold
@@ -189,6 +184,32 @@ describe('RowNavigator', () => {
 
     expect(mockRowManager.setActiveRow).toHaveBeenCalledWith('row-2');
     expect(mockOnRowChange).toHaveBeenCalledWith('row-2');
+  });
+
+  // Gesture handling: Swipe up on last row creates new row
+  it('handles swipe up gesture on last row to create new row', () => {
+    const mockRows = [
+      { id: 'row-0' },
+      { id: 'row-1' },
+      { id: 'row-2' }
+    ];
+
+    mockRowManager.getActiveRow.mockReturnValue({ id: 'row-2' });
+    mockRowManager.getAllRows.mockReturnValue(mockRows);
+
+    render(
+      <RowNavigator rowManager={mockRowManager} onRowChange={mockOnRowChange}>
+        <div>Test content</div>
+      </RowNavigator>
+    );
+
+    // Simulate swipe up on last row (should create new row)
+    if (global.swipeableConfig && global.swipeableConfig.onSwipedUp) {
+      global.swipeableConfig.onSwipedUp();
+    }
+
+    expect(mockRowManager.createNewRow).toHaveBeenCalled();
+    expect(mockOnRowChange).toHaveBeenCalledWith('row-3');
   });
 
   // Gesture handling: Swipe down navigates to previous row

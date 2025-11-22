@@ -65,8 +65,8 @@ describe('Story 1.6: RowHeader Component with StatusIcon Integration', () => {
     });
   });
 
-  describe('Task 3: Active Row Highlighting (AC #4)', () => {
-    it('should render active row highlight when row is active', () => {
+  describe('Task 3: Active Row Highlighting (AC #4) - Note: Highlighting now handled via Excalidraw overlays', () => {
+    it('should render StatusIcon component regardless of active state', () => {
       const activeRow = {
         ...mockRow,
         isActive: true
@@ -76,11 +76,11 @@ describe('Story 1.6: RowHeader Component with StatusIcon Integration', () => {
         <RowHeader row={activeRow} y={y} canvasWidth={canvasWidth} />
       );
 
-      const highlight = screen.getByTestId('row-highlight-row-0');
-      expect(highlight).toBeTruthy();
+      const statusIcon = container.querySelector('svg[data-testid*="status-icon"]');
+      expect(statusIcon).toBeTruthy();
     });
 
-    it('should not render highlight when row is inactive', () => {
+    it('should render StatusIcon for inactive rows', () => {
       const inactiveRow = {
         ...mockRow,
         isActive: false
@@ -90,76 +90,12 @@ describe('Story 1.6: RowHeader Component with StatusIcon Integration', () => {
         <RowHeader row={inactiveRow} y={y} canvasWidth={canvasWidth} />
       );
 
-      const highlight = container.querySelector('[data-testid="row-highlight-row-0"]');
-      expect(highlight).toBeFalsy();
-    });
-
-    it('should apply correct styling to active row highlight', () => {
-      const activeRow = {
-        ...mockRow,
-        isActive: true
-      };
-
-      render(
-        <RowHeader row={activeRow} y={y} canvasWidth={canvasWidth} />
-      );
-
-      const highlight = screen.getByTestId('row-highlight-row-0');
-      expect(highlight.className).toContain('border-2');
-      expect(highlight.className).toContain('border-blue-500');
-      expect(highlight.className).toContain('bg-blue-50');
-    });
-
-    it('should apply 200ms transition to highlight', () => {
-      const activeRow = {
-        ...mockRow,
-        isActive: true
-      };
-
-      render(
-        <RowHeader row={activeRow} y={y} canvasWidth={canvasWidth} />
-      );
-
-      const highlight = screen.getByTestId('row-highlight-row-0');
-      expect(highlight.className).toContain('transition-all');
-      expect(highlight.className).toContain('duration-200');
-    });
-
-    it('should position highlight correctly', () => {
-      const activeRow = {
-        ...mockRow,
-        isActive: true
-      };
-
-      render(
-        <RowHeader row={activeRow} y={y} canvasWidth={canvasWidth} />
-      );
-
-      const highlight = screen.getByTestId('row-highlight-row-0');
-      const style = highlight.getAttribute('style');
-
-      expect(style).toContain('left: 0');
-      expect(style).toContain('top: 0px');
-      expect(style).toContain('width: 1000px');
-      expect(style).toContain('height: 384px');
+      const statusIcon = container.querySelector('svg[data-testid*="status-icon"]');
+      expect(statusIcon).toBeTruthy();
     });
   });
 
   describe('Task 4: Canvas Integration (AC #7)', () => {
-    it('should set highlight to non-blocking pointer events', () => {
-      const activeRow = {
-        ...mockRow,
-        isActive: true
-      };
-
-      render(
-        <RowHeader row={activeRow} y={y} canvasWidth={canvasWidth} />
-      );
-
-      const highlight = screen.getByTestId('row-highlight-row-0');
-      expect(highlight.className).toContain('pointer-events-none');
-    });
-
     it('should render icon with interactive pointer events', () => {
       const { container } = render(
         <RowHeader row={mockRow} y={y} canvasWidth={canvasWidth} />
@@ -303,11 +239,6 @@ describe('Story 1.6: RowHeader Component with StatusIcon Integration', () => {
       // Should have 3 status icons
       const statusIcons = container.querySelectorAll('svg[data-testid*="status-icon"]');
       expect(statusIcons.length).toBe(3);
-
-      // Only one active highlight
-      const highlights = container.querySelectorAll('[data-testid*="row-highlight"]');
-      expect(highlights.length).toBe(1);
-      expect(highlights[0].getAttribute('data-testid')).toBe('row-highlight-row-0');
     });
   });
 
