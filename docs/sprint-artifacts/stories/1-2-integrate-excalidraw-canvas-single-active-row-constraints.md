@@ -1,6 +1,6 @@
 # Story 1.2: Integrate Excalidraw Canvas with Single-Active-Row Constraints
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -204,7 +204,7 @@ src/
 
 ### Context Reference
 
-<!-- Path(s) to story context XML will be added here by context workflow -->
+- `docs/sprint-artifacts/stories/1-2-integrate-excalidraw-canvas-single-active-row-constraints.context.xml`
 
 ### Agent Model Used
 
