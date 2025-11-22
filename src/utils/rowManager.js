@@ -82,6 +82,17 @@ export class RowManager {
       startY,
       timestamp: Date.now()
     });
+
+    // Callback for OCR trigger on row deactivation
+    this.ocrTriggerCallback = null;
+  }
+
+  /**
+   * Set OCR trigger callback (called when row is deactivated)
+   * @param {Function} callback - Function to call: (rowId, rowData) => void
+   */
+  setOCRTriggerCallback(callback) {
+    this.ocrTriggerCallback = callback;
   }
 
   /**
@@ -318,6 +329,11 @@ export class RowManager {
       const prevEntry = this.activationTimeline.find(e => e.rowId === previousActiveRowId && !e.deactivatedAt);
       if (prevEntry) {
         prevEntry.deactivatedAt = now;
+      }
+
+      // Trigger OCR for deactivated row
+      if (this.ocrTriggerCallback) {
+        this.ocrTriggerCallback(previousRow.id, previousRow);
       }
     }
 

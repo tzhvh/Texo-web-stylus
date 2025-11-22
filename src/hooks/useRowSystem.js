@@ -14,6 +14,8 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import Logger from '../utils/logger.js';
 import RowManager from '../utils/rowManager.js';
 import { saveSessionState, loadSessionState } from '../utils/workspaceDB.js';
+import { calculateRowContentHash } from '../utils/contentHash.js';
+import { triggerOCRForRow } from '../utils/ocrTrigger.js';
 
 /**
  * @typedef {Object} UseRowSystemOptions
@@ -44,17 +46,17 @@ import { saveSessionState, loadSessionState } from '../utils/workspaceDB.js';
  * @param {UseRowSystemOptions} options - Hook configuration options
  * @returns {UseRowSystemReturn} Hook return value with state and handlers
  */
-export default function useRowSystem({ 
-  excalidrawAPI, 
-  rowManager, 
-  debounceMs = 50, 
+export default function useRowSystem({
+  excalidrawAPI,
+  rowManager,
+  debounceMs = 50,
   debugMode = false,
   workspaceId = 'default',
   autoSaveMs = 2000
 }) {
   // Track element-to-row mappings for UI updates
   const [elementToRow, setElementToRow] = useState(new Map());
-  
+
   // Track assignment statistics for debugging
   const [stats, setStats] = useState({
     totalAssignments: 0,
@@ -74,6 +76,8 @@ export default function useRowSystem({
   const processingRef = useRef(false);
   const autoSaveTimeoutRef = useRef(null);
   const lastSaveTimeRef = useRef(0);
+  const rowContentHashesRef = useRef(new Map());
+  const ocrDebounceTimeoutRef = useRef(null);
 
   /**
    * Check if element has changed in ways that affect row assignment
@@ -85,16 +89,16 @@ export default function useRowSystem({
    */
   const hasElementChanged = useCallback((element, previousElement) => {
     if (!element || !previousElement) return true;
-    
+
     // Only check properties that affect row assignment
     const relevantProps = ['x', 'y', 'width', 'height', 'isDeleted'];
-    
+
     for (const prop of relevantProps) {
       if (JSON.stringify(element[prop]) !== JSON.stringify(previousElement[prop])) {
         return true;
       }
     }
-    
+
     return false;
   }, []);
 
@@ -109,7 +113,7 @@ export default function useRowSystem({
   const detectElementChanges = useCallback((currentElements, previousMap) => {
     const currentMap = new Map(currentElements.map(el => [el.id, el]));
     const changes = { new: [], modified: [], deleted: [] };
-    
+
     // Find new and modified elements
     for (const [id, element] of currentMap) {
       if (!previousMap.has(id)) {
@@ -118,14 +122,14 @@ export default function useRowSystem({
         changes.modified.push(element);
       }
     }
-    
+
     // Find deleted elements
     for (const [id] of previousMap) {
       if (!currentMap.has(id)) {
         changes.deleted.push(id);
       }
     }
-    
+
     return changes;
   }, [hasElementChanged]);
 
@@ -138,7 +142,7 @@ export default function useRowSystem({
    */
   const saveState = useCallback(async (force = false) => {
     const now = Date.now();
-    
+
     // Throttle saves to avoid excessive writes (minimum 1s between saves unless forced)
     if (!force && now - lastSaveTimeRef.current < 1000) {
       if (debugMode) {
@@ -151,15 +155,15 @@ export default function useRowSystem({
 
     try {
       setIsSaving(true);
-      
+
       // Serialize RowManager state
       const serializedState = rowManager.serialize();
-      
+
       // Save to IndexedDB with workspace-specific key
       await saveSessionState(`rowManager-${workspaceId}`, serializedState);
-      
+
       lastSaveTimeRef.current = now;
-      
+
       if (debugMode) {
         Logger.debug('useRowSystem', 'State saved to IndexedDB', {
           workspaceId,
@@ -174,7 +178,7 @@ export default function useRowSystem({
         error: error.message,
         stack: error.stack
       });
-      
+
       setStats(prev => ({
         ...prev,
         errorCount: prev.errorCount + 1
@@ -193,14 +197,14 @@ export default function useRowSystem({
   const loadState = useCallback(async () => {
     try {
       setIsLoading(true);
-      
+
       // Load from IndexedDB with workspace-specific key
       const savedState = await loadSessionState(`rowManager-${workspaceId}`);
-      
+
       if (savedState) {
         // Deserialize into RowManager
         rowManager.deserialize(savedState);
-        
+
         if (debugMode) {
           Logger.debug('useRowSystem', 'State loaded from IndexedDB', {
             workspaceId,
@@ -208,7 +212,7 @@ export default function useRowSystem({
             elementMappings: Object.keys(savedState.elementToRow).length
           });
         }
-        
+
         return true;
       } else {
         if (debugMode) {
@@ -216,7 +220,7 @@ export default function useRowSystem({
             workspaceId
           });
         }
-        
+
         return false;
       }
     } catch (error) {
@@ -225,12 +229,12 @@ export default function useRowSystem({
         error: error.message,
         stack: error.stack
       });
-      
+
       setStats(prev => ({
         ...prev,
         errorCount: prev.errorCount + 1
       }));
-      
+
       return false;
     } finally {
       setIsLoading(false);
@@ -247,7 +251,7 @@ export default function useRowSystem({
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
     }
-    
+
     // Schedule new auto-save
     autoSaveTimeoutRef.current = setTimeout(() => {
       saveState();
@@ -270,20 +274,20 @@ export default function useRowSystem({
 
     processingRef.current = true;
     const startTime = performance.now();
-    
+
     try {
       const { new: newElements, modified: modifiedElements, deleted: deletedIds } = changes;
-      
+
       // Process new elements
       for (const element of newElements) {
         if (element.id && !element.id.startsWith('guide-')) {
           const assignmentStartTime = performance.now();
           const rowId = rowManager.assignElement(element);
           const assignmentTime = performance.now() - assignmentStartTime;
-          
+
           if (rowId) {
             assignmentTimesRef.current.push(assignmentTime);
-            
+
             if (debugMode) {
               Logger.debug('useRowSystem', 'Assigned new element to row', {
                 elementId: element.id,
@@ -294,17 +298,17 @@ export default function useRowSystem({
           }
         }
       }
-      
+
       // Process modified elements
       for (const element of modifiedElements) {
         if (element.id && !element.id.startsWith('guide-')) {
           const assignmentStartTime = performance.now();
           const rowId = rowManager.assignElement(element);
           const assignmentTime = performance.now() - assignmentStartTime;
-          
+
           if (rowId) {
             assignmentTimesRef.current.push(assignmentTime);
-            
+
             if (debugMode) {
               Logger.debug('useRowSystem', 'Reassigned modified element to row', {
                 elementId: element.id,
@@ -315,12 +319,12 @@ export default function useRowSystem({
           }
         }
       }
-      
+
       // Process deleted elements
       for (const elementId of deletedIds) {
         if (!elementId.startsWith('guide-')) {
           rowManager.removeElement(elementId);
-          
+
           if (debugMode) {
             Logger.debug('useRowSystem', 'Removed deleted element from row', {
               elementId
@@ -328,25 +332,25 @@ export default function useRowSystem({
           }
         }
       }
-      
+
       // Update element-to-row mapping for UI
       const updatedMapping = new Map();
       const allRows = rowManager.getAllRows();
-      
+
       for (const row of allRows) {
         for (const elementId of row.elementIds) {
           updatedMapping.set(elementId, row.id);
         }
       }
-      
+
       setElementToRow(updatedMapping);
-      
+
       // Update statistics
       const totalProcessingTime = performance.now() - startTime;
-      const avgAssignmentTime = assignmentTimesRef.current.length > 0 
-        ? assignmentTimesRef.current.reduce((a, b) => a + b, 0) / assignmentTimesRef.current.length 
+      const avgAssignmentTime = assignmentTimesRef.current.length > 0
+        ? assignmentTimesRef.current.reduce((a, b) => a + b, 0) / assignmentTimesRef.current.length
         : 0;
-      
+
       setStats(prev => ({
         totalAssignments: prev.totalAssignments + newElements.length + modifiedElements.length,
         lastAssignmentTime: Date.now(),
@@ -358,7 +362,7 @@ export default function useRowSystem({
       if (newElements.length > 0 || modifiedElements.length > 0 || deletedIds.length > 0) {
         scheduleAutoSave();
       }
-      
+
       if (debugMode) {
         Logger.info('useRowSystem', 'Processed element changes', {
           newElements: newElements.length,
@@ -369,13 +373,13 @@ export default function useRowSystem({
           totalRows: allRows.length
         });
       }
-      
+
     } catch (error) {
       Logger.error('useRowSystem', 'Error processing element changes', {
         error: error.message,
         stack: error.stack
       });
-      
+
       setStats(prev => ({
         ...prev,
         errorCount: prev.errorCount + 1
@@ -520,6 +524,66 @@ export default function useRowSystem({
     return allRows.filter(row => row.elementIds.size > 0).length;
   }, [rowManager]);
 
+  /**
+   * Handle row deactivation to trigger OCR (Story 1.8)
+   * Debounced by 1.5s to prevent excessive triggers during rapid switching
+   */
+  const handleRowDeactivation = useCallback((rowId, rowData) => {
+    if (ocrDebounceTimeoutRef.current) {
+      clearTimeout(ocrDebounceTimeoutRef.current);
+    }
+
+    ocrDebounceTimeoutRef.current = setTimeout(() => {
+      // Get latest elements from API to ensure we have current state
+      const sceneElements = excalidrawAPI ? excalidrawAPI.getSceneElements() : [];
+      const sceneElementsMap = new Map(sceneElements.map(el => [el.id, el]));
+
+      const elements = Array.from(rowData.elementIds)
+        .map(id => sceneElementsMap.get(id))
+        .filter(Boolean);
+
+      const contentHash = calculateRowContentHash(elements);
+      const lastHash = rowContentHashesRef.current.get(rowId);
+
+      if (elements.length === 0) {
+        if (debugMode) Logger.debug('useRowSystem', 'Skipping OCR for empty row', { rowId });
+        return;
+      }
+
+      if (contentHash === lastHash) {
+        if (debugMode) Logger.debug('useRowSystem', 'Skipping OCR for unchanged row', { rowId, hash: contentHash });
+        return;
+      }
+
+      // Update hash and trigger OCR
+      rowContentHashesRef.current.set(rowId, contentHash);
+
+      // Update row status to pending
+      try {
+        rowManager.updateRow(rowId, { ocrStatus: 'pending' });
+      } catch (error) {
+        Logger.warn('useRowSystem', 'Failed to update row status for OCR', { rowId, error: error.message });
+      }
+
+      triggerOCRForRow(rowId, elements);
+    }, 1500); // 1.5s debounce
+  }, [excalidrawAPI, rowManager, debugMode]);
+
+  // Register OCR trigger callback
+  useEffect(() => {
+    if (rowManager) {
+      rowManager.setOCRTriggerCallback(handleRowDeactivation);
+    }
+    return () => {
+      if (rowManager) {
+        rowManager.setOCRTriggerCallback(null);
+      }
+      if (ocrDebounceTimeoutRef.current) {
+        clearTimeout(ocrDebounceTimeoutRef.current);
+      }
+    };
+  }, [rowManager, handleRowDeactivation]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -543,14 +607,14 @@ export default function useRowSystem({
         try {
           // Try to load saved state first
           const stateLoaded = await loadState();
-          
+
           // Get current elements from canvas
           const elements = excalidrawAPI.getSceneElements() || [];
-          
+
           if (stateLoaded) {
             // If state was loaded, sync with current canvas elements
             const changes = { new: [], modified: [], deleted: [] };
-            
+
             // Find elements that are new (not in loaded state)
             const loadedElementIds = new Set();
             const allRows = rowManager.getAllRows();
@@ -559,7 +623,7 @@ export default function useRowSystem({
                 loadedElementIds.add(elementId);
               }
             }
-            
+
             for (const element of elements) {
               if (element.id && !element.id.startsWith('guide-')) {
                 if (!loadedElementIds.has(element.id)) {
@@ -567,12 +631,12 @@ export default function useRowSystem({
                 }
               }
             }
-            
+
             // Process only new elements
             if (changes.new.length > 0) {
               processElementChanges(changes);
             }
-            
+
             // Update element-to-row mapping from loaded state
             const updatedMapping = new Map();
             for (const row of allRows) {
@@ -581,7 +645,7 @@ export default function useRowSystem({
               }
             }
             setElementToRow(updatedMapping);
-            
+
             if (debugMode) {
               Logger.info('useRowSystem', 'Initialized from saved state', {
                 elementCount: elements.length,
@@ -593,7 +657,7 @@ export default function useRowSystem({
             // No saved state, process all elements as new
             const changes = { new: elements, modified: [], deleted: [] };
             processElementChanges(changes);
-            
+
             if (debugMode) {
               Logger.info('useRowSystem', 'Initialized with fresh state', {
                 elementCount: elements.length,
@@ -601,16 +665,16 @@ export default function useRowSystem({
               });
             }
           }
-          
+
           // Set initial previous elements reference
           previousElementsRef.current = new Map(elements.map(el => [el.id, el]));
-          
+
         } catch (error) {
           Logger.error('useRowSystem', 'Failed to initialize', {
             error: error.message,
             stack: error.stack
           });
-          
+
           // Fallback to fresh initialization
           const elements = excalidrawAPI.getSceneElements() || [];
           const changes = { new: elements, modified: [], deleted: [] };
@@ -619,7 +683,7 @@ export default function useRowSystem({
         }
       }
     };
-    
+
     initialize();
   }, [excalidrawAPI, rowManager, processElementChanges, getRowCount, debugMode, loadState]);
 
