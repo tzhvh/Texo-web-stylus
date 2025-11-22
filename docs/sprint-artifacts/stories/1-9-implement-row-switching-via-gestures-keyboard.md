@@ -1,6 +1,6 @@
 # Story 1.9: Implement Row Switching via Gestures and Keyboard
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -456,7 +456,7 @@ function MagicCanvas() {
 
 ### Context Reference
 
-<!-- Path(s) to story context XML will be added here by context workflow -->
+- docs/sprint-artifacts/stories/1-9-implement-row-switching-via-gestures-keyboard.context.xml
 
 ### Agent Model Used
 
@@ -470,4 +470,6 @@ Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 
 ## Change Log
 
+- 2025-11-22: Story marked ready-for-dev via story-context workflow (SESSION 3)
+- 2025-11-22: Story context XML generated (SESSION 3)
 - 2025-11-22: Story drafted by SM agent (BMad) via create-story workflow (SESSION 1)
