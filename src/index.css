@@ -13,3 +13,38 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
+
+/* Row Navigation Styles - Story 1.9 */
+/* AC #6: 200ms transition for smooth row switching animation */
+
+.row-active {
+  border: 2px solid #3b82f6; /* Blue border for active row */
+  background-color: rgba(59, 130, 246, 0.05); /* Subtle blue tint */
+  transition: border-color 200ms ease-in-out, background-color 200ms ease-in-out;
+}
+
+.row-inactive {
+  border: 1px solid #e5e7eb; /* Gray border for inactive rows */
+  background-color: transparent;
+  opacity: 0.6; /* Dimmed appearance */
+  transition: opacity 200ms ease-in-out;
+}
+
+/* GPU-accelerated transitions for 60fps performance */
+.row-active,
+.row-inactive {
+  will-change: border-color, background-color, opacity;
+}
+
+/* Screen reader only (sr-only) - AC #9: Accessibility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

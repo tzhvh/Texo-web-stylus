@@ -1,0 +1,529 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<story-context id="1.9" epic="1" title="Implement Row Switching via Gestures and Keyboard">
+  <metadata>
+    <generated-date>2025-11-22</generated-date>
+    <generator>BMAD v6 Autonomous Workflow - SESSION 3</generator>
+    <story-file>docs/sprint-artifacts/stories/1-9-implement-row-switching-via-gestures-keyboard.md</story-file>
+  </metadata>
+
+  <summary>
+    Implement the row navigation system for the single-active-row architectural model, enabling users to switch between rows using intuitive gestures (swipe up/down), keyboard shortcuts (arrow keys), and direct row tap/click. Includes smooth 200ms CSS transitions for active row highlighting, viewport auto-scroll to center off-screen rows, and screen reader announcements for accessibility (WCAG 2.1 AA). This builds on the RowManager foundation from Story 1.4 and integrates seamlessly with the OCR trigger mechanism from Story 1.8.
+  </summary>
+
+  <architecture-context>
+    <architectural-model>
+      <name>Row Navigation with Gesture and Keyboard Control</name>
+      <description>
+        Users navigate between rows using swipe gestures (up/down with 50px threshold), arrow keys (Up/Down),
+        or direct tap/click on any row. Active row changes trigger visual highlighting with 200ms CSS transition,
+        viewport auto-scroll to center off-screen rows, and OCR processing on deactivated row (via Story 1.8 hook).
+        Navigation respects boundary conditions (Up on row 0 = no-op, Down on last row = integration point for
+        Story 1.10 row creation).
+      </description>
+      <source>docs/architecture.md:356-357, docs/epic_1_complete_breakdown.md:323-358</source>
+    </architectural-model>
+
+    <integration-points>
+      <integration name="RowManager Integration">
+        <component>src/utils/rowManager.js</component>
+        <methods>setActiveRow(rowId), getActiveRow(), getAllRows()</methods>
+        <usage>Call setActiveRow() from gesture/keyboard handlers to switch rows. This automatically triggers OCR hook from Story 1.8.</usage>
+        <source>stories/1-8-trigger-ocr-on-row-deactivation.md (lines 219-264)</source>
+      </integration>
+
+      <integration name="Story 1.8 OCR Trigger Integration">
+        <component>src/utils/rowManager.js - setActiveRow()</component>
+        <hook>OCR trigger callback fires on row deactivation</hook>
+        <behavior>When switching from row N to row M, row N is deactivated → OCR triggered after 1.5s debounce</behavior>
+        <usage>Navigation automatically triggers OCR processing without additional code</usage>
+        <source>stories/1-8-trigger-ocr-on-row-deactivation.md</source>
+      </integration>
+
+      <integration name="Story 1.6 Visual Highlighting Integration">
+        <component>src/components/RowHeader.jsx</component>
+        <extends>Active row highlighting already exists</extends>
+        <usage>Row activation via navigation triggers existing visual feedback system</usage>
+        <source>docs/sprint-artifacts/stories/1-6-display-row-status-indicators-active-row-highlight.md</source>
+      </integration>
+
+      <integration name="Story 1.10 Row Creation Integration">
+        <component>Future: src/utils/rowManager.js - createNewRow()</component>
+        <trigger>Down arrow or swipe down on last row</trigger>
+        <usage>Navigation component creates TODO comment for Story 1.10 integration point</usage>
+        <source>docs/epic_1_complete_breakdown.md:360-403 (Story 1.10)</source>
+      </integration>
+
+      <integration name="react-swipeable Library">
+        <component>react-swipeable package</component>
+        <hooks>useSwipeable hook with onSwipedUp, onSwipedDown callbacks</hooks>
+        <configuration>delta: 50px (minimum vertical movement), trackTouch: true, trackMouse: false</configuration>
+        <usage>Detect vertical swipe gestures with threshold to prevent accidental activation</usage>
+      </integration>
+    </integration-points>
+
+    <state-management>
+      <pattern>Event-Driven Navigation with Centralized State</pattern>
+      <flow>
+        User Gesture/Keyboard → RowNavigator Detects Input → Calculate Target Row →
+        rowManager.setActiveRow(targetRowId) → OCR Trigger (Story 1.8) → Visual Highlight Update →
+        Viewport Auto-Scroll → ARIA Announcement → State Persisted (Story 1.7)
+      </flow>
+      <source>docs/architecture.md:356-357</source>
+    </state-management>
+
+    <performance-requirements>
+      <requirement metric="Row switching latency" target="<200ms" />
+      <requirement metric="Animation frame rate" target="60fps during row switching" />
+      <requirement metric="Viewport scroll duration" target="<300ms smooth animation" />
+      <requirement metric="Gesture detection overhead" target="Negligible (passive listeners)" />
+      <requirement metric="Keyboard response" target="<100ms from keypress to activation" />
+    </performance-requirements>
+
+    <accessibility-requirements>
+      <requirement standard="WCAG 2.1 AA" feature="Screen reader announcements">
+        ARIA live region announces "Row {N} of {total} active" on row switch
+      </requirement>
+      <requirement standard="WCAG 2.1 AA" feature="Keyboard navigation">
+        Full functionality via arrow keys without mouse/touch
+      </requirement>
+      <requirement standard="WCAG 2.1 AA" feature="Touch targets">
+        Row tap targets meet 44x44px minimum
+      </requirement>
+      <requirement standard="WCAG 2.1 AA" feature="Visual feedback">
+        Active row highlighting with sufficient color contrast
+      </requirement>
+    </accessibility-requirements>
+  </architecture-context>
+
+  <technical-context>
+    <existing-components>
+      <component path="src/utils/rowManager.js" status="COMPLETE" story="1.4, 1.8">
+        <description>RowManager class with setActiveRow(), getActiveRow(), getAllRows(), activation timeline, OCR trigger hook</description>
+        <reuse-pattern>Call setActiveRow(newRowId) from RowNavigator on gesture/keyboard events</reuse-pattern>
+        <reuse-pattern>Use getActiveRow() to determine current row for navigation logic</reuse-pattern>
+        <reuse-pattern>Use getAllRows() to calculate row count for boundary conditions and ARIA announcements</reuse-pattern>
+        <critical>setActiveRow() already triggers OCR hook from Story 1.8 - no additional OCR code needed</critical>
+        <source>src/utils/rowManager.js:219-264 (setActiveRow implementation)</source>
+      </component>
+
+      <component path="src/hooks/useRowSystem.js" status="EXISTS" story="1.2, 1.4, 1.8">
+        <description>React hook for row system orchestration</description>
+        <extend>Expose rowManager instance for RowNavigator</extend>
+        <extend>Add onRowChange callback for viewport scroll and ARIA updates</extend>
+        <extend>May need to expose activeRowId state for RowAnnouncer component</extend>
+      </component>
+
+      <component path="src/pages/MagicCanvas.jsx" status="EXISTS" story="1.1">
+        <description>Main Magic Canvas page with Excalidraw integration</description>
+        <extend>Wrap canvas with RowNavigator component</extend>
+        <extend>Add RowAnnouncer component for accessibility</extend>
+        <extend>Implement handleRowChange callback (viewport scroll, logging)</extend>
+      </component>
+
+      <component path="src/components/RowHeader.jsx" status="EXISTS" story="1.6">
+        <description>Row status indicator component with active row highlighting</description>
+        <reuse>Visual highlighting already implemented</reuse>
+        <behavior>Automatically updates when rowManager.setActiveRow() is called</behavior>
+      </component>
+
+      <component path="src/utils/logger.js" status="EXISTS">
+        <description>Centralized logging infrastructure</description>
+        <reuse>Log navigation events: logger.log('Row navigation', { newRowId })</reuse>
+      </component>
+    </existing-components>
+
+    <new-components>
+      <component path="src/components/RowNavigator.jsx" status="NEW" primary="true">
+        <description>Gesture and keyboard navigation component</description>
+        <responsibilities>
+          - Detect arrow key presses (Up/Down) and call appropriate navigation handler
+          - Integrate react-swipeable for touch gesture detection (50px threshold)
+          - Calculate target row based on current active row and navigation direction
+          - Call rowManager.setActiveRow(targetRowId) to switch rows
+          - Handle boundary conditions (Up on row 0, Down on last row)
+          - Fire onRowChange callback for side effects (scroll, logging)
+        </responsibilities>
+        <props>
+          - rowManager: RowManager instance
+          - onRowChange: (newRowId: string) => void callback
+          - children: React.ReactNode (canvas elements)
+        </props>
+        <implementation-notes>
+          - Use useCallback for keyboard handler to prevent re-renders
+          - Use useEffect to attach/detach document-level keyboard listener
+          - preventDefault() on arrow keys to prevent scroll
+          - react-swipeable config: delta=50, trackTouch=true, trackMouse=false
+          - Swipe up → activate next row (row N+1)
+          - Swipe down → activate previous row (row N-1)
+        </implementation-notes>
+      </component>
+
+      <component path="src/components/RowAnnouncer.jsx" status="NEW">
+        <description>Accessibility component for screen reader announcements</description>
+        <responsibilities>
+          - Listen to active row changes
+          - Update ARIA live region with announcement: "Row {N} of {total} active"
+          - Debounce announcements 300ms to prevent spam on rapid switching
+        </responsibilities>
+        <props>
+          - activeRow: Row object (current active row)
+          - totalRows: number (total row count)
+        </props>
+        <implementation-notes>
+          - Use ARIA live region: role="status" aria-live="polite" aria-atomic="true"
+          - Apply sr-only class for screen-reader-only content
+          - Use lodash debounce for 300ms debouncing
+          - Parse row index from row.id format ("row-{index}")
+        </implementation-notes>
+      </component>
+
+      <component path="src/utils/scrollToRow.js" status="NEW">
+        <description>Utility function for viewport auto-scroll to active row</description>
+        <signature>scrollToRow(rowId: string, rowManager: RowManager): void</signature>
+        <algorithm>
+          1. Get row from rowManager.getRow(rowId)
+          2. Calculate rowCenterY = (row.yStart + row.yEnd) / 2
+          3. Calculate targetScrollY = rowCenterY - (viewportHeight / 2)
+          4. Use window.scrollTo({ top: targetScrollY, behavior: 'smooth' })
+        </algorithm>
+        <edge-cases>
+          - Handle first/last row (prevent over-scroll)
+          - Handle very tall/short viewports
+          - Handle off-screen rows correctly
+        </edge-cases>
+      </component>
+    </new-components>
+
+    <css-and-styling>
+      <styles location="MagicCanvas.css or global styles">
+        .row-active {
+          border: 2px solid #3b82f6; /* Blue border for active row */
+          background-color: rgba(59, 130, 246, 0.05); /* Subtle blue tint */
+          transition: border-color 200ms ease-in-out, background-color 200ms ease-in-out;
+        }
+
+        .row-inactive {
+          border: 1px solid #e5e7eb; /* Gray border for inactive rows */
+          background-color: transparent;
+          opacity: 0.6; /* Dimmed appearance */
+          transition: opacity 200ms ease-in-out;
+        }
+
+        /* GPU-accelerated transitions */
+        .row-active, .row-inactive {
+          will-change: border-color, background-color, opacity;
+        }
+
+        .sr-only {
+          position: absolute;
+          width: 1px;
+          height: 1px;
+          margin: -1px;
+          padding: 0;
+          overflow: hidden;
+          clip: rect(0, 0, 0, 0);
+          white-space: nowrap;
+          border-width: 0;
+        }
+      </styles>
+      <performance-notes>
+        - Use GPU-accelerated properties (border-color, background-color, opacity) for 60fps
+        - Avoid layout-triggering properties (width, height, margin, padding)
+        - Use will-change to hint browser for optimization
+        - 200ms transition duration balances smoothness and responsiveness
+      </performance-notes>
+    </css-and-styling>
+
+    <data-structures>
+      <structure name="Row" source="src/utils/rowManager.js">
+        <field name="id" type="string">Row identifier ("row-{index}")</field>
+        <field name="yStart" type="number">Top Y coordinate in canvas space</field>
+        <field name="yEnd" type="number">Bottom Y coordinate (yStart + rowHeight)</field>
+        <field name="isActive" type="boolean">True if this is the currently active row</field>
+        <usage>Access via rowManager.getActiveRow() and rowManager.getAllRows()</usage>
+      </structure>
+
+      <structure name="NavigationDirection" type="enum">
+        <value>UP</value> <!-- Previous row (row N-1) -->
+        <value>DOWN</value> <!-- Next row (row N+1) -->
+      </structure>
+
+      <structure name="BoundaryCondition" type="enum">
+        <value>AT_FIRST_ROW</value> <!-- Up navigation blocked -->
+        <value>AT_LAST_ROW</value> <!-- Down navigation → Story 1.10 integration -->
+        <value>WITHIN_BOUNDS</value> <!-- Normal navigation -->
+      </structure>
+    </data-structures>
+
+    <behavioral-logic>
+      <navigation-rules>
+        <rule condition="Up arrow pressed on row 0">
+          Action: No-op (log event, optional subtle visual feedback)
+          Rationale: Already at top, cannot navigate further up
+        </rule>
+
+        <rule condition="Down arrow pressed on last row">
+          Action: Story 1.10 integration point (TODO comment in code)
+          Rationale: Should create new row, but Story 1.10 not yet implemented
+          MVP: Log message "Down on last row - Story 1.10 integration point"
+        </rule>
+
+        <rule condition="Swipe up (touch gesture)">
+          Action: Activate next row (row N+1) if not at last row
+          Direction: Swipe up → next row (counterintuitive but matches natural scrolling)
+        </rule>
+
+        <rule condition="Swipe down (touch gesture)">
+          Action: Activate previous row (row N-1) if not at first row
+          Direction: Swipe down → previous row
+        </rule>
+
+        <rule condition="Any navigation event">
+          Side Effects:
+          1. rowManager.setActiveRow(newRowId) → triggers OCR on deactivated row (Story 1.8)
+          2. Visual highlight transitions (200ms CSS animation)
+          3. Viewport auto-scroll if target row is off-screen
+          4. ARIA announcement updated (debounced 300ms)
+          5. Navigation event logged
+        </rule>
+      </navigation-rules>
+
+      <gesture-thresholds>
+        <threshold type="swipe-vertical-delta" value="50px">
+          Minimum vertical movement to trigger swipe gesture (prevents accidental activation during drawing)
+        </threshold>
+
+        <threshold type="debounce-aria" value="300ms">
+          Debounce ARIA announcements to prevent spam during rapid row switching
+        </threshold>
+
+        <threshold type="css-transition-duration" value="200ms">
+          Active row highlight transition duration (balances smoothness and responsiveness)
+        </threshold>
+      </gesture-thresholds>
+    </behavioral-logic>
+
+    <performance-targets>
+      <target metric="Row switching latency" value="<200ms from input to visual update"/>
+      <target metric="Animation FPS" value="60fps during row highlighting transition"/>
+      <target metric="Viewport scroll duration" value="<300ms smooth scroll animation"/>
+      <target metric="Gesture detection overhead" value="Negligible (passive event listeners)"/>
+      <target metric="Keyboard handler overhead" value="<5ms from keypress to setActiveRow call"/>
+      <target metric="ARIA announcement delay" value="300ms debounce (prevent spam)"/>
+    </performance-targets>
+  </technical-context>
+
+  <testing-context>
+    <unit-tests framework="vitest">
+      <test ac="1,2,3">RowNavigator keyboard handling - Up/Down arrows calculate correct target row</test>
+      <test ac="1,10">Swipe gesture detection with 50px threshold - vertical delta filtering</test>
+      <test ac="4">Boundary condition - Up on row 0 returns no action</test>
+      <test ac="5">Boundary condition - Down on last row logs Story 1.10 integration message</test>
+      <test ac="9">RowAnnouncer debouncing - rapid row switches produce single announcement</test>
+      <test ac="9">RowAnnouncer announcement format - "Row {N} of {total} active"</test>
+      <test>scrollToRow utility calculates correct scroll position for off-screen rows</test>
+    </unit-tests>
+
+    <integration-tests manual="true">
+      <test ac="1,2,3">End-to-end: Switch rows using arrow keys, verify active row changes and visual highlight updates</test>
+      <test ac="1,10">End-to-end: Switch rows using swipe gestures (touch device), verify 50px threshold works</test>
+      <test ac="7">End-to-end: Click/tap on inactive row, verify row becomes active immediately</test>
+      <test ac="8">Viewport auto-scroll: Activate off-screen row via arrow keys, verify viewport centers on new row</test>
+      <test ac="6">Animation performance: Verify 60fps during row switching with DevTools Performance panel</test>
+      <test ac="1,8">Row switching latency: Measure time from keypress to visual update (<200ms target)</test>
+      <test ac="9">Accessibility: Test with screen readers (VoiceOver, NVDA, JAWS), verify announcements</test>
+      <test>Rapid row switching: Spam arrow keys, verify debounce prevents excessive operations</test>
+      <test>OCR integration: Switch rows, verify OCR trigger fires on deactivated row (Story 1.8 integration)</test>
+      <test>Device testing: Test on iPad (touch), desktop (keyboard), Android tablet</test>
+    </integration-tests>
+
+    <performance-tests>
+      <test>60fps during row switching animation - DevTools Performance (measure reflow/repaint)</test>
+      <test>Row switching latency <200ms - Measure keypress → visual update time</test>
+      <test>No layout thrashing - Verify CSS transitions don't trigger forced reflows</test>
+      <test>Gesture detection overhead - Verify passive listeners don't impact drawing performance</test>
+    </performance-tests>
+
+    <accessibility-tests>
+      <test standard="WCAG 2.1 AA">Screen reader announcements work correctly (VoiceOver, NVDA, JAWS)</test>
+      <test standard="WCAG 2.1 AA">Keyboard-only navigation - Full functionality without mouse/touch</test>
+      <test standard="WCAG 2.1 AA">Color contrast - Active row highlighting meets contrast ratio requirements</test>
+      <test standard="WCAG 2.1 AA">Touch targets - Row tap targets meet 44x44px minimum</test>
+    </accessibility-tests>
+
+    <edge-case-tests>
+      <test>Boundary: First row (row 0) - Up arrow does nothing</test>
+      <test>Boundary: Last row - Down arrow logs Story 1.10 message</test>
+      <test>Edge: Single row canvas - Navigation disabled</test>
+      <test>Edge: Very tall viewport - Scroll calculations handle edge cases</test>
+      <test>Edge: Very short viewport - Row remains centered</test>
+      <test>Edge: Simultaneous keyboard and touch input - Race condition handling</test>
+    </edge-case-tests>
+  </testing-context>
+
+  <dependencies>
+    <npm-packages>
+      <package name="react-swipeable" version="^7.0.0" usage="Touch gesture detection for row switching" />
+      <package name="lodash" version="^4.17.21" usage="Debounce utility for ARIA announcements" existing="true" />
+      <package name="@excalidraw/excalidraw" version="^0.x" usage="Canvas integration" existing="true" />
+      <package name="react" version="^18.x" usage="Component framework" existing="true" />
+    </npm-packages>
+
+    <browser-apis>
+      <api name="Touch Events" usage="Swipe gesture detection" />
+      <api name="Keyboard Events" usage="Arrow key navigation" />
+      <api name="Window.scrollTo" usage="Viewport auto-scroll with smooth behavior" />
+      <api name="ARIA Live Regions" usage="Screen reader announcements" />
+    </browser-apis>
+  </dependencies>
+
+  <acceptance-criteria>
+    <criterion id="1">
+      <description>Given I am on the Magic Canvas with multiple rows, When I use arrow keys (Up/Down) or swipe gestures (swipe up/down on touch device), Then the active row changes to the adjacent row in the swipe/key direction</description>
+      <tasks>Task 1, Task 7</tasks>
+      <test-coverage>Unit: RowNavigator keyboard/gesture handling; Integration: End-to-end row switching</test-coverage>
+    </criterion>
+
+    <criterion id="2">
+      <description>And Up arrow or swipe up activates the previous row (row N-1)</description>
+      <tasks>Task 1</tasks>
+      <test-coverage>Unit: Target row calculation; Integration: Arrow key navigation</test-coverage>
+    </criterion>
+
+    <criterion id="3">
+      <description>And Down arrow or swipe down activates the next row (row N+1)</description>
+      <tasks>Task 1</tasks>
+      <test-coverage>Unit: Target row calculation; Integration: Arrow key navigation</test-coverage>
+    </criterion>
+
+    <criterion id="4">
+      <description>And if pressing Up on row 0 (first row), no action occurs (already at top)</description>
+      <tasks>Task 5</tasks>
+      <test-coverage>Unit: Boundary condition handling; Integration: Edge case testing</test-coverage>
+    </criterion>
+
+    <criterion id="5">
+      <description>And if pressing Down on the last row, a new row is created and activated (Story 1.10 integration point)</description>
+      <tasks>Task 5</tasks>
+      <test-coverage>Unit: Boundary condition detection; Integration: Story 1.10 integration point verification</test-coverage>
+    </criterion>
+
+    <criterion id="6">
+      <description>And row switching animation is smooth (200ms transition for visual highlight)</description>
+      <tasks>Task 3, Task 7</tasks>
+      <test-coverage>Integration: 60fps animation performance; Performance: DevTools measurement</test-coverage>
+    </criterion>
+
+    <criterion id="7">
+      <description>And tapping/clicking any row also activates it immediately</description>
+      <tasks>Task 2</tasks>
+      <test-coverage>Unit: Row tap detection; Integration: Click activation workflow</test-coverage>
+    </criterion>
+
+    <criterion id="8">
+      <description>And viewport automatically scrolls to center active row when switching to off-screen rows</description>
+      <tasks>Task 4, Task 7</tasks>
+      <test-coverage>Unit: scrollToRow utility; Integration: Off-screen row activation</test-coverage>
+    </criterion>
+
+    <criterion id="9">
+      <description>And screen readers announce "Row {N} of {total} active" on row switch (accessibility)</description>
+      <tasks>Task 6</tasks>
+      <test-coverage>Unit: ARIA announcement logic; Accessibility: Screen reader testing</test-coverage>
+    </criterion>
+
+    <criterion id="10">
+      <description>And swipe gesture requires minimum 50px vertical movement to trigger (prevents accidental activation)</description>
+      <tasks>Task 1</tasks>
+      <test-coverage>Unit: Gesture threshold filtering; Integration: Touch device testing</test-coverage>
+    </criterion>
+  </acceptance-criteria>
+
+  <constraints>
+    <constraint type="architectural">
+      Single-active-row model: Only one row can be active at a time. Navigation must call rowManager.setActiveRow() which automatically triggers OCR on deactivated row (Story 1.8 integration).
+    </constraint>
+
+    <constraint type="performance">
+      Row switching must remain <200ms latency even with OCR trigger from Story 1.8. Animation must maintain 60fps using GPU-accelerated CSS properties.
+    </constraint>
+
+    <constraint type="accessibility">
+      Must comply with WCAG 2.1 Level AA: keyboard navigation, screen reader support, touch targets ≥44x44px, sufficient color contrast for active row highlighting.
+    </constraint>
+
+    <constraint type="integration">
+      Story 1.10 integration point: Down arrow on last row should create new row, but Story 1.10 not implemented yet. Use TODO comment and console.log for MVP.
+    </constraint>
+
+    <constraint type="gesture">
+      Swipe gestures must not conflict with Excalidraw's native drawing gestures. Use 50px vertical delta threshold and disable mouse tracking (touch only).
+    </constraint>
+
+    <constraint type="browser">
+      Must work on modern browsers with Touch Events API support. Graceful degradation for non-touch devices (keyboard-only navigation).
+    </constraint>
+  </constraints>
+
+  <learnings-from-previous-stories>
+    <learning from="Story 1.8 (done)">
+      <key-point>RowManager.setActiveRow() already implements OCR trigger hook</key-point>
+      <implication>Story 1.9 navigation can simply call setActiveRow(newRowId) - OCR trigger happens automatically without additional code</implication>
+      <file>src/utils/rowManager.js:219-264</file>
+    </learning>
+
+    <learning from="Story 1.8 (done)">
+      <key-point>Content hash tracking and 1.5s debounce prevent redundant OCR triggers</key-point>
+      <implication>Rapid row switching won't cause excessive OCR operations - debounce logic handles it</implication>
+    </learning>
+
+    <learning from="Story 1.8 (done)">
+      <key-point>Activation timeline logging for OCR attribution</key-point>
+      <implication>Navigation events are automatically logged in timeline, providing audit trail</implication>
+    </learning>
+
+    <learning from="Story 1.8 (done)">
+      <key-point>Performance target: Row switching remains <200ms with OCR trigger</key-point>
+      <implication>Navigation must be non-blocking - OCR trigger is async and doesn't block row activation</implication>
+    </learning>
+
+    <learning from="Story 1.6 (done)">
+      <key-point>Active row visual highlighting already implemented in RowHeader.jsx</key-point>
+      <implication>Story 1.9 doesn't need to implement highlighting - it happens automatically when setActiveRow() is called</implication>
+    </learning>
+
+    <learning from="Story 1.4 (done)">
+      <key-point>RowManager provides getAllRows() for row enumeration</key-point>
+      <implication>Use getAllRows() to calculate row count for ARIA announcements and boundary detection</implication>
+    </learning>
+  </learnings-from-previous-stories>
+
+  <documentation-artifacts>
+    <artifact type="epic" path="docs/epic_1_complete_breakdown.md">
+      <section>Story 1.9: Implement Row Switching via Gestures and Keyboard (lines 323-358)</section>
+      <relevance>Authoritative source for acceptance criteria, technical notes, and navigation requirements</relevance>
+    </artifact>
+
+    <artifact type="tech-spec" path="docs/sprint-artifacts/tech-spec-epic-1.md">
+      <section>Epic 1 Technical Specification - Row Navigation (lines 383-418)</section>
+      <relevance>Architectural context, integration points, and performance targets for row navigation</relevance>
+    </artifact>
+
+    <artifact type="architecture" path="docs/architecture.md">
+      <section>Row switching via gestures and keyboard (line 356)</section>
+      <section>Active row highlight: 200ms CSS transition (line 357)</section>
+      <relevance>Architectural decision on navigation mechanism and animation timing</relevance>
+    </artifact>
+
+    <artifact type="prd" path="docs/PRD.md">
+      <section>FR5: Users can switch between rows using gestures or keyboard</section>
+      <relevance>Business requirement for row navigation feature</relevance>
+    </artifact>
+
+    <artifact type="previous-story" path="docs/sprint-artifacts/stories/1-8-trigger-ocr-on-row-deactivation.md">
+      <section>Completion Notes: RowManager.setActiveRow() with OCR trigger hook</section>
+      <section>Implementation: src/utils/rowManager.js:219-264</section>
+      <relevance>Integration point for OCR trigger on row deactivation, performance targets</relevance>
+    </artifact>
+  </documentation-artifacts>
+</story-context>

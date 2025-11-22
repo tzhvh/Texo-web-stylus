@@ -23,6 +23,10 @@ import {
 } from "../utils/workspaceDB.js";
 import { MemoizedRowHeader } from "../components/RowHeader.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
+import RowNavigator from "../components/RowNavigator.jsx";
+import RowAnnouncer from "../components/RowAnnouncer.jsx";
+import { scrollToRow } from "../utils/scrollToRow.js";
+import Logger from "../utils/logger.js";
 
 // Infinite canvas configuration
 const CANVAS_CONFIG = {
@@ -141,6 +145,9 @@ function MagicCanvasComponent() {
   const [guideLineSpacing] = useState(384); // Story 1.3: 384px spacing for OCR alignment
   const guideLineRef = useRef(initialGuideLines);
   const viewportGuideLinesRef = useRef(null); // Cache for viewport-culled lines
+
+  // Story 1.9: Track total rows for RowAnnouncer accessibility
+  const [totalRows, setTotalRows] = useState(0);
 
   // Initialize RowManager for element-to-row assignments (Story 1.5)
   const [rowManager] = useState(() => {
@@ -965,6 +972,39 @@ function MagicCanvasComponent() {
     ));
   }, [getVisibleRows, debugMode, rowManager]);
 
+  // Story 1.9: Handle row navigation changes (viewport scroll, logging, ARIA updates)
+  const handleRowChange = useCallback((newRowId) => {
+    // Update total rows count for RowAnnouncer
+    const allRows = rowManager.getAllRows ? rowManager.getAllRows() : [];
+    setTotalRows(allRows.length);
+
+    // Auto-scroll to center active row - AC #8
+    scrollToRow(newRowId, rowManager);
+
+    // Log navigation event
+    Logger.log('Row navigation', {
+      newRowId,
+      totalRows: allRows.length,
+      timestamp: Date.now()
+    });
+
+    if (debugMode) {
+      console.log('MagicCanvas: Row changed via navigation', {
+        newRowId,
+        totalRows: allRows.length
+      });
+    }
+
+    // Trigger guide line refresh to show new active row highlight
+    updateViewportGuideLines();
+  }, [rowManager, updateViewportGuideLines, debugMode]);
+
+  // Story 1.9: Update total rows when rows change
+  useEffect(() => {
+    const allRows = rowManager.getAllRows ? rowManager.getAllRows() : [];
+    setTotalRows(allRows.length);
+  }, [elementCount, rowManager]); // Update when elements change
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -994,31 +1034,42 @@ function MagicCanvasComponent() {
           </p>
         </div>
 
-        {/* Canvas Container */}
+        {/* Canvas Container - Story 1.9: Wrapped with RowNavigator for gesture and keyboard navigation */}
         <div className="flex-1 relative overflow-hidden">
-          <Excalidraw
-            excalidrawAPI={setExcalidrawAPI}
-            onChange={handleCanvasChange}
-            initialData={initialData}
-            UIOptions={{
-              canvasActions: {
-                loadScene: false,
-                export: false,
-                saveAsImage: false,
-              },
-              // Minimal toolbar (hide most actions)
-              tools: {
-                image: false,
-              },
-            }}
-          />
+          <RowNavigator
+            rowManager={rowManager}
+            onRowChange={handleRowChange}
+          >
+            <Excalidraw
+              excalidrawAPI={setExcalidrawAPI}
+              onChange={handleCanvasChange}
+              initialData={initialData}
+              UIOptions={{
+                canvasActions: {
+                  loadScene: false,
+                  export: false,
+                  saveAsImage: false,
+                },
+                // Minimal toolbar (hide most actions)
+                tools: {
+                  image: false,
+                },
+              }}
+            />
 
-          {/* RowHeader Components */}
-          <div className="absolute inset-0">
-            <div className="relative w-full h-full pointer-events-none">
-              {renderRowHeaders()}
+            {/* RowHeader Components */}
+            <div className="absolute inset-0">
+              <div className="relative w-full h-full pointer-events-none">
+                {renderRowHeaders()}
+              </div>
             </div>
-          </div>
+          </RowNavigator>
+
+          {/* Story 1.9: RowAnnouncer for screen reader accessibility - AC #9 */}
+          <RowAnnouncer
+            activeRow={rowManager.getActiveRow()}
+            totalRows={totalRows}
+          />
         </div>
 
         {/* Control Panel (Bottom) */}
