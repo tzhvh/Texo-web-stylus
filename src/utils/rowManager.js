@@ -63,6 +63,9 @@ export class RowManager {
     // Single active row management (Story 1.2: single-active-row model)
     this.activeRowId = null;
     
+    // Activation timeline for OCR and analytics (Story 1.10)
+    this.activationTimeline = [];
+    
     Logger.debug('RowManager', 'Initialized', {
       rowHeight,
       startY,
@@ -265,6 +268,22 @@ export class RowManager {
     const previousActiveRowId = this.activeRowId;
     this.activeRowId = rowId;
 
+    // Record activation timeline (Story 1.10)
+    const now = Date.now();
+    // Close previous activation entry if it exists
+    if (previousActiveRowId) {
+      const prevEntry = this.activationTimeline.find(e => e.rowId === previousActiveRowId && !e.deactivatedAt);
+      if (prevEntry) {
+        prevEntry.deactivatedAt = now;
+      }
+    }
+    // Add new activation entry
+    this.activationTimeline.push({
+      rowId,
+      activatedAt: now,
+      deactivatedAt: null
+    });
+
     Logger.debug('RowManager', 'Active row changed', {
       previousActiveRowId,
       newActiveRowId: rowId,
@@ -454,6 +473,22 @@ export class RowManager {
       tileHash: null,
       errorMessage: null
     };
+  }
+
+  /**
+   * Explicitly create a new row below the current active row (Story 1.10)
+   * @returns {string} ID of the newly created row
+   */
+  createNewRow() {
+    const activeRow = this.getActiveRow();
+    const newIndex = activeRow ? parseInt(activeRow.id.replace('row-', '')) + 1 : this.rows.size;
+    const newRowId = `row-${newIndex}`;
+    const newRow = this._createRow(newIndex);
+    this.rows.set(newRowId, newRow);
+
+    // Log creation for debugging / timeline purposes
+    Logger.info('RowManager', 'Created new row via createNewRow', { newRowId, newIndex });
+    return newRowId;
   }
 
   /**

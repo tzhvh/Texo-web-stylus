@@ -1,0 +1,361 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<story-context version="1.0" generated="2025-11-22">
+  <metadata>
+    <epic-id>1</epic-id>
+    <story-id>1.2</story-id>
+    <story-key>1-2-integrate-excalidraw-canvas-single-active-row-constraints</story-key>
+    <story-title>Integrate Excalidraw Canvas with Single-Active-Row Constraints</story-title>
+    <status>ready-for-dev</status>
+  </metadata>
+
+  <story>
+    <as-a>user</as-a>
+    <i-want>an infinite vertical canvas where I can draw freely within the active row only</i-want>
+    <so-that>I can write mathematical expressions without space constraints while maintaining clear row boundaries</so-that>
+  </story>
+
+  <acceptance-criteria>
+    <criterion id="AC-1">
+      <description>Given I am on the Magic Canvas page with row 3 active, When the page loads, Then I see an Excalidraw canvas that fills the viewport</description>
+    </criterion>
+    <criterion id="AC-2">
+      <description>And I can draw strokes with mouse or stylus only within row 3 bounds (Y: rowStart to rowEnd)</description>
+    </criterion>
+    <criterion id="AC-3">
+      <description>And I can zoom in/out using pinch gestures or Ctrl+scroll (zoom only, no vertical pan)</description>
+    </criterion>
+    <criterion id="AC-4">
+      <description>And I can switch between rows using swipe gestures (up/down) or arrow keys</description>
+    </criterion>
+    <criterion id="AC-5">
+      <description>And the canvas displays multiple rows vertically, with one row active at a time</description>
+    </criterion>
+    <criterion id="AC-6">
+      <description>And each row is limited to width of viewport (no horizontal scroll needed)</description>
+    </criterion>
+    <criterion id="AC-7">
+      <description>And canvas background is white or light gray</description>
+    </criterion>
+    <criterion id="AC-8">
+      <description>And Excalidraw toolbar is minimal or hidden by default</description>
+    </criterion>
+    <criterion id="AC-9">
+      <description>And attempts to draw outside active row bounds are prevented or constrained to active row bounds</description>
+    </criterion>
+    <criterion id="AC-10">
+      <description>And row boundaries are visually clear (horizontal ruled lines at Y: rowStart and rowEnd)</description>
+    </criterion>
+  </acceptance-criteria>
+
+  <tasks>
+    <task id="T-1" acs="AC-1,AC-7,AC-8">
+      <description>Set up Excalidraw component in MagicCanvas page</description>
+      <subtasks>
+        <subtask>Import @excalidraw/excalidraw package</subtask>
+        <subtask>Configure Excalidraw component with viewModeEnabled={false}</subtask>
+        <subtask>Set canvas background to white or light gray</subtask>
+        <subtask>Hide or minimize Excalidraw toolbar UI chrome</subtask>
+        <subtask>Ensure canvas fills viewport (100vw x 100vh)</subtask>
+      </subtasks>
+    </task>
+    <task id="T-2" acs="AC-5,AC-6,AC-10">
+      <description>Implement multi-row canvas layout</description>
+      <subtasks>
+        <subtask>Render horizontal ruled lines at 384px intervals</subtask>
+        <subtask>Ensure lines extend across full viewport width</subtask>
+        <subtask>Style lines as subtle (light gray, 1px stroke)</subtask>
+        <subtask>Render lines in background layer (non-interactive)</subtask>
+        <subtask>Display multiple rows vertically</subtask>
+        <subtask>Constrain row width to viewport (no horizontal scroll)</subtask>
+      </subtasks>
+    </task>
+    <task id="T-3" acs="AC-2,AC-9">
+      <description>Implement single-active-row constraint enforcement</description>
+      <subtasks>
+        <subtask>Hook into Excalidraw onChange event</subtask>
+        <subtask>Filter stroke creation by Y-coordinate bounds of active row</subtask>
+        <subtask>Prevent strokes outside active row bounds</subtask>
+        <subtask>Constrain drawing to rowStart ≤ Y ≤ rowEnd</subtask>
+        <subtask>Mark non-active rows as read-only</subtask>
+      </subtasks>
+    </task>
+    <task id="T-4" acs="AC-4,AC-5">
+      <description>Enable row switching capability</description>
+      <subtasks>
+        <subtask>Implement swipe gesture detection (up/down)</subtask>
+        <subtask>Implement arrow key navigation (Up/Down)</subtask>
+        <subtask>Update active row state on switch</subtask>
+        <subtask>Ensure only one row is active at a time</subtask>
+        <subtask>Visual feedback on row switch (highlight border or background)</subtask>
+      </subtasks>
+    </task>
+    <task id="T-5" acs="AC-3">
+      <description>Implement zoom controls</description>
+      <subtasks>
+        <subtask>Enable zoom in/out via pinch gestures</subtask>
+        <subtask>Enable zoom via Ctrl+scroll</subtask>
+        <subtask>Disable vertical pan during zoom</subtask>
+        <subtask>Maintain row boundaries visibility during zoom</subtask>
+      </subtasks>
+    </task>
+    <task id="T-6">
+      <description>Testing and validation</description>
+      <subtasks>
+        <subtask>Unit test: Row constraint enforcement logic</subtask>
+        <subtask>Integration test: Draw strokes in active row only</subtask>
+        <subtask>Integration test: Verify row switching updates active row</subtask>
+        <subtask>Manual test: Zoom functionality preserves row constraints</subtask>
+        <subtask>Performance test: 60fps during drawing operations</subtask>
+        <subtask>Edge case test: Attempt to draw outside active row bounds</subtask>
+      </subtasks>
+    </task>
+  </tasks>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Magic Canvas - Decision Architecture</title>
+        <section>Epic 1: Canvas Foundation & Row System</section>
+        <snippet>Architectural approach leverages existing Excalidraw integration with single-active-row model. Row height: 384px matches OCR tile height. Performance target: 60fps during drawing (16ms frame budget).</snippet>
+      </doc>
+      <doc>
+        <path>docs/epic_1_complete_breakdown.md</path>
+        <title>Epic 1: Canvas Foundation & Row Management</title>
+        <section>Story 1.2: Integrate Excalidraw Canvas with Single-Active-Row Constraints</section>
+        <snippet>Complete story requirements including acceptance criteria for Excalidraw integration, row constraints, zoom controls, row switching, and visual guidance (lines 43-80).</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Canvas Foundation & Row Management</title>
+        <section>System Architecture Alignment</section>
+        <snippet>Reuses Excalidraw canvas engine, IndexedDB persistence, React patterns. Introduces RowManager class with single-active-row enforcement and activation timeline tracking.</snippet>
+      </doc>
+    </docs>
+
+    <code>
+      <artifact>
+        <path>src/pages/MagicCanvas.jsx</path>
+        <kind>component</kind>
+        <symbol>MagicCanvas, MagicCanvasComponent</symbol>
+        <lines>1-934</lines>
+        <reason>Main Magic Canvas page component - ALREADY IMPLEMENTS MOST OF STORY 1.2. Contains Excalidraw integration, guide lines (384px spacing), row constraint enforcement (lines 396-452), row switching via keyboard (lines 678-729) and touch gestures (lines 607-676). Uses RowManager for active row tracking.</reason>
+      </artifact>
+      <artifact>
+        <path>src/pages/SketchPage.jsx</path>
+        <kind>component</kind>
+        <symbol>SketchPage</symbol>
+        <lines>1-100</lines>
+        <reason>Reference implementation of Excalidraw integration patterns. Shows OCR bounding box creation, worker initialization, and Excalidraw configuration patterns to reuse.</reason>
+      </artifact>
+      <artifact>
+        <path>src/utils/rowManager.js</path>
+        <kind>class</kind>
+        <symbol>RowManager</symbol>
+        <lines>all</lines>
+        <reason>Core row management class implementing single-active-row model. Provides setActiveRow(), getActiveRow(), createNewRow(), getAllRows() methods. Already being used by MagicCanvas.</reason>
+      </artifact>
+      <artifact>
+        <path>src/hooks/useRowSystem.js</path>
+        <kind>hook</kind>
+        <symbol>useRowSystem</symbol>
+        <lines>all</lines>
+        <reason>React hook orchestrating row system integration with Excalidraw. Manages element-to-row assignments, state persistence, and canvas-row synchronization.</reason>
+      </artifact>
+      <artifact>
+        <path>src/hooks/useSafeExcalidraw.js</path>
+        <kind>hook</kind>
+        <symbol>useSafeExcalidraw, withLoopProtection</symbol>
+        <lines>1-157</lines>
+        <reason>Provides safeguards against infinite loops when integrating with Excalidraw. Offers safe onChange handlers, scene updates, and render count monitoring.</reason>
+      </artifact>
+      <artifact>
+        <path>src/components/RowHeader.jsx</path>
+        <kind>component</kind>
+        <symbol>RowHeader, MemoizedRowHeader</symbol>
+        <lines>all</lines>
+        <reason>Renders row status indicators and visual highlighting for active row. Referenced in MagicCanvas for displaying row state.</reason>
+      </artifact>
+      <artifact>
+        <path>src/utils/workspaceDB.js</path>
+        <kind>service</kind>
+        <symbol>saveSessionState, loadSessionState</symbol>
+        <lines>all</lines>
+        <reason>IndexedDB persistence utilities. Used by MagicCanvas to save/load canvas state including element positions and row assignments.</reason>
+      </artifact>
+    </code>
+
+    <dependencies>
+      <node>
+        <package name="@excalidraw/excalidraw" version="^0.18.0">Main drawing canvas library</package>
+        <package name="react" version="^18.3.1">UI framework</package>
+        <package name="react-dom" version="^18.3.1">React DOM rendering</package>
+        <package name="react-router-dom" version="^7.1.1">Routing (Magic Canvas at /magic-canvas)</package>
+        <package name="react-helmet-async" version="^2.0.5">Page metadata management</package>
+        <package name="katex" version="^0.16.11">LaTeX rendering (future OCR integration)</package>
+        <package name="vitest" version="^2.1.8">Testing framework</package>
+        <package name="@testing-library/react" version="^16.3.0">React component testing</package>
+        <package name="tailwindcss" version="^3.4.17">Styling system</package>
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <interfaces>
+    <interface>
+      <name>RowManager API</name>
+      <kind>class-interface</kind>
+      <signature>
+class RowManager {
+  constructor({ rowHeight = 384, startY = 0 })
+  setActiveRow(rowId: string): boolean
+  getActiveRow(): Row | null
+  createNewRow(): string
+  getRow(rowId: string): Row | undefined
+  getRowForY(y: number): Row
+  updateRow(rowId: string, updates: Partial&lt;Row&gt;): void
+  getAllRows(): Row[]
+  getActivationTimeline(): ActivationEvent[]
+  serialize(): RowManagerState
+  deserialize(state: RowManagerState): void
+}
+      </signature>
+      <path>src/utils/rowManager.js</path>
+    </interface>
+    <interface>
+      <name>useRowSystem Hook</name>
+      <kind>react-hook</kind>
+      <signature>
+useRowSystem({
+  excalidrawAPI,
+  rowManager,
+  debounceMs,
+  debugMode,
+  workspaceId,
+  autoSaveMs
+}): {
+  elementToRow: Map,
+  handleCanvasChange: Function,
+  getElementRow: Function,
+  getRowCount: Function,
+  stats: Object,
+  saveState: Function,
+  loadState: Function,
+  isSaving: boolean,
+  isLoading: boolean
+}
+      </signature>
+      <path>src/hooks/useRowSystem.js</path>
+    </interface>
+    <interface>
+      <name>Excalidraw Component</name>
+      <kind>react-component</kind>
+      <signature>
+&lt;Excalidraw
+  excalidrawAPI={setExcalidrawAPI}
+  onChange={handleCanvasChange}
+  initialData={{ appState, elements }}
+  UIOptions={{
+    canvasActions: { loadScene, export, saveAsImage },
+    tools: { image }
+  }}
+/&gt;
+      </signature>
+      <path>@excalidraw/excalidraw</path>
+    </interface>
+  </interfaces>
+
+  <constraints>
+    <architectural>
+      <constraint>Single-active-row model: Only one row editable at any time (ADR-001 in architecture.md:893)</constraint>
+      <constraint>Row height: 384px fixed to match OCR tile height for Epic 2 compatibility</constraint>
+      <constraint>Row ID format: "row-${index}" - deterministic sequential IDs for stability</constraint>
+      <constraint>Constraint enforcement: Coordinate filtering in onChange handler before stroke creation</constraint>
+      <constraint>Performance target: 60fps (16ms frame budget) during drawing operations</constraint>
+      <constraint>State sync: Unidirectional flow (Canvas → RowManager → IndexedDB)</constraint>
+      <constraint>Persistence: Debounced 2s auto-save after canvas changes</constraint>
+    </architectural>
+    <technical>
+      <constraint>Reuse existing Excalidraw integration patterns from src/pages/SketchPage.jsx</constraint>
+      <constraint>Follow existing Texo page structure and routing patterns</constraint>
+      <constraint>Use Tailwind CSS for styling consistency</constraint>
+      <constraint>Integrate with existing DebugContext for debug mode</constraint>
+      <constraint>Client-side only (no network calls) - privacy-first architecture</constraint>
+      <constraint>Canvas data remains in browser IndexedDB</constraint>
+    </technical>
+    <testing>
+      <constraint>Unit tests using Vitest framework</constraint>
+      <constraint>Integration tests for row switching and constraint enforcement</constraint>
+      <constraint>Performance tests must verify 60fps target during continuous drawing</constraint>
+      <constraint>All tests must pass 100% before story completion</constraint>
+    </testing>
+  </constraints>
+
+  <tests>
+    <standards>
+      Testing follows Vitest framework with @testing-library/react for component tests. Unit tests verify business logic in isolation. Integration tests validate canvas behavior, row switching, and constraint enforcement. Performance tests measure frame rate (target: 60fps) and onChange handler execution time (target: &lt;5ms). Edge case tests cover boundary conditions like drawing outside active row bounds.
+    </standards>
+
+    <locations>
+      <location>src/utils/__tests__/</location>
+      <location>src/hooks/__tests__/</location>
+      <location>src/components/__tests__/</location>
+      <location>src/pages/__tests__/</location>
+    </locations>
+
+    <ideas>
+      <test-idea ac="AC-1">Test: MagicCanvas component renders Excalidraw and fills viewport</test-idea>
+      <test-idea ac="AC-2">Test: Drawing strokes constrained to active row Y-bounds</test-idea>
+      <test-idea ac="AC-3">Test: Zoom functionality via pinch and Ctrl+scroll works</test-idea>
+      <test-idea ac="AC-4">Test: Row switching via arrow keys and swipe gestures</test-idea>
+      <test-idea ac="AC-5">Test: Only one row active at a time (single-active-row model)</test-idea>
+      <test-idea ac="AC-6">Test: Row width constrained to viewport (no horizontal scroll)</test-idea>
+      <test-idea ac="AC-7">Test: Canvas background color is white or light gray</test-idea>
+      <test-idea ac="AC-8">Test: Excalidraw toolbar is minimal/hidden</test-idea>
+      <test-idea ac="AC-9">Test: Strokes outside active row bounds are rejected</test-idea>
+      <test-idea ac="AC-10">Test: Guide lines render at 384px intervals</test-idea>
+      <test-idea>Performance test: Measure FPS during continuous drawing (target: 60fps)</test-idea>
+      <test-idea>Performance test: Profile onChange handler execution time (target: &lt;5ms)</test-idea>
+      <test-idea>Edge case test: Rapid row switching doesn't break active row state</test-idea>
+      <test-idea>Edge case test: Drawing on row boundary correctly assigns to active row</test-idea>
+    </ideas>
+  </tests>
+
+  <implementation-notes>
+    <note type="existing-implementation">
+      CRITICAL: Story 1.2 appears to be ALREADY SUBSTANTIALLY IMPLEMENTED in src/pages/MagicCanvas.jsx (934 lines).
+      The file includes:
+      - Excalidraw integration with viewport-filling configuration
+      - Guide lines rendering at 384px spacing (lines 29-92)
+      - RowManager integration with single-active-row model (lines 115-125)
+      - Row constraint enforcement in onChange handler (lines 396-452)
+      - Row switching via arrow keys (lines 678-729)
+      - Row switching via touch gestures (lines 607-676)
+      - Zoom controls via Excalidraw built-in functionality
+      - Canvas background color set to #f5f5f5 (light gray)
+      - Minimal toolbar via UIOptions configuration (lines 800-809)
+
+      Developer should VERIFY implementation against all ACs and COMPLETE any remaining items rather than starting from scratch.
+    </note>
+
+    <note type="previous-story">
+      Story 1.1 established Magic Canvas page routing at /magic-canvas with lazy-loaded component.
+      Navigation link added to main app header. Route configured in src/App.jsx.
+    </note>
+
+    <note type="architecture-decision">
+      Row height fixed at 384px to match OCR tile height from Epic 2 requirements (FR14).
+      This ensures seamless integration when OCR pipeline is implemented in subsequent stories.
+    </note>
+
+    <note type="performance">
+      Guide lines use viewport culling (generateViewportGuideLines function) to render only visible lines + buffer.
+      This optimizes performance during zoom/pan operations. Debounced updates (100ms) prevent excessive re-rendering.
+    </note>
+
+    <note type="state-management">
+      RowManager acts as single source of truth for row state.
+      useRowSystem hook provides React integration and handles element-to-row assignments.
+      Canvas state auto-saves to IndexedDB every 2 seconds via debounced saveCanvasState.
+    </note>
+  </implementation-notes>
+</story-context>
