@@ -44,7 +44,7 @@ development_status:
   1-4-implement-rowmanager-class-single-active-row-model: done
   1-5-enforce-active-row-editing-read-only-rows: done
   1-6-display-row-status-indicators-active-row-highlight: done
-  1-7-persist-row-state-canvas-state-across-reloads: drafted
+  1-7-persist-row-state-canvas-state-across-reloads: ready-for-dev
   1-8-trigger-ocr-on-row-deactivation: backlog
   1-9-implement-row-switching-via-gestures-keyboard: backlog
   1-10-implement-row-creation-workflow: backlog

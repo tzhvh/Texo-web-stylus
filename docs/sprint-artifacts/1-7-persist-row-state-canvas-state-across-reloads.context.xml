@@ -1,0 +1,1388 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Story Context: 1.7 - Persist Row State and Canvas State Across Reloads
+  Generated: 2025-11-22
+  Status: ready-for-dev
+  Project: Texo-web-stylus
+  Epic: Epic 1 - Canvas Foundation & Row Management
+-->
+<story-context>
+  <metadata>
+    <story-id>1.7</story-id>
+    <story-title>Persist Row State and Canvas State Across Reloads</story-title>
+    <epic>Epic 1: Canvas Foundation &amp; Row Management</epic>
+    <status>ready-for-dev</status>
+    <priority>high</priority>
+    <estimated-effort>8-12 hours</estimated-effort>
+    <dependencies>
+      <dependency>Story 1.4: RowManager class with serialize/deserialize methods</dependency>
+      <dependency>Story 1.6: Row status indicators and active row state</dependency>
+      <dependency>Existing workspaceDB.js IndexedDB infrastructure</dependency>
+    </dependencies>
+    <blocking>
+      <blocks>Story 1.8: Trigger OCR on row deactivation (needs persistent activation timeline)</blocks>
+      <blocks>Epic 2 stories: OCR pipeline relies on persistent row state</blocks>
+    </blocking>
+  </metadata>
+
+  <story-definition>
+    <user-story>
+      <as-a>user</as-a>
+      <i-want>my canvas and row state to persist when I reload the page</i-want>
+      <so-that>I don't lose my work if I close the browser tab</so-that>
+    </user-story>
+
+    <acceptance-criteria>
+      <criterion id="AC1" priority="critical">
+        <given>I have drawn content on Magic Canvas with rows in various states</given>
+        <when>I reload the page or close and reopen the browser</when>
+        <then>the canvas restores to my previous state</then>
+        <notes>Complete canvas restoration including zoom, pan, and drawn elements</notes>
+      </criterion>
+
+      <criterion id="AC2" priority="critical">
+        <and>all drawn strokes are restored in correct positions</and>
+        <validation>Verify pixel-perfect stroke restoration via visual inspection</validation>
+      </criterion>
+
+      <criterion id="AC3" priority="critical">
+        <and>row assignments are restored (elements belong to same rows)</and>
+        <validation>Check RowManager elementToRow mappings match pre-reload state</validation>
+      </criterion>
+
+      <criterion id="AC4" priority="high">
+        <and>row statuses are restored (OCR status, validation status, transcribed LaTeX)</and>
+        <validation>Verify ocrStatus, validationStatus, transcribedLatex fields persist correctly</validation>
+      </criterion>
+
+      <criterion id="AC5" priority="high">
+        <and>active row is restored (last active row becomes active again)</and>
+        <validation>Check activeRowId restored and visual highlight appears on correct row</validation>
+      </criterion>
+
+      <criterion id="AC6" priority="medium">
+        <and>zoom level is restored</and>
+        <validation>appState.zoom.value matches pre-reload value</validation>
+      </criterion>
+
+      <criterion id="AC7" priority="high">
+        <and>restoration completes within 1 second for typical canvas (&lt;500 elements)</and>
+        <validation>Measure time from page load to full restoration using performance.now()</validation>
+      </criterion>
+
+      <criterion id="AC8" priority="medium">
+        <and>if no previous state exists, canvas loads empty with default view</and>
+        <validation>First-time load initializes with row-0 active, empty canvas, default zoom</validation>
+      </criterion>
+
+      <criterion id="AC9" priority="high">
+        <and>corrupted state is detected and handled gracefully (fallback to empty canvas, log error)</and>
+        <validation>Manually corrupt saved JSON, verify fallback to empty canvas with error logged</validation>
+      </criterion>
+
+      <criterion id="AC10" priority="high">
+        <and>activation timeline is restored for OCR attribution</and>
+        <validation>RowManager.getActivationTimeline() returns saved timeline with Date objects reconstructed</validation>
+      </criterion>
+    </acceptance-criteria>
+
+    <tasks>
+      <task id="1" epic="1" story="1.7" priority="critical">
+        <title>Extend IndexedDB schema for Magic Canvas state persistence</title>
+        <description>Add new IndexedDB store magic-canvas-state to existing workspaceDB.js with schema: {canvasState, rowManagerState, activeRowId, activationTimeline, timestamp, version: 1}</description>
+        <acceptance-criteria>AC1, AC2, AC3, AC4, AC5, AC10</acceptance-criteria>
+        <subtasks>
+          <subtask>Add new IndexedDB store `magic-canvas-state` to existing workspaceDB.js</subtask>
+          <subtask>Define state schema: `{canvasState, rowManagerState, activeRowId, activationTimeline, timestamp, version: 1}`</subtask>
+          <subtask>Implement saveMagicCanvasState() method with atomic writes</subtask>
+          <subtask>Implement loadMagicCanvasState() method with error handling</subtask>
+          <subtask>Add schema versioning for future migrations (v1 initially)</subtask>
+          <subtask>Test IndexedDB operations (save, load, corruption handling)</subtask>
+        </subtasks>
+        <files-to-modify>
+          <file>src/utils/workspaceDB.js</file>
+        </files-to-modify>
+      </task>
+
+      <task id="2" epic="1" story="1.7" priority="critical">
+        <title>Implement RowManager serialization and deserialization</title>
+        <description>Add serialize() and deserialize(state) methods to RowManager class. Serialize rows Map to array format for JSON storage. Handle Date objects as ISO strings for activation timeline.</description>
+        <acceptance-criteria>AC3, AC4, AC5, AC10</acceptance-criteria>
+        <subtasks>
+          <subtask>Add serialize() method to RowManager class</subtask>
+          <subtask>Add deserialize(state) method to RowManager class</subtask>
+          <subtask>Serialize rows Map to array format for JSON storage</subtask>
+          <subtask>Serialize activation timeline with Date objects as ISO strings</subtask>
+          <subtask>Restore rows Map from deserialized array</subtask>
+          <subtask>Restore activation timeline with Date object reconstruction</subtask>
+          <subtask>Unit test serialization round-trip (serialize → deserialize → verify equality)</subtask>
+        </subtasks>
+        <files-to-modify>
+          <file>src/utils/rowManager.js</file>
+        </files-to-modify>
+      </task>
+
+      <task id="3" epic="1" story="1.7" priority="high">
+        <title>Implement auto-save on canvas changes with debouncing</title>
+        <description>Hook into Excalidraw onChange event to detect scene changes. Implement debounced save function (2s delay after last change). Gather canvas state and RowManager state, call saveMagicCanvasState().</description>
+        <acceptance-criteria>AC1, AC7</acceptance-criteria>
+        <subtasks>
+          <subtask>Hook into Excalidraw onChange event to detect scene changes</subtask>
+          <subtask>Implement debounced save function (2s delay after last change)</subtask>
+          <subtask>Gather canvas state from Excalidraw API (elements + appState)</subtask>
+          <subtask>Gather RowManager state via serialize()</subtask>
+          <subtask>Call saveMagicCanvasState() with complete state</subtask>
+          <subtask>Add timestamp to saved state for debugging</subtask>
+          <subtask>Test auto-save triggers correctly and debounces rapid changes</subtask>
+        </subtasks>
+        <files-to-modify>
+          <file>src/pages/MagicCanvas.jsx</file>
+          <file>src/hooks/useRowSystem.js</file>
+        </files-to-modify>
+      </task>
+
+      <task id="4" epic="1" story="1.7" priority="critical">
+        <title>Implement state restoration on component mount</title>
+        <description>Call loadMagicCanvasState() in MagicCanvas useEffect on mount. Restore RowManager state via deserialize(). Restore Excalidraw scene via initialData prop or updateScene(). Restore active row and zoom level.</description>
+        <acceptance-criteria>AC1, AC2, AC5, AC6, AC7, AC10</acceptance-criteria>
+        <subtasks>
+          <subtask>Call loadMagicCanvasState() in MagicCanvas useEffect on mount</subtask>
+          <subtask>Restore RowManager state via deserialize()</subtask>
+          <subtask>Restore Excalidraw scene via initialData prop or updateScene()</subtask>
+          <subtask>Restore active row via rowManager.setActiveRow(activeRowId)</subtask>
+          <subtask>Restore zoom level from appState</subtask>
+          <subtask>Measure and verify restoration time &lt;1s for typical canvas</subtask>
+          <subtask>Test restoration preserves all state correctly</subtask>
+        </subtasks>
+        <files-to-modify>
+          <file>src/pages/MagicCanvas.jsx</file>
+        </files-to-modify>
+      </task>
+
+      <task id="5" epic="1" story="1.7" priority="high">
+        <title>Handle empty state and corrupted state gracefully</title>
+        <description>Detect when no saved state exists (first load). Initialize empty canvas with default row (row-0). Detect corrupted state (JSON parse errors, schema validation failures). Log corruption errors and fallback to empty canvas.</description>
+        <acceptance-criteria>AC8, AC9</acceptance-criteria>
+        <subtasks>
+          <subtask>Detect when no saved state exists (first load)</subtask>
+          <subtask>Initialize empty canvas with default row (row-0)</subtask>
+          <subtask>Detect corrupted state (JSON parse errors, schema validation failures)</subtask>
+          <subtask>Log corruption errors to existing logger.js</subtask>
+          <subtask>Fallback to empty canvas if corruption detected</subtask>
+          <subtask>Display user-friendly message on corruption recovery</subtask>
+          <subtask>Test corruption scenarios (malformed JSON, missing fields, invalid types)</subtask>
+        </subtasks>
+        <files-to-modify>
+          <file>src/utils/workspaceDB.js</file>
+          <file>src/pages/MagicCanvas.jsx</file>
+        </files-to-modify>
+      </task>
+
+      <task id="6" epic="1" story="1.7" priority="medium">
+        <title>Integration testing and performance validation</title>
+        <description>End-to-end test: Draw content, reload page, verify restoration. Test row status persistence. Test active row restoration and highlighting. Test activation timeline restoration. Measure restoration time with 500 element canvas (&lt;1s requirement).</description>
+        <acceptance-criteria>AC7</acceptance-criteria>
+        <subtasks>
+          <subtask>End-to-end test: Draw content, reload page, verify restoration</subtask>
+          <subtask>Test row status persistence (pending, processing, complete, error states)</subtask>
+          <subtask>Test active row restoration and highlighting</subtask>
+          <subtask>Test activation timeline restoration</subtask>
+          <subtask>Measure restoration time with 500 element canvas (&lt;1s requirement)</subtask>
+          <subtask>Test debouncing: rapid changes don't cause excessive saves</subtask>
+          <subtask>Test browser storage quota monitoring (warn at 80%)</subtask>
+        </subtasks>
+        <files-to-modify>
+          <file>src/pages/MagicCanvas.jsx</file>
+          <file>src/utils/workspaceDB.js</file>
+          <file>src/utils/rowManager.js</file>
+        </files-to-modify>
+      </task>
+    </tasks>
+  </story-definition>
+
+  <architectural-context>
+    <overview>
+      Story 1.7 implements the state persistence layer for the single-active-row architectural model, ensuring canvas and row state survive browser sessions. Persistence uses IndexedDB for client-side storage following Texo's privacy-first philosophy.
+    </overview>
+
+    <key-decisions>
+      <decision id="arch-1">
+        <title>Unidirectional state sync</title>
+        <description>RowManager is truth source → IndexedDB. Prevents race conditions by establishing clear data flow direction.</description>
+        <reference>docs/architecture.md:400-410</reference>
+      </decision>
+
+      <decision id="arch-2">
+        <title>Debounced saves</title>
+        <description>2s delay after last change prevents excessive writes. Balances data safety with performance.</description>
+        <reference>docs/architecture.md:45,137,410</reference>
+      </decision>
+
+      <decision id="arch-3">
+        <title>Atomic writes</title>
+        <description>Complete state saved together prevents partial corruption. Either full save succeeds or nothing is written.</description>
+      </decision>
+
+      <decision id="arch-4">
+        <title>Schema versioning</title>
+        <description>v1 schema supports future migrations. Enables graceful upgrades without breaking existing saved states.</description>
+      </decision>
+
+      <decision id="arch-5">
+        <title>Corruption resilience</title>
+        <description>Graceful degradation to empty canvas if data corrupted. Never crash, always log errors for debugging.</description>
+      </decision>
+    </key-decisions>
+
+    <integration-points>
+      <integration>
+        <component>src/utils/workspaceDB.js</component>
+        <type>EXTEND</type>
+        <description>Add magic-canvas-state IndexedDB store alongside existing stores</description>
+        <pattern>Reuse existing IndexedDB patterns from SketchPage, ComposePage persistence</pattern>
+      </integration>
+
+      <integration>
+        <component>src/utils/rowManager.js</component>
+        <type>EXTEND</type>
+        <description>Add serialize() and deserialize() methods for state portability</description>
+        <pattern>Convert Map to Array for JSON serialization, handle Date objects as ISO strings</pattern>
+      </integration>
+
+      <integration>
+        <component>src/hooks/useRowSystem.js</component>
+        <type>EXTEND</type>
+        <description>Add persistence trigger on row state changes</description>
+        <pattern>Debounced auto-save triggered by handleSceneChange</pattern>
+        <reference>Lines 174-191: handleSceneChange for canvas updates</reference>
+      </integration>
+
+      <integration>
+        <component>src/pages/MagicCanvas.jsx</component>
+        <type>EXTEND</type>
+        <description>Add state restoration on mount, auto-save on changes</description>
+        <pattern>Excalidraw initialData prop or updateScene() for canvas restoration</pattern>
+      </integration>
+
+      <integration>
+        <component>src/utils/logger.js</component>
+        <type>REUSE</type>
+        <description>Use existing logger for corruption and error logging</description>
+      </integration>
+    </integration-points>
+
+    <state-flow>
+      <flow>
+        <step>1. User draws on canvas → Excalidraw onChange event fires</step>
+        <step>2. useRowSystem hook processes element changes → Updates RowManager</step>
+        <step>3. Debounced save triggered (2s after last change)</step>
+        <step>4. MagicCanvas.jsx gathers: excalidrawAPI.getSceneElements() + excalidrawAPI.getAppState()</step>
+        <step>5. RowManager.serialize() produces JSON-compatible state</step>
+        <step>6. workspaceDB.saveMagicCanvasState() writes atomic transaction to IndexedDB</step>
+        <step>7. On reload: MagicCanvas useEffect calls loadMagicCanvasState()</step>
+        <step>8. RowManager.deserialize() reconstructs state from JSON</step>
+        <step>9. Excalidraw.updateScene() restores canvas elements and appState</step>
+        <step>10. Visual feedback restored (active row highlight, status icons)</step>
+      </flow>
+    </state-flow>
+
+    <data-structures>
+      <structure name="magic-canvas-state" type="IndexedDB store">
+        <schema>
+          {
+            canvasState: ExcalidrawScene,  // elements + appState
+            rowManagerState: RowManagerState,
+            timestamp: ISOString,
+            version: 1
+          }
+        </schema>
+        <key>Single key: 'current'</key>
+        <notes>Atomic writes prevent partial corruption. Version field enables future migrations.</notes>
+      </structure>
+
+      <structure name="RowManagerState" type="Serialized state">
+        <schema>
+          {
+            rows: Array&lt;Row&gt;,  // Serialized Map to Array
+            activeRowId: string | null,
+            activationTimeline: Array&lt;ActivationEvent&gt;,
+            rowHeight: number,
+            startY: number,
+            version: 1
+          }
+        </schema>
+        <notes>Row.activatedAt converted to ISO string. activationTimeline Date objects converted to ISO strings.</notes>
+      </structure>
+    </data-structures>
+
+    <performance-targets>
+      <target metric="restoration-time" value="&lt;1s" scope="typical canvas (&lt;500 elements)">
+        <measurement>performance.now() from loadMagicCanvasState() call to completion</measurement>
+      </target>
+      <target metric="save-latency" value="&lt;100ms" scope="IndexedDB write operation">
+        <measurement>Atomic transaction write time</measurement>
+      </target>
+      <target metric="serialization-time" value="&lt;50ms" scope="RowManager.serialize()">
+        <measurement>Map.entries() iteration and JSON conversion</measurement>
+      </target>
+      <target metric="debounce-delay" value="2s" scope="Auto-save after last change">
+        <rationale>Balances data safety with performance, prevents excessive writes during rapid drawing</rationale>
+      </target>
+    </performance-targets>
+  </architectural-context>
+
+  <implementation-guidance>
+    <file path="src/utils/workspaceDB.js">
+      <modification type="EXTEND">
+        <location>Add new exported functions after existing session state functions</location>
+        <code-pattern>
+/**
+ * Save Magic Canvas state to IndexedDB
+ * @param {ExcalidrawScene} canvasState - Excalidraw elements and appState
+ * @param {RowManagerState} rowManagerState - Serialized RowManager state
+ * @returns {Promise&lt;void&gt;}
+ */
+export async function saveMagicCanvasState(canvasState, rowManagerState) {
+  try {
+    const db = await openDatabase(); // Reuse existing DB connection
+    const tx = db.transaction(['magic-canvas-state'], 'readwrite');
+    const store = tx.objectStore('magic-canvas-state');
+
+    const state = {
+      canvasState,
+      rowManagerState,
+      timestamp: new Date().toISOString(),
+      version: 1
+    };
+
+    await store.put(state, 'current'); // Single key: 'current'
+    await tx.complete;
+
+    logger.log('Magic Canvas state saved', { timestamp: state.timestamp });
+  } catch (error) {
+    logger.error('Failed to save Magic Canvas state', error);
+    throw error;
+  }
+}
+
+/**
+ * Load Magic Canvas state from IndexedDB
+ * @returns {Promise&lt;{canvasState, rowManagerState} | null&gt;}
+ */
+export async function loadMagicCanvasState() {
+  try {
+    const db = await openDatabase();
+    const tx = db.transaction(['magic-canvas-state'], 'readonly');
+    const store = tx.objectStore('magic-canvas-state');
+    const state = await store.get('current');
+
+    if (!state) {
+      logger.log('No saved Magic Canvas state found (first load)');
+      return null;
+    }
+
+    // Validate schema version
+    if (state.version !== 1) {
+      logger.warn('Incompatible Magic Canvas state version', { version: state.version });
+      return null;
+    }
+
+    logger.log('Magic Canvas state loaded', { timestamp: state.timestamp });
+    return {
+      canvasState: state.canvasState,
+      rowManagerState: state.rowManagerState
+    };
+  } catch (error) {
+    logger.error('Failed to load Magic Canvas state', error);
+    // Return null on error → fallback to empty canvas
+    return null;
+  }
+}
+        </code-pattern>
+        <notes>
+          - Reuse existing openDatabase() connection pattern
+          - Use logger.log/error for consistent logging (import from existing logger.js)
+          - Single key 'current' for magic-canvas-state store
+          - Atomic writes via transaction
+          - Schema version validation for future migrations
+        </notes>
+      </modification>
+
+      <modification type="EXTEND">
+        <location>Add 'magic-canvas-state' store to DB_VERSION upgrade handler (onupgradeneeded)</location>
+        <code-pattern>
+// In onupgradeneeded handler, add:
+if (oldVersion &lt; 2) {
+  // Magic Canvas state store (single record, key: 'current')
+  const magicCanvasStore = db.createObjectStore('magic-canvas-state');
+  // No indexes needed - single record with key 'current'
+}
+        </code-pattern>
+        <notes>
+          - Increment DB_VERSION from 1 to 2
+          - Create store without keyPath (use explicit key 'current')
+          - No indexes needed for single record
+          - Store will be created on first user access after code deployment
+        </notes>
+      </modification>
+    </file>
+
+    <file path="src/utils/rowManager.js">
+      <modification type="EXTEND">
+        <location>Add serialize() method after getActivationTimeline()</location>
+        <code-pattern>
+/**
+ * Serialize RowManager state to JSON-compatible format
+ * @returns {RowManagerState} Serialized state
+ */
+serialize() {
+  return {
+    rows: Array.from(this.rows.entries()).map(([id, row]) =&gt; ({
+      ...row,
+      elementIds: Array.from(row.elementIds), // Convert Set to Array
+      activatedAt: row.activatedAt?.toISOString() || null // Convert Date to ISO string
+    })),
+    activeRowId: this.activeRowId,
+    activationTimeline: this.activationTimeline.map(event =&gt; ({
+      rowId: event.rowId,
+      activatedAt: event.activatedAt.toISOString(), // Convert Date to ISO string
+      deactivatedAt: event.deactivatedAt?.toISOString() || null
+    })),
+    rowHeight: this.rowHeight,
+    startY: this.startY,
+    version: 1
+  };
+}
+
+/**
+ * Deserialize state and restore RowManager
+ * @param {RowManagerState} state - Serialized state
+ */
+deserialize(state) {
+  if (!state || state.version !== 1) {
+    throw new Error('Invalid or incompatible RowManager state version');
+  }
+
+  // Restore rows Map
+  this.rows = new Map(
+    state.rows.map(row =&gt; [
+      row.id,
+      {
+        ...row,
+        elementIds: new Set(row.elementIds || []), // Convert Array back to Set
+        activatedAt: row.activatedAt ? new Date(row.activatedAt) : null // Convert ISO string to Date
+      }
+    ])
+  );
+
+  // Restore activation timeline
+  this.activationTimeline = state.activationTimeline.map(event =&gt; ({
+    rowId: event.rowId,
+    activatedAt: new Date(event.activatedAt), // Convert ISO string to Date
+    deactivatedAt: event.deactivatedAt ? new Date(event.deactivatedAt) : null
+  }));
+
+  this.activeRowId = state.activeRowId;
+  this.rowHeight = state.rowHeight;
+  this.startY = state.startY;
+}
+        </code-pattern>
+        <notes>
+          - Map → Array conversion for JSON serialization
+          - Set → Array conversion for elementIds
+          - Date → ISO string conversion for activatedAt and timeline
+          - Reverse conversions in deserialize()
+          - Version validation prevents incompatible state loading
+          - Use spread operator to preserve other row properties
+        </notes>
+      </modification>
+    </file>
+
+    <file path="src/pages/MagicCanvas.jsx">
+      <modification type="EXTEND">
+        <location>Add state restoration in useEffect on mount</location>
+        <code-pattern>
+import { saveMagicCanvasState, loadMagicCanvasState } from '../utils/workspaceDB.js';
+
+function MagicCanvas() {
+  const [excalidrawAPI, setExcalidrawAPI] = useState(null);
+  const [initialData, setInitialData] = useState(null);
+  const { rowManager, activeRow, handleSceneChange } = useRowSystem(excalidrawAPI);
+
+  // Restore state on mount
+  useEffect(() =&gt; {
+    async function restoreState() {
+      const startTime = performance.now();
+
+      try {
+        const savedState = await loadMagicCanvasState();
+
+        if (savedState) {
+          // Restore RowManager
+          rowManager.deserialize(savedState.rowManagerState);
+
+          // Restore Excalidraw canvas
+          setInitialData(savedState.canvasState);
+
+          // Restore active row (happens automatically via deserialize)
+          const restoredActiveRowId = savedState.rowManagerState.activeRowId;
+          if (restoredActiveRowId) {
+            rowManager.setActiveRow(restoredActiveRowId);
+          }
+
+          const duration = performance.now() - startTime;
+          logger.log('Magic Canvas state restored', { duration: `${duration.toFixed(2)}ms` });
+
+          // Performance assertion: &lt;1s for typical canvas
+          if (duration &gt; 1000) {
+            logger.warn('Restoration took longer than 1s', { duration });
+          }
+        } else {
+          // No saved state: Initialize empty canvas with default row
+          const defaultRowId = rowManager.createNewRow();
+          rowManager.setActiveRow(defaultRowId);
+          logger.log('Initialized empty Magic Canvas');
+        }
+      } catch (error) {
+        logger.error('Failed to restore Magic Canvas state (corrupted?)', error);
+        // Fallback: Initialize empty canvas
+        const defaultRowId = rowManager.createNewRow();
+        rowManager.setActiveRow(defaultRowId);
+        alert('Failed to restore previous canvas state. Starting with empty canvas.');
+      }
+    }
+
+    restoreState();
+  }, []); // Run once on mount
+
+  return (
+    &lt;div className="relative w-full h-screen"&gt;
+      &lt;Excalidraw
+        ref={(api) =&gt; setExcalidrawAPI(api)}
+        initialData={initialData}
+        onChange={handleSceneChange}
+        {...otherProps}
+      /&gt;
+      {/* ... RowHeaders, StatusIcons, etc ... */}
+    &lt;/div&gt;
+  );
+}
+        </code-pattern>
+        <notes>
+          - Use performance.now() to measure restoration time
+          - Log warning if restoration &gt;1s (performance target)
+          - Fallback to empty canvas on error (graceful degradation)
+          - Alert user on corruption recovery
+          - Initialize with row-0 active if no saved state
+          - Restoration happens before first render via initialData prop
+        </notes>
+      </modification>
+
+      <modification type="EXTEND">
+        <location>Add auto-save debouncing in existing handleCanvasChange</location>
+        <code-pattern>
+import { debounce } from 'lodash'; // or custom debounce
+import { saveMagicCanvasState } from '../utils/workspaceDB';
+
+function useRowSystem(excalidrawAPI) {
+  const rowManagerRef = useRef(new RowManager());
+  const [activeRow, setActiveRow] = useState(null);
+
+  // Debounced auto-save (2s delay)
+  const debouncedSave = useMemo(
+    () =&gt;
+      debounce(async (canvasState, rowManagerState) =&gt; {
+        try {
+          await saveMagicCanvasState(canvasState, rowManagerState);
+        } catch (error) {
+          logger.error('Auto-save failed', error);
+        }
+      }, 2000),
+    []
+  );
+
+  // Trigger auto-save on canvas or row state changes
+  const handleSceneChange = useCallback(
+    (elements, appState) =&gt; {
+      // ... existing row assignment logic ...
+
+      // Trigger auto-save
+      const canvasState = { elements, appState };
+      const rowManagerState = rowManagerRef.current.serialize();
+      debouncedSave(canvasState, rowManagerState);
+    },
+    [debouncedSave]
+  );
+
+  return {
+    rowManager: rowManagerRef.current,
+    activeRow,
+    handleSceneChange,
+    // ... other methods ...
+  };
+}
+        </code-pattern>
+        <notes>
+          - 2s debounce prevents excessive saves during rapid drawing
+          - useMemo ensures debounce function persists across renders
+          - Serialize on every change but only save after debounce
+          - Handle save errors gracefully (log but don't crash)
+          - Auto-save triggers on both element and row state changes
+        </notes>
+      </modification>
+    </file>
+  </implementation-guidance>
+
+  <existing-code-reference>
+    <file path="src/utils/workspaceDB.js">
+      <current-implementation>
+        <pattern>IndexedDB store creation and management</pattern>
+        <relevant-lines>Line 11-22: DB_NAME, DB_VERSION, STORES constants</relevant-lines>
+        <relevant-lines>Line 31-110: initWorkspaceDB() with onupgradeneeded handler</relevant-lines>
+        <relevant-lines>Line 670-691: saveSessionState() pattern to reuse</relevant-lines>
+        <relevant-lines>Line 693-707: loadSessionState() pattern to reuse</relevant-lines>
+        <notes>
+          - Existing DB_VERSION = 1, need to increment to 2 for new store
+          - Reuse openDatabase() connection pattern
+          - Follow existing saveSessionState/loadSessionState patterns
+          - Use existing error handling and logging patterns
+        </notes>
+      </current-implementation>
+    </file>
+
+    <file path="src/utils/rowManager.js">
+      <current-implementation>
+        <pattern>RowManager class with Map-based state storage</pattern>
+        <relevant-lines>Line 56-85: Constructor and initialization</relevant-lines>
+        <relevant-lines>Line 68-79: Map-based storage (rows, elementToRow, activationTimeline)</relevant-lines>
+        <relevant-lines>Line 219-264: setActiveRow() manages active row state</relevant-lines>
+        <relevant-lines>Line 358-367: getActivationTimeline() provides timeline data</relevant-lines>
+        <notes>
+          - rows is a Map&lt;string, Row&gt; - need to convert to Array for JSON
+          - elementToRow is Map&lt;string, string&gt; - need to convert to Object
+          - activationTimeline has Date objects - need to convert to ISO strings
+          - Existing structure well-suited for serialization
+          - Already has serialize() and deserialize() stubs at lines 445-524
+        </notes>
+      </current-implementation>
+    </file>
+
+    <file path="src/hooks/useRowSystem.js">
+      <current-implementation>
+        <pattern>Canvas-row synchronization with debounced processing</pattern>
+        <relevant-lines>Line 174-191: handleSceneChange for canvas updates</relevant-lines>
+        <relevant-lines>Line 139-185: saveState() method for IndexedDB persistence</relevant-lines>
+        <relevant-lines>Line 193-238: loadState() method for state restoration</relevant-lines>
+        <relevant-lines>Line 245-255: scheduleAutoSave() with debouncing</relevant-lines>
+        <notes>
+          - Already has auto-save infrastructure with 2s debounce
+          - saveState() uses rowManager.serialize() at line 156
+          - loadState() uses rowManager.deserialize() at line 202
+          - Integration point: extend scheduleAutoSave to save canvas state too
+          - Currently saves only RowManager state, need to add canvas state
+        </notes>
+      </current-implementation>
+    </file>
+
+    <file path="src/pages/MagicCanvas.jsx">
+      <current-implementation>
+        <pattern>Excalidraw integration with state management</pattern>
+        <relevant-lines>Line 141-151: RowManager initialization with row-0 active</relevant-lines>
+        <relevant-lines>Line 154-173: useRowSystem hook integration</relevant-lines>
+        <relevant-lines>Line 283-308: saveCanvasState() method</relevant-lines>
+        <relevant-lines>Line 311-341: loadCanvasState() method</relevant-lines>
+        <relevant-lines>Line 344-388: Initialize canvas with guide lines and load saved state</relevant-lines>
+        <notes>
+          - Already has saveCanvasState/loadCanvasState methods at lines 283-341
+          - Initializes canvas in useEffect at lines 344-388
+          - Need to coordinate RowManager state with canvas state saves
+          - Currently saves canvas and rows separately, need atomic save
+          - Good pattern to follow for restoration timing
+        </notes>
+      </current-implementation>
+    </file>
+  </existing-code-reference>
+
+  <dependencies>
+    <npm-packages>
+      <package name="react" version="19.2.0" usage="Component framework, hooks (useState, useEffect, useCallback)">
+        <import>import { useState, useEffect, useCallback, useMemo } from 'react';</import>
+      </package>
+
+      <package name="@excalidraw/excalidraw" version="0.18.0" usage="Canvas engine - getSceneElements(), getAppState(), updateScene()">
+        <import>import { Excalidraw } from '@excalidraw/excalidraw';</import>
+        <api>excalidrawAPI.getSceneElements()</api>
+        <api>excalidrawAPI.getAppState()</api>
+        <api>excalidrawAPI.updateScene({ elements, appState })</api>
+      </package>
+
+      <package name="vitest" version="4.0.13" usage="Unit testing for serialize/deserialize">
+        <import>import { describe, it, expect, beforeEach } from 'vitest';</import>
+      </package>
+    </npm-packages>
+
+    <browser-apis>
+      <api name="IndexedDB" usage="Client-side persistence for canvas and row state">
+        <methods>db.transaction(), objectStore.put(), objectStore.get()</methods>
+      </api>
+
+      <api name="Performance API" usage="Measure restoration time for performance validation">
+        <methods>performance.now()</methods>
+      </api>
+
+      <api name="JSON" usage="Serialize/deserialize state objects">
+        <methods>JSON.stringify(), JSON.parse() (implicit in IndexedDB)</methods>
+      </api>
+
+      <api name="Date" usage="Handle activation timeline timestamps">
+        <methods>new Date(isoString), date.toISOString()</methods>
+      </api>
+    </browser-apis>
+
+    <internal-modules>
+      <module path="src/utils/logger.js" usage="Error and diagnostic logging">
+        <api>logger.log(), logger.error(), logger.warn()</api>
+      </module>
+
+      <module path="src/utils/rowManager.js" usage="Row state management class">
+        <api>RowManager.serialize(), RowManager.deserialize()</api>
+        <api>RowManager.setActiveRow(), RowManager.getActiveRow()</api>
+        <api>RowManager.getActivationTimeline()</api>
+      </module>
+
+      <module path="src/utils/workspaceDB.js" usage="IndexedDB persistence infrastructure">
+        <api>saveMagicCanvasState(), loadMagicCanvasState()</api>
+        <api>initWorkspaceDB() (existing)</api>
+      </module>
+    </internal-modules>
+  </dependencies>
+
+  <testing-guidance>
+    <unit-tests framework="vitest">
+      <test-suite file="src/utils/__tests__/rowManager.test.js">
+        <test name="serialize() produces valid JSON-compatible structure">
+          <setup>Create RowManager with multiple rows, elements, active row, timeline</setup>
+          <action>Call serialize()</action>
+          <assertion>Result is plain object with expected structure</assertion>
+          <assertion>rows is Array (not Map), elementIds is Array (not Set)</assertion>
+          <assertion>activatedAt and timeline are ISO strings (not Date objects)</assertion>
+        </test>
+
+        <test name="deserialize() reconstructs state correctly (round-trip)">
+          <setup>Create RowManager with complex state</setup>
+          <action>serialized = rowManager.serialize()</action>
+          <action>newRowManager.deserialize(serialized)</action>
+          <assertion>newRowManager.rows equals original rows (deep comparison)</assertion>
+          <assertion>newRowManager.activeRowId equals original activeRowId</assertion>
+          <assertion>newRowManager.activationTimeline equals original (with Date objects)</assertion>
+        </test>
+
+        <test name="deserialize() rejects invalid version">
+          <setup>Create state with version !== 1</setup>
+          <action>rowManager.deserialize({ ...state, version: 2 })</action>
+          <assertion>Throws Error with message containing 'incompatible version'</assertion>
+        </test>
+
+        <test name="serialize() handles null/empty values correctly">
+          <setup>Create RowManager with no active row, empty timeline</setup>
+          <action>Call serialize()</action>
+          <assertion>activeRowId is null</assertion>
+          <assertion>activationTimeline is empty array</assertion>
+          <assertion>rows array is empty or has default row-0</assertion>
+        </test>
+
+        <test name="Date objects serialized and deserialized correctly">
+          <setup>Create row with activatedAt = new Date()</setup>
+          <action>Serialize and deserialize</action>
+          <assertion>Restored activatedAt is Date object (not string)</assertion>
+          <assertion>Restored timestamp equals original timestamp (milliseconds)</assertion>
+        </test>
+      </test-suite>
+
+      <test-suite file="src/utils/__tests__/workspaceDB.test.js">
+        <test name="saveMagicCanvasState() writes to IndexedDB">
+          <setup>Mock IndexedDB, create canvas and row state</setup>
+          <action>Call saveMagicCanvasState(canvasState, rowManagerState)</action>
+          <assertion>Transaction created with 'readwrite' mode</assertion>
+          <assertion>State written to 'magic-canvas-state' store with key 'current'</assertion>
+          <assertion>State includes timestamp and version: 1</assertion>
+        </test>
+
+        <test name="loadMagicCanvasState() reads from IndexedDB">
+          <setup>Mock IndexedDB with saved state</setup>
+          <action>result = await loadMagicCanvasState()</action>
+          <assertion>result.canvasState matches saved canvas state</assertion>
+          <assertion>result.rowManagerState matches saved row state</assertion>
+        </test>
+
+        <test name="loadMagicCanvasState() returns null if no saved state">
+          <setup>Mock IndexedDB with no saved state</setup>
+          <action>result = await loadMagicCanvasState()</action>
+          <assertion>result is null</assertion>
+        </test>
+
+        <test name="loadMagicCanvasState() handles corrupted state gracefully">
+          <setup>Mock IndexedDB with malformed JSON or missing fields</setup>
+          <action>result = await loadMagicCanvasState()</action>
+          <assertion>result is null (error handled)</assertion>
+          <assertion>Error logged via logger.error()</assertion>
+        </test>
+
+        <test name="loadMagicCanvasState() rejects incompatible version">
+          <setup>Mock IndexedDB with state.version !== 1</setup>
+          <action>result = await loadMagicCanvasState()</action>
+          <assertion>result is null</assertion>
+          <assertion>Warning logged via logger.warn()</assertion>
+        </test>
+      </test-suite>
+    </unit-tests>
+
+    <integration-tests type="manual">
+      <test name="Full restoration flow">
+        <steps>
+          <step>1. Open Magic Canvas, draw content in multiple rows</step>
+          <step>2. Set row 2 as active, draw strokes in row 2</step>
+          <step>3. Set row status: row 1 = 'complete', row 2 = 'processing'</step>
+          <step>4. Zoom to 150%, pan to Y=500</step>
+          <step>5. Reload page (F5 or Cmd+R)</step>
+        </steps>
+        <expected>
+          <result>Canvas restores with all drawn strokes in correct positions</result>
+          <result>Row 2 is active (highlighted)</result>
+          <result>Row 1 status icon shows 'complete', row 2 shows 'processing'</result>
+          <result>Zoom level is 150%</result>
+          <result>Viewport pan position is Y=500</result>
+          <result>Restoration completes in &lt;1s (check console log)</result>
+        </expected>
+      </test>
+
+      <test name="Empty state initialization">
+        <steps>
+          <step>1. Clear all browser data (IndexedDB)</step>
+          <step>2. Open Magic Canvas for first time</step>
+        </steps>
+        <expected>
+          <result>Canvas loads empty</result>
+          <result>Row-0 is active (highlighted)</result>
+          <result>Default zoom (100%)</result>
+          <result>Console log: 'Initialized empty Magic Canvas'</result>
+        </expected>
+      </test>
+
+      <test name="Corrupted state recovery">
+        <steps>
+          <step>1. Open DevTools → Application → IndexedDB → texo-workspace-db → magic-canvas-state</step>
+          <step>2. Edit saved state: corrupt JSON (e.g., change version to "invalid")</step>
+          <step>3. Reload page</step>
+        </steps>
+        <expected>
+          <result>Alert shown: "Failed to restore previous canvas state. Starting with empty canvas."</result>
+          <result>Canvas loads empty with row-0 active</result>
+          <result>Error logged to console with corruption details</result>
+        </expected>
+      </test>
+
+      <test name="Activation timeline persistence">
+        <steps>
+          <step>1. Switch rows: row-0 → row-1 → row-2 → row-1</step>
+          <step>2. Reload page</step>
+          <step>3. Open Debug panel, check RowManager.getActivationTimeline()</step>
+        </steps>
+        <expected>
+          <result>Timeline contains 4 activation events</result>
+          <result>Events have rowId, activatedAt (Date), deactivatedAt (Date or null)</result>
+          <result>Last event has deactivatedAt = null (currently active row)</result>
+        </expected>
+      </test>
+
+      <test name="Auto-save debouncing">
+        <steps>
+          <step>1. Open DevTools → Network tab (to monitor IndexedDB writes)</step>
+          <step>2. Draw rapidly on canvas (10+ strokes in 2 seconds)</step>
+          <step>3. Wait 3 seconds (2s debounce + 1s buffer)</step>
+          <step>4. Check console logs for save operations</step>
+        </steps>
+        <expected>
+          <result>Only 1 save operation triggered (after 2s debounce)</result>
+          <result>Console log: 'Magic Canvas state saved'</result>
+          <result>No excessive saves during rapid drawing</result>
+        </expected>
+      </test>
+
+      <test name="Performance validation (500 elements)">
+        <steps>
+          <step>1. Draw canvas with ~500 elements (use script or manual drawing)</step>
+          <step>2. Create 10 rows with elements distributed across them</step>
+          <step>3. Reload page</step>
+          <step>4. Check console log for restoration time</step>
+        </steps>
+        <expected>
+          <result>Console log: 'Magic Canvas state restored' with duration &lt;1000ms</result>
+          <result>If duration &gt;1000ms, warning logged</result>
+          <result>All 500 elements restored correctly</result>
+          <result>All 10 rows restored with correct element assignments</result>
+        </expected>
+      </test>
+    </integration-tests>
+
+    <edge-cases>
+      <case name="Rapid reload during save">
+        <scenario>User reloads page while auto-save is in progress (within 2s debounce window)</scenario>
+        <expected>Partial save is atomic - either complete state saved or nothing. No corruption.</expected>
+        <validation>Check IndexedDB state after reload, verify version field and complete structure</validation>
+      </case>
+
+      <case name="Browser quota exceeded">
+        <scenario>IndexedDB quota full, cannot save new state</scenario>
+        <expected>Save fails gracefully, error logged, user continues working without crash</expected>
+        <validation>Fill quota manually, verify error handling and user notification</validation>
+      </case>
+
+      <case name="Concurrent tab modification">
+        <scenario>Two Magic Canvas tabs open, both modify and save state</scenario>
+        <expected>Last write wins (no merge logic). State consistent within each tab.</expected>
+        <validation>Open two tabs, draw in each, reload both, verify no corruption</validation>
+      </case>
+
+      <case name="Missing fields in saved state">
+        <scenario>Saved state missing optional fields (e.g., activationTimeline = undefined)</scenario>
+        <expected>Deserialize handles gracefully, defaults to empty array or null</expected>
+        <validation>Manually remove fields from saved state, verify fallback values</validation>
+      </case>
+
+      <case name="Browser without IndexedDB support">
+        <scenario>Old browser or incognito mode with IndexedDB disabled</scenario>
+        <expected>Save/load fail gracefully, canvas works without persistence, warning logged</expected>
+        <validation>Disable IndexedDB in DevTools, verify canvas still functional</validation>
+      </case>
+    </edge-cases>
+  </testing-guidance>
+
+  <learnings-from-previous-stories>
+    <story id="1.6" title="Display Row Status Indicators with Active Row Highlight" status="done">
+      <summary>
+        Story 1.6 implemented visual status indicators with active row highlighting.
+        All 9 acceptance criteria met with comprehensive evidence.
+        StatusIcon component created with 5 SVG variants (∅, ⟳, ✓, ✗, ⚠️).
+        47 tests passing (26 StatusIcon unit tests + 21 RowHeader integration tests).
+        React.memo optimization prevents unnecessary re-renders.
+        WCAG 2.1 AA compliant with 48x48px icons and aria-labels.
+      </summary>
+
+      <key-files>
+        <file path="src/components/StatusIcon.jsx" usage="REFERENCE">
+          <pattern>Status icon component with row state display</pattern>
+          <detail>Row status types defined: ocrStatus, validationStatus</detail>
+          <detail>Status priority logic: error &gt; processing &gt; validated &gt; invalid &gt; pending</detail>
+        </file>
+
+        <file path="src/components/RowHeader.jsx" usage="REFERENCE">
+          <pattern>Active row highlighting and visual feedback</pattern>
+          <detail>Lines 52-71: Active row highlighting with smooth transitions</detail>
+          <detail>Visual state tied to row.isActive boolean</detail>
+        </file>
+
+        <file path="src/hooks/useRowSystem.js" usage="REUSE/EXTEND">
+          <pattern>Row state management hook</pattern>
+          <detail>Lines 174-191: handleSceneChange for canvas updates</detail>
+          <detail>Will need to add persistence trigger on changes</detail>
+        </file>
+
+        <file path="src/utils/rowManager.js" usage="EXTEND">
+          <pattern>Source of truth for row state</pattern>
+          <detail>Lines 219-264: setActiveRow() manages active row state</detail>
+          <detail>Lines 358-367: getActivationTimeline() provides timeline data</detail>
+          <detail>ADD: serialize() and deserialize() methods for persistence</detail>
+        </file>
+
+        <file path="src/utils/workspaceDB.js" usage="EXTEND">
+          <pattern>Existing IndexedDB persistence layer</pattern>
+          <detail>Reuse patterns for IndexedDB operations</detail>
+          <detail>Add magic-canvas-state store alongside existing stores</detail>
+        </file>
+      </key-files>
+
+      <architectural-patterns>
+        <pattern>Row state management centralized in RowManager class</pattern>
+        <pattern>Visual feedback tied directly to row metadata (ocrStatus, validationStatus)</pattern>
+        <pattern>Active row as single source of editing control</pattern>
+        <pattern>Smooth transitions for state changes (200ms CSS transitions)</pattern>
+      </architectural-patterns>
+
+      <what-story-1-7-should-do>
+        <action>1. Serialize RowManager state: Convert rows Map and activation timeline to JSON-compatible format</action>
+        <action>2. Extend workspaceDB.js: Add magic-canvas-state IndexedDB store</action>
+        <action>3. Auto-save on changes: Debounce Excalidraw onChange events (2s) and save complete state</action>
+        <action>4. Restore on mount: Load saved state from IndexedDB and reconstruct RowManager + canvas</action>
+        <action>5. Handle corruption: Detect invalid state and gracefully fallback to empty canvas</action>
+        <action>6. Preserve statuses: Ensure ocrStatus, validationStatus, transcribedLatex persist correctly</action>
+        <action>7. Timeline restoration: Activation timeline needed for future OCR attribution (Story 1.8)</action>
+      </what-story-1-7-should-do>
+
+      <testing-approach>
+        Follow Story 1.6's comprehensive test pattern. Add unit tests for serialize/deserialize round-trip.
+        Integration tests for save → reload → restore flow. Performance test with 500 element canvas (&lt;1s restoration).
+        Test corruption scenarios (malformed JSON, missing fields).
+      </testing-approach>
+
+      <source>docs/sprint-artifacts/stories/1-6-display-row-status-indicators-active-row-highlight.md#Completion-Notes-List</source>
+    </story>
+
+    <story id="1.4" title="Implement RowManager Class with Single-Active-Row Model" status="done">
+      <summary>
+        RowManager class provides O(1) row lookup, single-active-row enforcement, and activation timeline tracking.
+        Map-based storage (rows, elementToRow) enables efficient element-to-row assignments.
+        Activation timeline captures row switching events with timestamps for OCR attribution.
+      </summary>
+
+      <key-insights>
+        <insight>Map&lt;string, Row&gt; structure requires conversion to Array for JSON serialization</insight>
+        <insight>activatedAt is Date object, must convert to ISO string for storage</insight>
+        <insight>activationTimeline array has Date objects in activatedAt/deactivatedAt fields</insight>
+        <insight>Deterministic row IDs (row-${index}) simplify state restoration</insight>
+      </key-insights>
+    </story>
+
+    <story id="1.2" title="Integrate Excalidraw Canvas with Single-Active-Row Constraints" status="done">
+      <summary>
+        Excalidraw integration established patterns for canvas state management and drawing constraints.
+        Single-active-row model enforces that only one row is editable at a time.
+      </summary>
+
+      <key-insights>
+        <insight>Excalidraw onChange fires frequently - debouncing essential for performance</insight>
+        <insight>Canvas state = elements + appState (includes zoom, pan, tool settings)</insight>
+        <insight>initialData prop vs updateScene() - initialData for mount, updateScene() for runtime changes</insight>
+      </key-insights>
+    </story>
+  </learnings-from-previous-stories>
+
+  <documentation-references>
+    <reference>
+      <source>docs/epic_1_complete_breakdown.md:245-266</source>
+      <topic>Story 1.7 detailed requirements and acceptance criteria</topic>
+      <key-points>
+        <point>Persist canvas and row state across browser sessions</point>
+        <point>Restore within 1s for typical canvas (&lt;500 elements)</point>
+        <point>Handle corrupted state gracefully with fallback to empty canvas</point>
+      </key-points>
+    </reference>
+
+    <reference>
+      <source>docs/sprint-artifacts/tech-spec-epic-1.md:115-124</source>
+      <topic>IndexedDB schema design for Magic Canvas state</topic>
+      <key-points>
+        <point>Single store: magic-canvas-state with key 'current'</point>
+        <point>Schema: {canvasState, rowManagerState, timestamp, version}</point>
+        <point>Atomic writes prevent partial corruption</point>
+      </key-points>
+    </reference>
+
+    <reference>
+      <source>docs/architecture.md:400-410</source>
+      <topic>State sync architecture (unidirectional RowManager → IndexedDB)</topic>
+      <key-points>
+        <point>RowManager is single source of truth</point>
+        <point>Unidirectional flow prevents race conditions</point>
+        <point>Debounced saves balance safety with performance</point>
+      </key-points>
+    </reference>
+
+    <reference>
+      <source>docs/architecture.md:45,137,410</source>
+      <topic>Debounce timing (2s for saves, 1.5s for OCR)</topic>
+      <key-points>
+        <point>2s save debounce prevents excessive IndexedDB writes</point>
+        <point>1.5s OCR debounce triggers after drawing pause</point>
+        <point>Different timings for different operations optimize UX</point>
+      </key-points>
+    </reference>
+
+    <reference>
+      <source>docs/PRD.md:502-530</source>
+      <topic>Row System persistence requirements (FR11-FR23)</topic>
+      <key-points>
+        <point>FR12: Each row has stable unique ID persisting across reload</point>
+        <point>FR13: Row metadata includes Y-position, statuses, LaTeX</point>
+        <point>FR17: Activation timeline tracked for OCR attribution</point>
+      </key-points>
+    </reference>
+
+    <reference>
+      <source>docs/epics.md</source>
+      <topic>Epic 1: Canvas Foundation &amp; Row Management overview</topic>
+      <key-points>
+        <point>Epic 1 establishes canvas and row system foundation</point>
+        <point>Story 1.7 completes persistence requirement</point>
+        <point>Enables future OCR and validation features (Epics 2-3)</point>
+      </key-points>
+    </reference>
+
+    <reference>
+      <source>src/utils/workspaceDB.js</source>
+      <topic>Existing IndexedDB patterns to reuse</topic>
+      <key-points>
+        <point>DB_VERSION incremental upgrades in onupgradeneeded</point>
+        <point>saveSessionState/loadSessionState patterns</point>
+        <point>Transaction-based atomic writes</point>
+        <point>Error handling and logging patterns</point>
+      </key-points>
+    </reference>
+  </documentation-references>
+
+  <completion-checklist>
+    <item priority="critical" task="1">
+      <description>Add magic-canvas-state IndexedDB store to workspaceDB.js</description>
+      <validation>Store created in DB_VERSION upgrade handler, accepts key 'current'</validation>
+      <ac-coverage>AC1, AC2, AC3</ac-coverage>
+    </item>
+
+    <item priority="critical" task="1">
+      <description>Implement saveMagicCanvasState() in workspaceDB.js</description>
+      <validation>Function saves {canvasState, rowManagerState, timestamp, version} atomically</validation>
+      <ac-coverage>AC1, AC2, AC3, AC4, AC5, AC10</ac-coverage>
+    </item>
+
+    <item priority="critical" task="1">
+      <description>Implement loadMagicCanvasState() in workspaceDB.js</description>
+      <validation>Function loads state, validates version, returns null on error</validation>
+      <ac-coverage>AC1, AC8, AC9</ac-coverage>
+    </item>
+
+    <item priority="critical" task="2">
+      <description>Implement RowManager.serialize() method</description>
+      <validation>Produces JSON-compatible state with Array conversions and ISO date strings</validation>
+      <ac-coverage>AC3, AC4, AC5, AC10</ac-coverage>
+    </item>
+
+    <item priority="critical" task="2">
+      <description>Implement RowManager.deserialize() method</description>
+      <validation>Reconstructs state from JSON with Map/Set/Date conversions, validates version</validation>
+      <ac-coverage>AC3, AC4, AC5, AC10</ac-coverage>
+    </item>
+
+    <item priority="high" task="3">
+      <description>Add auto-save debouncing in MagicCanvas.jsx or useRowSystem.js</description>
+      <validation>Saves triggered 2s after last canvas change, no excessive saves during rapid drawing</validation>
+      <ac-coverage>AC1, AC7</ac-coverage>
+    </item>
+
+    <item priority="critical" task="4">
+      <description>Implement state restoration in MagicCanvas useEffect on mount</description>
+      <validation>Loads state, restores RowManager, restores Excalidraw canvas, completes &lt;1s</validation>
+      <ac-coverage>AC1, AC2, AC5, AC6, AC7, AC10</ac-coverage>
+    </item>
+
+    <item priority="high" task="5">
+      <description>Handle empty state (first load) gracefully</description>
+      <validation>Initializes with row-0 active, empty canvas, default zoom if no saved state</validation>
+      <ac-coverage>AC8</ac-coverage>
+    </item>
+
+    <item priority="high" task="5">
+      <description>Handle corrupted state gracefully</description>
+      <validation>Detects corruption, logs error, falls back to empty canvas, alerts user</validation>
+      <ac-coverage>AC9</ac-coverage>
+    </item>
+
+    <item priority="medium" task="6">
+      <description>Add unit tests for RowManager serialize/deserialize</description>
+      <validation>Tests cover round-trip, null values, Date conversions, version validation</validation>
+      <ac-coverage>AC3, AC4, AC10</ac-coverage>
+    </item>
+
+    <item priority="medium" task="6">
+      <description>Add unit tests for workspaceDB save/load methods</description>
+      <validation>Tests cover successful save/load, null state, corruption handling, version validation</validation>
+      <ac-coverage>AC1, AC8, AC9</ac-coverage>
+    </item>
+
+    <item priority="high" task="6">
+      <description>Manual integration test: Full restoration flow</description>
+      <validation>Draw, set statuses, zoom/pan, reload → all state restored correctly in &lt;1s</validation>
+      <ac-coverage>AC1, AC2, AC3, AC4, AC5, AC6, AC7, AC10</ac-coverage>
+    </item>
+
+    <item priority="high" task="6">
+      <description>Manual test: Empty state initialization</description>
+      <validation>Clear IndexedDB, reload → empty canvas with row-0 active, default zoom</validation>
+      <ac-coverage>AC8</ac-coverage>
+    </item>
+
+    <item priority="high" task="6">
+      <description>Manual test: Corrupted state recovery</description>
+      <validation>Corrupt saved JSON, reload → alert shown, empty canvas loaded, error logged</validation>
+      <ac-coverage>AC9</ac-coverage>
+    </item>
+
+    <item priority="high" task="6">
+      <description>Manual test: Performance validation (500 elements)</description>
+      <validation>Create 500-element canvas, reload → restoration completes &lt;1s</validation>
+      <ac-coverage>AC7</ac-coverage>
+    </item>
+
+    <item priority="high" task="6">
+      <description>Manual test: Auto-save debouncing</description>
+      <validation>Rapid drawing → only 1 save after 2s debounce, not excessive saves</validation>
+      <ac-coverage>AC1, AC7</ac-coverage>
+    </item>
+  </completion-checklist>
+
+  <known-risks-and-mitigations>
+    <risk severity="medium">
+      <description>IndexedDB quota exceeded during save</description>
+      <impact>Save fails, user loses work on reload</impact>
+      <mitigation>Catch quota error, log warning, alert user to clear cache/export work</mitigation>
+      <detection>navigator.storage.estimate() to monitor quota usage</detection>
+    </risk>
+
+    <risk severity="low">
+      <description>Concurrent tab modifications causing state conflicts</description>
+      <impact>Last write wins, earlier tab's work lost on reload</impact>
+      <mitigation>Document limitation, consider future multi-tab sync (out of scope)</mitigation>
+      <detection>Manual testing with multiple tabs</detection>
+    </risk>
+
+    <risk severity="high">
+      <description>Restoration time exceeds 1s target for complex canvases</description>
+      <impact>Poor UX on reload, violates AC7</impact>
+      <mitigation>Optimize deserialization, consider incremental restoration, measure with performance.now()</mitigation>
+      <detection>Performance test with 500+ elements</detection>
+    </risk>
+
+    <risk severity="medium">
+      <description>JSON serialization fails for circular references or invalid types</description>
+      <impact>Save fails silently, state not persisted</impact>
+      <mitigation>Validate state structure before save, use try-catch with logging</mitigation>
+      <detection>Unit tests with edge case state structures</detection>
+    </risk>
+
+    <risk severity="low">
+      <description>Browser incognito mode disables IndexedDB</description>
+      <impact>Persistence disabled, no error shown to user</impact>
+      <mitigation>Detect IndexedDB availability, show warning if disabled</mitigation>
+      <detection>Check if(window.indexedDB) before save/load operations</detection>
+    </risk>
+  </known-risks-and-mitigations>
+
+  <validation-criteria>
+    <validation type="functional">
+      <criteria>All 10 acceptance criteria met with evidence</criteria>
+      <criteria>Unit tests passing for serialize/deserialize (5+ tests)</criteria>
+      <criteria>Integration tests completed (6 manual scenarios)</criteria>
+      <criteria>No console errors during normal save/load operations</criteria>
+    </validation>
+
+    <validation type="performance">
+      <criteria>Restoration time &lt;1s for 500-element canvas (AC7)</criteria>
+      <criteria>Save operation &lt;100ms (IndexedDB transaction time)</criteria>
+      <criteria>Serialization &lt;50ms (RowManager.serialize())</criteria>
+      <criteria>Auto-save triggers only after 2s debounce (not during rapid drawing)</criteria>
+    </validation>
+
+    <validation type="reliability">
+      <criteria>Corrupted state handled gracefully with fallback (AC9)</criteria>
+      <criteria>Empty state initializes correctly on first load (AC8)</criteria>
+      <criteria>Save errors logged and don't crash application</criteria>
+      <criteria>Version validation prevents incompatible state loading</criteria>
+    </validation>
+
+    <validation type="integration">
+      <criteria>Excalidraw canvas state restored pixel-perfect (AC2)</criteria>
+      <criteria>RowManager element assignments restored correctly (AC3)</criteria>
+      <criteria>Row statuses (OCR, validation, LaTeX) persist correctly (AC4)</criteria>
+      <criteria>Active row restored with visual highlight (AC5)</criteria>
+      <criteria>Zoom level restored from appState (AC6)</criteria>
+      <criteria>Activation timeline restored with Date objects (AC10)</criteria>
+    </validation>
+  </validation-criteria>
+
+  <dev-agent-notes>
+    <note type="critical">
+      CRITICAL: Increment DB_VERSION from 1 to 2 in workspaceDB.js when adding magic-canvas-state store.
+      Failure to increment version will prevent store creation on existing installations.
+    </note>
+
+    <note type="important">
+      IMPORTANT: Use atomic transactions for saves. Either complete state saves or nothing.
+      Never partially write canvasState without rowManagerState or vice versa.
+    </note>
+
+    <note type="warning">
+      WARNING: Map and Set are not JSON-serializable. Must convert to Array before saving.
+      Remember to convert back to Map/Set when deserializing.
+    </note>
+
+    <note type="warning">
+      WARNING: Date objects serialize to ISO strings in JSON. Must reconstruct Date objects
+      when deserializing activatedAt and activationTimeline timestamps.
+    </note>
+
+    <note type="performance">
+      PERFORMANCE: Debounce auto-save to 2s after last change. Verify no excessive saves
+      during rapid drawing by checking console logs in manual testing.
+    </note>
+
+    <note type="testing">
+      TESTING: Measure restoration time with performance.now(). Log warning if &gt;1s.
+      Test with 500-element canvas to validate performance target (AC7).
+    </note>
+
+    <note type="error-handling">
+      ERROR HANDLING: All save/load operations must be wrapped in try-catch with logger.error().
+      Never let IndexedDB errors crash the application. Always fallback to empty canvas.
+    </note>
+
+    <note type="validation">
+      VALIDATION: Check state.version === 1 before deserializing. Reject incompatible versions
+      gracefully with warning log and fallback to empty canvas.
+    </note>
+
+    <note type="integration">
+      INTEGRATION: Coordinate MagicCanvas.jsx and useRowSystem.js auto-save logic.
+      Avoid duplicate saves by ensuring single debounced save path for both canvas and row state.
+    </note>
+
+    <note type="documentation">
+      DOCUMENTATION: Update story file with completion notes, evidence screenshots, and
+      test results. Document any deviations from planned implementation with rationale.
+    </note>
+  </dev-agent-notes>
+
+  <success-metrics>
+    <metric>
+      <name>Restoration time</name>
+      <target>&lt;1s for typical canvas (&lt;500 elements)</target>
+      <measurement>performance.now() from loadMagicCanvasState() to completion</measurement>
+      <ac-reference>AC7</ac-reference>
+    </metric>
+
+    <metric>
+      <name>State completeness</name>
+      <target>100% of canvas and row state restored</target>
+      <measurement>Manual verification: all strokes, row assignments, statuses, active row, zoom</measurement>
+      <ac-reference>AC1, AC2, AC3, AC4, AC5, AC6, AC10</ac-reference>
+    </metric>
+
+    <metric>
+      <name>Corruption resilience</name>
+      <target>Graceful fallback to empty canvas on all corruption scenarios</target>
+      <measurement>Manual corruption testing: malformed JSON, missing fields, invalid types</measurement>
+      <ac-reference>AC9</ac-reference>
+    </metric>
+
+    <metric>
+      <name>Auto-save efficiency</name>
+      <target>Single save after 2s debounce, not during rapid drawing</target>
+      <measurement>Console log analysis during rapid drawing test</measurement>
+      <ac-reference>AC1, AC7</ac-reference>
+    </metric>
+
+    <metric>
+      <name>Test coverage</name>
+      <target>5+ unit tests passing, 6 integration scenarios completed</target>
+      <measurement>Vitest test suite + manual test checklist</measurement>
+      <ac-reference>All ACs</ac-reference>
+    </metric>
+  </success-metrics>
+</story-context>
