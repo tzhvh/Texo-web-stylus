@@ -38,4 +38,5 @@ workflow_status: |
   solutioning-gate-check: docs/bmm-readiness-assessment-2025-11-13.md  # agent: architect
 
   # Phase 3: Implementation
+  implementation-readiness: docs/implementation-readiness-report-2025-11-22.md  # agent: bmad-master
   sprint-planning: required  # agent: sm
