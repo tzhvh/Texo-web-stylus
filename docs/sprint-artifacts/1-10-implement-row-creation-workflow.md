@@ -1,6 +1,6 @@
 # Story 1.10: Implement Row Creation Workflow
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -473,7 +473,7 @@ function MagicCanvas() {
 
 ### Context Reference
 
-<!-- Path(s) to story context XML will be added here by context workflow -->
+- docs/sprint-artifacts/1-10-implement-row-creation-workflow.context.xml
 
 ### Agent Model Used
 
