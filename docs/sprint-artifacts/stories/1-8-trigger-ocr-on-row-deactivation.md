@@ -1,6 +1,6 @@
 # Story 1.8: Trigger OCR on Row Deactivation
 
-Status: drafted
+Status: ready-for-dev
 
 ## Story
 
@@ -405,7 +405,7 @@ export function triggerOCRForRow(rowId, elements) {
 
 ### Context Reference
 
-<!-- Path(s) to story context XML will be added here by context workflow -->
+- docs/sprint-artifacts/stories/1-8-trigger-ocr-on-row-deactivation.context.xml
 
 ### Agent Model Used
 
