@@ -15,7 +15,12 @@ import "@excalidraw/excalidraw/index.css";
 import { useDebug } from "../contexts/DebugContext";
 import useRowSystem from "../hooks/useRowSystem.js";
 import RowManager from "../utils/rowManager.js";
-import { saveSessionState, loadSessionState } from "../utils/workspaceDB.js";
+import {
+  saveSessionState,
+  loadSessionState,
+  saveMagicCanvasState,
+  loadMagicCanvasState
+} from "../utils/workspaceDB.js";
 import { MemoizedRowHeader } from "../components/RowHeader.jsx";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 
@@ -279,66 +284,117 @@ function MagicCanvasComponent() {
     }
   }, [excalidrawAPI, guideLineSpacing, debugMode, rowManager]);
 
-  // Save canvas state to IndexedDB
+  // Story 1.7: Save complete Magic Canvas state (canvas + row state) atomically to IndexedDB
   const saveCanvasState = useCallback(async () => {
-    if (!excalidrawAPI) return;
+    if (!excalidrawAPI || !rowManager) return;
 
     try {
+      const startTime = performance.now();
+
+      // Gather canvas state from Excalidraw
       const elements = excalidrawAPI.getSceneElements();
       const appState = excalidrawAPI.getAppState();
       const canvasState = {
         elements: elements,
-        appState: appState,
-        timestamp: Date.now()
+        appState: appState
       };
 
-      await saveSessionState('magic-canvas-state', canvasState);
+      // Serialize RowManager state
+      const rowManagerState = rowManager.serialize();
+
+      // Atomic save of both states (Story 1.7, AC #1)
+      await saveMagicCanvasState(canvasState, rowManagerState);
+
+      const duration = performance.now() - startTime;
 
       if (debugMode) {
-        console.log('MagicCanvas: Canvas state saved to IndexedDB', {
+        console.log('MagicCanvas: Complete state saved to IndexedDB (Story 1.7)', {
           elementCount: elements.length,
+          rowCount: rowManagerState.rows.length,
+          activeRowId: rowManagerState.activeRowId,
           zoom: appState.zoom?.value,
-          scrollX: appState.scrollX,
-          scrollY: appState.scrollY
+          scrollY: appState.scrollY,
+          saveTime: duration.toFixed(2) + 'ms'
         });
       }
     } catch (error) {
-      console.error('MagicCanvas: Failed to save canvas state', error);
+      console.error('MagicCanvas: Failed to save complete state (Story 1.7)', error);
     }
-  }, [excalidrawAPI, debugMode]);
+  }, [excalidrawAPI, rowManager, debugMode]);
 
-  // Load canvas state from IndexedDB
+  // Story 1.7: Load complete Magic Canvas state (canvas + row state) from IndexedDB
   const loadCanvasState = useCallback(async () => {
-    if (!excalidrawAPI) return false;
+    if (!excalidrawAPI || !rowManager) return false;
+
+    // Story 1.7, AC #7: Measure restoration time
+    const startTime = performance.now();
 
     try {
-      const savedState = await loadSessionState('magic-canvas-state');
+      // Story 1.7, AC #1: Load atomic state from IndexedDB
+      const savedState = await loadMagicCanvasState();
 
-      if (savedState) {
+      if (savedState && savedState.canvasState && savedState.rowManagerState) {
+        // Story 1.7, AC #3, #4, #5, #10: Restore RowManager state
+        rowManager.deserialize(savedState.rowManagerState);
+
+        // Story 1.7, AC #2, #6: Restore Excalidraw canvas (elements + zoom level)
         excalidrawAPI.updateScene({
-          elements: savedState.elements,
-          appState: savedState.appState
+          elements: savedState.canvasState.elements,
+          appState: savedState.canvasState.appState
         });
 
+        const duration = performance.now() - startTime;
+
+        // Story 1.7, AC #7: Performance assertion (<1s for typical canvas)
+        if (duration > 1000) {
+          console.warn('MagicCanvas: Restoration took longer than 1s (AC #7 violation)', {
+            duration: duration.toFixed(2) + 'ms',
+            elementCount: savedState.canvasState.elements?.length || 0
+          });
+        }
+
         if (debugMode) {
-          console.log('MagicCanvas: Canvas state loaded from IndexedDB', {
-            elementCount: savedState.elements.length,
-            zoom: savedState.appState.zoom?.value,
-            scrollX: savedState.appState.scrollX,
-            scrollY: savedState.appState.scrollY,
-            savedTimestamp: new Date(savedState.timestamp).toISOString()
+          console.log('MagicCanvas: Complete state restored from IndexedDB (Story 1.7)', {
+            elementCount: savedState.canvasState.elements?.length || 0,
+            rowCount: savedState.rowManagerState.rows?.length || 0,
+            activeRowId: savedState.rowManagerState.activeRowId,
+            zoom: savedState.canvasState.appState?.zoom?.value,
+            scrollY: savedState.canvasState.appState?.scrollY,
+            restorationTime: duration.toFixed(2) + 'ms',
+            performanceTarget: duration < 1000 ? 'PASS' : 'FAIL'
           });
         }
 
         return true;
       }
 
+      // Story 1.7, AC #8: No saved state, will initialize with defaults
+      if (debugMode) {
+        console.log('MagicCanvas: No saved state found, will initialize with defaults (AC #8)');
+      }
+
       return false;
     } catch (error) {
-      console.error('MagicCanvas: Failed to load canvas state', error);
+      // Story 1.7, AC #9: Corruption detected, fallback to empty canvas
+      console.error('MagicCanvas: Failed to restore state (possible corruption - AC #9)', error);
+
+      // Alert user about corruption recovery
+      alert('Failed to restore previous canvas state. Starting with empty canvas.\n\nError: ' + error.message);
+
+      // Initialize with default row (row-0) per AC #8
+      if (rowManager) {
+        const defaultRowId = 'row-0';
+        if (!rowManager.getRow(defaultRowId)) {
+          const newRow = rowManager.createNewRow();
+          rowManager.setActiveRow(newRow);
+        } else {
+          rowManager.setActiveRow(defaultRowId);
+        }
+      }
+
       return false;
     }
-  }, [excalidrawAPI, debugMode]);
+  }, [excalidrawAPI, rowManager, debugMode]);
 
   // Initialize canvas with guide lines and load saved state (Story 1.3, Task 3.1, 3.2)
   useEffect(() => {
