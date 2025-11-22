@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import useRowSystem from '../../hooks/useRowSystem.js';
 import RowManager from '../../utils/rowManager.js';
+import Logger from '../../utils/logger.js';
 
 // Mock logger
 vi.mock('../../utils/logger.js', () => {
@@ -19,14 +20,6 @@ vi.mock('../../utils/logger.js', () => {
       warn: vi.fn(),
       error: vi.fn()
     }
-  };
-});
-
-// Mock workspaceDB
-vi.mock('../../utils/workspaceDB.js', () => {
-  return {
-    saveSessionState: vi.fn(() => Promise.resolve()),
-    loadSessionState: vi.fn(() => Promise.resolve(null))
   };
 });
 
@@ -55,12 +48,12 @@ describe('useRowSystem Integration Tests', () => {
   beforeEach(() => {
     mockExcalidrawAPI = createMockExcalidrawAPI();
     rowManager = new RowManager({ rowHeight: 384, startY: 0 });
-    
+
     // Reset mock logger
-    mockLogger.debug.mockClear();
-    mockLogger.info.mockClear();
-    mockLogger.warn.mockClear();
-    mockLogger.error.mockClear();
+    Logger.debug.mockClear();
+    Logger.info.mockClear();
+    Logger.warn.mockClear();
+    Logger.error.mockClear();
   });
 
   afterEach(() => {
@@ -69,12 +62,12 @@ describe('useRowSystem Integration Tests', () => {
 
   describe('Element Assignment Workflow', () => {
     it('should complete full assignment workflow for new elements', async () => {
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager, 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager,
           debounceMs: 10,
-          debugMode: true 
+          debugMode: true
         })
       );
 
@@ -100,11 +93,11 @@ describe('useRowSystem Integration Tests', () => {
     });
 
     it('should handle element movement between rows', async () => {
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager, 
-          debounceMs: 10 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager,
+          debounceMs: 10
         })
       );
 
@@ -138,11 +131,11 @@ describe('useRowSystem Integration Tests', () => {
     });
 
     it('should handle element deletion', async () => {
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager, 
-          debounceMs: 10 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager,
+          debounceMs: 10
         })
       );
 
@@ -181,11 +174,11 @@ describe('useRowSystem Integration Tests', () => {
 
   describe('Performance and Debouncing', () => {
     it('should handle rapid changes without performance issues', async () => {
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager, 
-          debounceMs: 50 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager,
+          debounceMs: 50
         })
       );
 
@@ -213,17 +206,17 @@ describe('useRowSystem Integration Tests', () => {
     });
 
     it('should debounce rapid changes correctly', async () => {
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager, 
-          debounceMs: 50 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager,
+          debounceMs: 50
         })
       );
 
       let processCallCount = 0;
       const originalProcessElementChanges = result.current.__testProcessElementChanges;
-      
+
       // Mock the processing function to count calls
       result.current.__testProcessElementChanges = vi.fn((changes) => {
         processCallCount++;
@@ -249,11 +242,11 @@ describe('useRowSystem Integration Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle invalid elements gracefully', async () => {
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager, 
-          debugMode: true 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager,
+          debugMode: true
         })
       );
 
@@ -271,7 +264,7 @@ describe('useRowSystem Integration Tests', () => {
 
       // Should not crash and should handle gracefully
       expect(result.current.stats.errorCount).toBeGreaterThanOrEqual(0);
-      expect(mockLogger.error).toHaveBeenCalled();
+      expect(Logger.error).toHaveBeenCalled();
     });
 
     it('should handle RowManager errors gracefully', async () => {
@@ -285,11 +278,11 @@ describe('useRowSystem Integration Tests', () => {
         updateRow: vi.fn()
       };
 
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager: mockRowManager, 
-          debugMode: true 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager: mockRowManager,
+          debugMode: true
         })
       );
 
@@ -304,17 +297,17 @@ describe('useRowSystem Integration Tests', () => {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       expect(result.current.stats.errorCount).toBe(1);
-      expect(mockLogger.error).toHaveBeenCalled();
+      expect(Logger.error).toHaveBeenCalled();
     });
   });
 
   describe('Debug Mode', () => {
     it('should log debug information when enabled', async () => {
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager, 
-          debugMode: true 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager,
+          debugMode: true
         })
       );
 
@@ -328,15 +321,15 @@ describe('useRowSystem Integration Tests', () => {
 
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      expect(mockLogger.debug).toHaveBeenCalled();
+      expect(Logger.debug).toHaveBeenCalled();
     });
 
     it('should not log debug information when disabled', async () => {
-      const { result } = renderHook(() => 
-        useRowSystem({ 
-          excalidrawAPI: mockExcalidrawAPI, 
-          rowManager, 
-          debugMode: false 
+      const { result } = renderHook(() =>
+        useRowSystem({
+          excalidrawAPI: mockExcalidrawAPI,
+          rowManager,
+          debugMode: false
         })
       );
 
@@ -350,7 +343,7 @@ describe('useRowSystem Integration Tests', () => {
 
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      expect(mockLogger.debug).not.toHaveBeenCalled();
+      expect(Logger.debug).not.toHaveBeenCalled();
     });
   });
 });

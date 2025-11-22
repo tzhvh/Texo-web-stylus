@@ -64,19 +64,19 @@ export class RowManager {
   constructor({ rowHeight = 384, startY = 0 } = {}) {
     this.rowHeight = rowHeight;
     this.startY = startY;
-    
+
     // Map<string, Row> - All rows by ID for O(1) lookup
     this.rows = new Map();
-    
+
     // Map<string, string> - Element ID to row ID mapping for O(1) element lookup
     this.elementToRow = new Map();
-    
+
     // Single active row management (Story 1.2: single-active-row model)
     this.activeRowId = null;
-    
+
     // Activation timeline for OCR and analytics (Story 1.10)
     this.activationTimeline = [];
-    
+
     Logger.debug('RowManager', 'Initialized', {
       rowHeight,
       startY,
@@ -100,19 +100,19 @@ export class RowManager {
     // Ensure negative Y coordinates map to row 0
     let rowIndex = Math.floor((y - this.startY) / this.rowHeight);
     rowIndex = Math.max(0, rowIndex);
-    
+
     // Generate deterministic row ID
     const rowId = `row-${rowIndex}`;
-    
+
     // Return existing row or create new one
     if (this.rows.has(rowId)) {
       return this.rows.get(rowId);
     }
-    
+
     // Create new row if it doesn't exist
     const newRow = this._createRow(rowIndex);
     this.rows.set(rowId, newRow);
-    
+
     Logger.debug('RowManager', 'Created new row', {
       rowId,
       rowIndex,
@@ -120,7 +120,7 @@ export class RowManager {
       yStart: newRow.yStart,
       yEnd: newRow.yEnd
     });
-    
+
     return newRow;
   }
 
@@ -186,7 +186,7 @@ export class RowManager {
     // Add element to target row
     targetRow.elementIds.add(element.id);
     this.elementToRow.set(element.id, targetRow.id);
-    
+
     // Update row metadata
     targetRow.lastModified = Date.now();
     targetRow.ocrStatus = 'pending'; // Reset OCR status when elements change
@@ -287,11 +287,21 @@ export class RowManager {
       throw new Error(error);
     }
 
-    const row = this.getRow(rowId);
+    let row = this.getRow(rowId);
+    let isNewRow = false;
     if (!row) {
-      const error = `Row ${rowId} not found`;
-      Logger.error('RowManager', error, { rowId });
-      throw new Error(error);
+      // Extract rowIndex from rowId (e.g., "row-0" -> 0)
+      const rowIndexMatch = rowId.match(/^row-(\d+)$/);
+      if (!rowIndexMatch) {
+        const error = `Invalid rowId format for creation: ${rowId}`;
+        Logger.error('RowManager', error, { rowId });
+        throw new Error(error);
+      }
+      const rowIndex = parseInt(rowIndexMatch[1], 10);
+      row = this._createRow(rowIndex);
+      this.rows.set(rowId, row); // Add the newly created row to the map
+      isNewRow = true;
+      Logger.debug('RowManager', 'Created new row during setActiveRow', { rowId, rowIndex });
     }
 
     const previousActiveRowId = this.activeRowId;
@@ -328,7 +338,8 @@ export class RowManager {
       previousActiveRowId,
       newActiveRowId: rowId,
       rowBounds: { yStart: row.yStart, yEnd: row.yEnd },
-      timelineLength: this.activationTimeline.length
+      timelineLength: this.activationTimeline.length,
+      isNewRow
     });
   }
 
@@ -573,7 +584,7 @@ export class RowManager {
       if (previousRow) {
         previousRow.elementIds.delete(elementId);
         previousRow.lastModified = Date.now();
-        
+
         Logger.debug('RowManager', 'Removed element from previous row', {
           elementId,
           previousRowId,
