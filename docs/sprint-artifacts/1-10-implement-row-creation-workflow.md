@@ -1,6 +1,6 @@
 # Story 1.10: Implement Row Creation Workflow
 
-Status: in-progress
+Status: done
 
 ## Story
 
