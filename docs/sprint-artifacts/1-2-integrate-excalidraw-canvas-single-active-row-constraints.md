@@ -1,6 +1,6 @@
 # Story 1.2: Integrate Excalidraw Canvas with Single-Active-Row Constraints
 
-Status: review
+Status: done
 
 ## Story
 
@@ -134,6 +134,11 @@ So that **I can write mathematical expressions without space constraints while m
 Claude-3.5-Sonnet
 
 ### Debug Log References
+
+### Completion Notes
+
+**Completed:** 2025-11-22
+**Definition of Done:** All acceptance criteria met, code reviewed, tests passing
 
 ### Completion Notes List
 
