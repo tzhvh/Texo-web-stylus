@@ -7,41 +7,6 @@ dotenvConfig({
   path: path.resolve(__dirname, '../.env'),
 });
 
-// Central environment config map
-const envConfigMap = {
-  local: {
-    ...baseConfig,
-    use: {
-      ...baseConfig.use,
-      baseURL: 'http://localhost:5173', // Vite dev server
-      video: 'off', // No video locally for speed
-    },
-    webServer: {
-      command: 'npm run dev',
-      url: 'http://localhost:5173',
-      reuseExistingServer: !process.env.CI,
-      timeout: 120000,
-    },
-  },
-  staging: {
-    ...baseConfig,
-    use: {
-      ...baseConfig.use,
-      baseURL: 'https://staging.example.com',
-      ignoreHTTPSErrors: true, // Allow self-signed certs in staging
-    },
-  },
-  production: {
-    ...baseConfig,
-    retries: 3, // More retries in production
-    use: {
-      ...baseConfig.use,
-      baseURL: 'https://example.com',
-      video: 'on', // Always record production failures
-    },
-  },
-};
-
 // Base configuration with standardized timeouts
 const baseConfig = {
   testDir: path.resolve(__dirname, './e2e'),
@@ -76,6 +41,41 @@ const baseConfig = {
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
+};
+
+// Central environment config map
+const envConfigMap = {
+  local: {
+    ...baseConfig,
+    use: {
+      ...baseConfig.use,
+      baseURL: 'http://localhost:5173', // Vite dev server
+      video: 'off', // No video locally for speed
+    },
+    webServer: {
+      command: 'npm run dev',
+      url: 'http://localhost:5173',
+      reuseExistingServer: !process.env.CI,
+      timeout: 120000,
+    },
+  },
+  staging: {
+    ...baseConfig,
+    use: {
+      ...baseConfig.use,
+      baseURL: 'https://staging.example.com',
+      ignoreHTTPSErrors: true, // Allow self-signed certs in staging
+    },
+  },
+  production: {
+    ...baseConfig,
+    retries: 3, // More retries in production
+    use: {
+      ...baseConfig.use,
+      baseURL: 'https://example.com',
+      video: 'on', // Always record production failures
+    },
+  },
 };
 
 const environment = process.env.TEST_ENV || 'local';
