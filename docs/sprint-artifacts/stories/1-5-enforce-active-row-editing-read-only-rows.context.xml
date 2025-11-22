@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<story-context id="1.5" epic="1" title="Enforce Active Row Editing and Read-Only Rows">
+  <metadata>
+    <generated-date>2025-11-22</generated-date>
+    <generator>BMad Autonomous Workflow</generator>
+    <story-file>docs/sprint-artifacts/stories/1-5-enforce-active-row-editing-read-only-rows.md</story-file>
+  </metadata>
+
+  <summary>
+    Implement the core single-active-row interaction model by enforcing stroke constraints to the active row, rendering inactive rows as read-only with visual dimming, and enabling row activation via tap/click. This establishes clear editing boundaries for mathematical expression organization and precise OCR attribution.
+  </summary>
+
+  <architecture-context>
+    <architectural-model>
+      <name>Single-Active-Row with Read-Only Enforcement</name>
+      <description>
+        Only one row editable at any time. All other rows are locked and visually dimmed.
+        Active row receives visual highlighting (border/background). Strokes are constrained
+        to active row Y-coordinate bounds. Undo/redo/erase operations scoped to active row.
+      </description>
+      <source>docs/architecture.md:893 (ADR-001)</source>
+    </architectural-model>
+
+    <integration-points>
+      <integration name="RowManager Integration">
+        <component>src/utils/rowManager.js</component>
+        <methods>setActiveRow(), getActiveRow(), updateRow()</methods>
+        <usage>Track active row state, enforce single-active-row constraint</usage>
+      </integration>
+
+      <integration name="Excalidraw Canvas Integration">
+        <component>@excalidraw/excalidraw</component>
+        <hooks>onChange event for stroke filtering, locked property for read-only</hooks>
+        <usage>Filter strokes by Y-coordinate bounds, lock inactive row elements</usage>
+      </integration>
+
+      <integration name="useRowSystem Hook">
+        <component>src/hooks/useRowSystem.js</component>
+        <extends>Add constraint enforcement and tap activation handlers</extends>
+        <usage>Integrate stroke filtering and row activation logic with React</usage>
+      </integration>
+
+      <integration name="Visual Feedback">
+        <component>src/components/RowHeader.jsx</component>
+        <extends>Add active row highlighting styles and transitions</extends>
+        <usage>Provide clear visual distinction between active and inactive rows</usage>
+      </integration>
+    </integration-points>
+
+    <state-management>
+      <pattern>Unidirectional Data Flow</pattern>
+      <flow>
+        User Input (draw/tap) → Excalidraw onChange → Row Constraint Filter →
+        RowManager State Update → Visual Feedback Update → IndexedDB Persistence
+      </flow>
+      <source>docs/architecture.md:401-436</source>
+    </state-management>
+  </architecture-context>
+
+  <technical-context>
+    <existing-components>
+      <component path="src/utils/rowManager.js" status="COMPLETE" story="1.4">
+        <description>RowManager class with setActiveRow(), getActiveRow(), activation timeline</description>
+        <reuse-pattern>Call setActiveRow() when row is tapped/clicked</reuse-pattern>
+        <reuse-pattern>Use getActiveRow() to determine stroke constraint bounds</reuse-pattern>
+        <reuse-pattern>Check row.isActive to apply visual highlighting</reuse-pattern>
+      </component>
+
+      <component path="src/hooks/useRowSystem.js" status="EXISTS" story="1.2">
+        <description>React hook for row system orchestration</description>
+        <extend>Add handleSceneChange for stroke filtering</extend>
+        <extend>Add handleRowTap for activation by click</extend>
+        <extend>Add enforceReadOnlyRows for locking inactive elements</extend>
+      </component>
+
+      <component path="src/components/RowHeader.jsx" status="EXISTS" story="1.2">
+        <description>Row status indicator component</description>
+        <extend>Add isActive prop and conditional highlighting styles</extend>
+        <extend>Apply Tailwind classes for active state (border-blue-500)</extend>
+        <extend>Add smooth transitions (transition-all duration-200)</extend>
+      </component>
+
+      <component path="src/pages/MagicCanvas.jsx" status="EXISTS" story="1.1">
+        <description>Main Magic Canvas page with Excalidraw integration</description>
+        <extend>Wire up useRowSystem constraint handlers</extend>
+        <extend>Pass handleSceneChange to Excalidraw onChange prop</extend>
+        <extend>Attach handleRowTap to canvas container</extend>
+      </component>
+    </existing-components>
+
+    <new-functionality>
+      <feature name="Stroke Constraint Filtering">
+        <location>src/hooks/useRowSystem.js - handleSceneChange</location>
+        <algorithm>
+          1. Get active row from rowManager.getActiveRow()
+          2. Filter Excalidraw elements by Y-coordinate
+          3. Check: elementY >= activeRow.yStart && elementY &lt;= activeRow.yEnd
+          4. Remove elements outside bounds or constrain to active row
+          5. Update Excalidraw scene with filtered elements
+        </algorithm>
+      </feature>
+
+      <feature name="Read-Only Enforcement">
+        <location>src/hooks/useRowSystem.js - enforceReadOnlyRows</location>
+        <algorithm>
+          1. Map over all canvas elements
+          2. Determine which row each element belongs to (by Y-coordinate)
+          3. If element row != active row, set element.locked = true
+          4. If element row == active row, set element.locked = false
+          5. Return updated elements array
+        </algorithm>
+      </feature>
+
+      <feature name="Row Tap Activation">
+        <location>src/hooks/useRowSystem.js - handleRowTap</location>
+        <algorithm>
+          1. Get click Y-coordinate from event.clientY (convert to canvas space)
+          2. Find row where clickY >= row.yStart && clickY &lt;= row.yEnd
+          3. If targetRow found and != current active row:
+             - Call rowManager.setActiveRow(targetRow.id)
+             - Visual highlighting updates automatically
+             - Previous row deactivated (triggers OCR in Story 1.8)
+        </algorithm>
+      </feature>
+
+      <feature name="Active Row Visual Highlighting">
+        <location>src/components/RowHeader.jsx</location>
+        <implementation>
+          Conditional CSS classes based on isActive prop:
+          - Active: "border-2 border-blue-500 bg-blue-50 bg-opacity-10"
+          - Inactive: "opacity-60 bg-gray-100 bg-opacity-5"
+          - Transition: "transition-all duration-200" for smooth state changes
+        </implementation>
+      </feature>
+
+      <feature name="Undo/Redo Scoping">
+        <location>src/hooks/useRowSystem.js - handleUndoRedo</location>
+        <algorithm>
+          1. Hook into Excalidraw undo/redo events
+          2. Filter undo history by activation timeline
+          3. Only revert elements created during current row activation period
+          4. Use rowManager.getActivationTimeline() to determine eligibility
+        </algorithm>
+      </feature>
+
+      <feature name="Erase Operation Scoping">
+        <location>src/hooks/useRowSystem.js - handleErase</location>
+        <algorithm>
+          1. Intercept Excalidraw erase operations
+          2. Filter erased elements by active row bounds
+          3. Only allow erasure of elements within active row Y-coordinates
+          4. Protect inactive row elements from erase operations
+        </algorithm>
+      </feature>
+    </new-functionality>
+
+    <data-structures>
+      <structure name="Row" source="src/utils/rowManager.js">
+        <field name="id" type="string">Row identifier ("row-{index}")</field>
+        <field name="yStart" type="number">Top Y coordinate in canvas space</field>
+        <field name="yEnd" type="number">Bottom Y coordinate (yStart + 384)</field>
+        <field name="isActive" type="boolean">True if this is the currently active row</field>
+        <field name="ocrStatus" type="string">OCR processing status</field>
+        <field name="validationStatus" type="string">Validation status</field>
+        <usage>Access via rowManager.getActiveRow() to get constraint bounds</usage>
+      </structure>
+
+      <structure name="ExcalidrawElement" source="@excalidraw/excalidraw">
+        <field name="y" type="number">Y-coordinate of element</field>
+        <field name="height" type="number">Element height</field>
+        <field name="locked" type="boolean">If true, element is read-only</field>
+        <usage>Filter by Y-coordinate bounds, set locked for read-only enforcement</usage>
+      </structure>
+    </data-structures>
+
+    <performance-targets>
+      <target metric="Constraint enforcement overhead" value="<5ms per onChange event"/>
+      <target metric="Visual highlighting transition" value="200ms smooth CSS transition"/>
+      <target metric="Tap activation response" value="<100ms from tap to visual update"/>
+      <target metric="Canvas FPS with constraints" value="60fps during drawing"/>
+    </performance-targets>
+  </technical-context>
+
+  <testing-context>
+    <unit-tests framework="vitest">
+      <test>Stroke constraint filtering by Y-coordinate bounds</test>
+      <test>Read-only enforcement logic (locked property assignment)</test>
+      <test>Row tap activation Y-coordinate hit detection</test>
+      <test>Undo/redo filtering by activation timeline</test>
+      <test>Erase operation scoping to active row</test>
+    </unit-tests>
+
+    <integration-tests>
+      <test>End-to-end: Draw in row 2, switch to row 3, verify row 2 is locked</test>
+      <test>Visual feedback: Active row highlighting appears correctly</test>
+      <test>Tap activation: Tapping inactive row switches activation</test>
+      <test>Undo/redo scoping: Operations only affect active row</test>
+      <test>Erase scoping: Erase only removes active row elements</test>
+      <test>Edge cases: Single row, first/last row, rapid switching</test>
+    </integration-tests>
+
+    <edge-cases>
+      <case>Stroke crossing row boundary - constrain to active row</case>
+      <case>Tapping exactly on row boundary - use tolerant hit detection</case>
+      <case>Rapid row switching - debounce or queue activation events</case>
+      <case>Undo/redo across row switch - maintain per-row history</case>
+      <case>Empty row activation - no elements to lock/unlock</case>
+    </edge-cases>
+  </testing-context>
+
+  <acceptance-criteria-mapping>
+    <ac id="1" task="2">
+      <description>Stroke created only if within active row bounds</description>
+      <implementation>handleSceneChange filters elements by Y-coordinate</implementation>
+      <test>Draw stroke outside active row, verify rejection</test>
+    </ac>
+
+    <ac id="2" task="2">
+      <description>Strokes outside bounds prevented or constrained</description>
+      <implementation>Filter elements or clamp Y-coordinates to active row</implementation>
+      <test>Draw stroke crossing boundary, verify constraint</test>
+    </ac>
+
+    <ac id="3" task="1">
+      <description>Clear visual feedback for active row</description>
+      <implementation>RowHeader applies conditional CSS classes based on isActive</implementation>
+      <test>Verify border/background highlighting on active row</test>
+    </ac>
+
+    <ac id="4" task="3">
+      <description>Inactive rows display as read-only and dimmed</description>
+      <implementation>enforceReadOnlyRows sets element.locked=true and applies opacity</implementation>
+      <test>Attempt edit on inactive row, verify rejection</test>
+    </ac>
+
+    <ac id="5" task="4">
+      <description>Tap/click inactive row to activate it</description>
+      <implementation>handleRowTap detects click Y-coordinate and calls setActiveRow()</implementation>
+      <test>Click inactive row, verify activation switch</test>
+    </ac>
+
+    <ac id="6" task="5">
+      <description>Undo/redo only affects active row content</description>
+      <implementation>handleUndoRedo filters history by activation timeline</implementation>
+      <test>Draw in row 2, switch to row 3, undo - verify only row 3 affected</test>
+    </ac>
+
+    <ac id="7" task="6">
+      <description>Erase only affects active row strokes</description>
+      <implementation>handleErase filters erased elements by active row bounds</implementation>
+      <test>Erase gesture, verify only active row elements removed</test>
+    </ac>
+
+    <ac id="8" task="1">
+      <description>Row boundaries visually clear with ruled lines</description>
+      <implementation>Reuse existing ruled line rendering from Story 1.3</implementation>
+      <test>Verify ruled lines at rowStart and rowEnd are visible</test>
+    </ac>
+  </acceptance-criteria-mapping>
+
+  <implementation-notes>
+    <note priority="HIGH">
+      Stroke constraint filtering must be performant - cache active row bounds
+      to avoid repeated RowManager queries on every onChange event.
+    </note>
+
+    <note priority="HIGH">
+      Read-only enforcement via Excalidraw's locked property is native and performant.
+      Do not implement custom click blocking - let Excalidraw handle locked elements.
+    </note>
+
+    <note priority="MEDIUM">
+      Row tap activation requires converting screen coordinates to canvas coordinates.
+      Account for zoom level and pan offset when calculating click Y-coordinate.
+    </note>
+
+    <note priority="MEDIUM">
+      Undo/redo scoping is complex - consider deferring full implementation if timeline-based
+      filtering proves difficult. Basic scoping (all active row operations) is acceptable for MVP.
+    </note>
+
+    <note priority="LOW">
+      Visual highlighting should use CSS transitions for smooth feedback. Avoid jarring
+      state changes when switching rows.
+    </note>
+  </implementation-notes>
+
+  <references>
+    <reference type="story" path="docs/sprint-artifacts/stories/1-4-implement-rowmanager-class-single-active-row-model.md">
+      Previous story - RowManager implementation and activation timeline
+    </reference>
+    <reference type="architecture" path="docs/architecture.md" section="893">
+      ADR-001: Use RowManager Class for single-active-row enforcement
+    </reference>
+    <reference type="architecture" path="docs/architecture.md" section="401-436">
+      State Synchronization pattern (Canvas ↔ RowManager ↔ IndexedDB)
+    </reference>
+    <reference type="prd" path="docs/PRD.md" section="502-530">
+      Row System Functional Requirements (FR11-FR23)
+    </reference>
+    <reference type="epic" path="docs/epic_1_complete_breakdown.md" section="169-201">
+      Story 1.5 detailed requirements from Epic breakdown
+    </reference>
+  </references>
+</story-context>

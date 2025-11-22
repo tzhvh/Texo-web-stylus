@@ -159,7 +159,9 @@ function MagicCanvasComponent() {
     saveState,
     loadState,
     isSaving,
-    isLoading
+    isLoading,
+    handleRowTap, // Story 1.5: Row tap activation
+    getActiveRow // Story 1.5: Get active row for highlighting
   } = useRowSystem({
     excalidrawAPI,
     rowManager,
@@ -765,6 +767,63 @@ function MagicCanvasComponent() {
     };
   }, [rowManager, excalidrawAPI, switchToRow, debugMode]);
 
+  // Story 1.5: Handle canvas click for row tap activation (AC #5)
+  useEffect(() => {
+    if (!excalidrawAPI || !handleRowTap) return;
+
+    const handleCanvasClick = (event) => {
+      // Only handle direct clicks on canvas (not on UI elements)
+      if (event.target.closest('button') || event.target.closest('[role="button"]')) {
+        return;
+      }
+
+      const canvasContainer = excalidrawAPI.getContainer?.();
+      if (!canvasContainer) return;
+
+      // Get click position relative to canvas
+      const rect = canvasContainer.getBoundingClientRect();
+      const clickX = event.clientX - rect.left;
+      const clickY = event.clientY - rect.top;
+
+      // Convert screen coordinates to canvas coordinates
+      const appState = excalidrawAPI.getAppState();
+      const zoom = appState.zoom?.value || 1;
+      const scrollX = appState.scrollX || 0;
+      const scrollY = appState.scrollY || 0;
+
+      // Calculate canvas Y coordinate
+      const canvasY = (clickY / zoom) - scrollY;
+
+      // Attempt row activation
+      const wasActivated = handleRowTap(canvasY);
+
+      if (wasActivated && debugMode) {
+        console.log('MagicCanvas: Row activated by click', {
+          screenY: clickY,
+          canvasY,
+          zoom,
+          scrollY
+        });
+      }
+
+      // Trigger guide line refresh to show new active row highlight
+      if (wasActivated) {
+        updateViewportGuideLines();
+      }
+    };
+
+    const canvasContainer = excalidrawAPI.getContainer?.();
+    if (canvasContainer) {
+      canvasContainer.addEventListener('click', handleCanvasClick);
+    }
+
+    return () => {
+      if (canvasContainer) {
+        canvasContainer.removeEventListener('click', handleCanvasClick);
+      }
+    };
+  }, [excalidrawAPI, handleRowTap, updateViewportGuideLines, debugMode]);
+
   // Get visible rows based on current viewport
   const getVisibleRows = useCallback(() => {
     if (!rowManager) return [];
@@ -783,20 +842,24 @@ function MagicCanvasComponent() {
     });
   }, [rowManager, viewport]);
 
-  // Render RowHeader components for visible rows
+  // Render RowHeader components for visible rows (Story 1.5: added isActive highlighting)
   const renderRowHeaders = useCallback(() => {
     const visibleRows = getVisibleRows();
+    const activeRow = rowManager.getActiveRow();
 
     return visibleRows.map(row => (
       <MemoizedRowHeader
         key={row.id}
-        row={row}
+        row={{
+          ...row,
+          isActive: activeRow?.id === row.id // Story 1.5: Pass active state
+        }}
         y={row.yStart + (row.yEnd - row.yStart) / 2} // Center of row
         canvasWidth={CANVAS_CONFIG.MAX_WIDTH}
         debugMode={debugMode}
       />
     ));
-  }, [getVisibleRows, debugMode]);
+  }, [getVisibleRows, debugMode, rowManager]);
 
   // Cleanup on unmount
   useEffect(() => {

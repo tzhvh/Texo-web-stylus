@@ -42,7 +42,7 @@ development_status:
   1-2-integrate-excalidraw-canvas-single-active-row-constraints: done
   1-3-render-horizontal-ruled-lines-for-row-guidance: done
   1-4-implement-rowmanager-class-single-active-row-model: done
-  1-5-enforce-active-row-editing-read-only-rows: backlog
+  1-5-enforce-active-row-editing-read-only-rows: done
   1-6-display-row-status-indicators-active-row-highlight: backlog
   1-7-persist-row-state-canvas-state-across-reloads: backlog
   1-8-trigger-ocr-on-row-deactivation: backlog
