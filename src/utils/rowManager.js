@@ -14,14 +14,23 @@
  * @property {string} id - Stable unique identifier (format: "row-{index}")
  * @property {number} yStart - Top Y coordinate of the row
  * @property {number} yEnd - Bottom Y coordinate of the row (yStart + rowHeight)
+ * @property {boolean} isActive - True if this is the currently active row (Story 1.4)
  * @property {Set<string>} elementIds - IDs of Excalidraw elements in this row
  * @property {'pending'|'processing'|'completed'|'error'} ocrStatus - OCR processing status
  * @property {'pending'|'processing'|'validated'|'invalid'|'error'} validationStatus - Validation status
  * @property {string|null} transcribedLatex - LaTeX result from OCR
  * @property {Object|null} validationResult - Result from equivalence checking
  * @property {number} lastModified - Timestamp of last modification
+ * @property {Date|null} activatedAt - When row was last activated (Story 1.4)
  * @property {string|null} tileHash - Hash of OCR tile for caching
  * @property {string|null} errorMessage - Error message if processing failed
+ */
+
+/**
+ * @typedef {Object} ActivationEvent
+ * @property {string} rowId - Row identifier
+ * @property {number} activatedAt - Timestamp when row was activated
+ * @property {number|null} deactivatedAt - Timestamp when row was deactivated (null for active row)
  */
 
 /**
@@ -38,6 +47,8 @@
  * @property {number} startY - Starting Y position
  * @property {Array<Row>} rows - Array of serialized row objects
  * @property {Object} elementToRow - Element ID to row ID mapping
+ * @property {string|null} activeRowId - Currently active row ID (Story 1.4)
+ * @property {Array<ActivationEvent>} activationTimeline - Row activation history (Story 1.4)
  */
 
 import Logger from './logger.js';
@@ -53,19 +64,19 @@ export class RowManager {
   constructor({ rowHeight = 384, startY = 0 } = {}) {
     this.rowHeight = rowHeight;
     this.startY = startY;
-    
+
     // Map<string, Row> - All rows by ID for O(1) lookup
     this.rows = new Map();
-    
+
     // Map<string, string> - Element ID to row ID mapping for O(1) element lookup
     this.elementToRow = new Map();
-    
+
     // Single active row management (Story 1.2: single-active-row model)
     this.activeRowId = null;
-    
+
     // Activation timeline for OCR and analytics (Story 1.10)
     this.activationTimeline = [];
-    
+
     Logger.debug('RowManager', 'Initialized', {
       rowHeight,
       startY,
@@ -89,19 +100,19 @@ export class RowManager {
     // Ensure negative Y coordinates map to row 0
     let rowIndex = Math.floor((y - this.startY) / this.rowHeight);
     rowIndex = Math.max(0, rowIndex);
-    
+
     // Generate deterministic row ID
     const rowId = `row-${rowIndex}`;
-    
+
     // Return existing row or create new one
     if (this.rows.has(rowId)) {
       return this.rows.get(rowId);
     }
-    
+
     // Create new row if it doesn't exist
     const newRow = this._createRow(rowIndex);
     this.rows.set(rowId, newRow);
-    
+
     Logger.debug('RowManager', 'Created new row', {
       rowId,
       rowIndex,
@@ -109,7 +120,7 @@ export class RowManager {
       yStart: newRow.yStart,
       yEnd: newRow.yEnd
     });
-    
+
     return newRow;
   }
 
@@ -175,7 +186,7 @@ export class RowManager {
     // Add element to target row
     targetRow.elementIds.add(element.id);
     this.elementToRow.set(element.id, targetRow.id);
-    
+
     // Update row metadata
     targetRow.lastModified = Date.now();
     targetRow.ocrStatus = 'pending'; // Reset OCR status when elements change
@@ -207,22 +218,36 @@ export class RowManager {
 
   /**
    * Update row metadata with partial updates
-   * 
+   * Story 1.4: Enforces single-active-row constraint when isActive is updated
+   *
    * @param {string} rowId - ID of the row to update
    * @param {Partial<Row>} updates - Partial row object with properties to update
    * @returns {void}
+   * @throws {Error} If rowId is invalid or row does not exist
    */
   updateRow(rowId, updates) {
     const row = this.getRow(rowId);
     if (!row) {
-      Logger.warn('RowManager', 'Attempted to update non-existent row', { rowId });
-      return;
+      const error = `Row ${rowId} not found`;
+      Logger.error('RowManager', error, { rowId });
+      throw new Error(error);
     }
 
     // Validate updates object
     if (!updates || typeof updates !== 'object') {
-      Logger.warn('RowManager', 'Invalid updates provided to updateRow', { rowId, updates });
-      return;
+      const error = 'Invalid updates provided to updateRow';
+      Logger.error('RowManager', error, { rowId, updates });
+      throw new Error(error);
+    }
+
+    // Story 1.4, AC #10: Enforce single-active-row constraint
+    if (updates.isActive === true && !row.isActive) {
+      // Deactivate all other rows when activating this row
+      for (const [id, r] of this.rows.entries()) {
+        if (id !== rowId && r.isActive) {
+          r.isActive = false;
+        }
+      }
     }
 
     // Apply updates
@@ -249,35 +274,60 @@ export class RowManager {
 
   /**
    * Set the active row (single-active-row model)
-   * 
+   * Story 1.4: Enforces single-active-row constraint and logs activation timeline
+   *
    * @param {string} rowId - ID of row to activate
-   * @returns {boolean} True if row was activated successfully
+   * @returns {void}
+   * @throws {Error} If rowId is invalid or row does not exist
    */
   setActiveRow(rowId) {
     if (!rowId || typeof rowId !== 'string') {
-      Logger.warn('RowManager', 'Invalid rowId provided to setActiveRow', { rowId });
-      return false;
+      const error = `Invalid rowId provided to setActiveRow: ${rowId}`;
+      Logger.error('RowManager', error, { rowId });
+      throw new Error(error);
     }
 
-    const row = this.getRow(rowId);
+    let row = this.getRow(rowId);
+    let isNewRow = false;
     if (!row) {
-      Logger.warn('RowManager', 'Attempted to activate non-existent row', { rowId });
-      return false;
+      // Extract rowIndex from rowId (e.g., "row-0" -> 0)
+      const rowIndexMatch = rowId.match(/^row-(\d+)$/);
+      if (!rowIndexMatch) {
+        const error = `Invalid rowId format for creation: ${rowId}`;
+        Logger.error('RowManager', error, { rowId });
+        throw new Error(error);
+      }
+      const rowIndex = parseInt(rowIndexMatch[1], 10);
+      row = this._createRow(rowIndex);
+      this.rows.set(rowId, row); // Add the newly created row to the map
+      isNewRow = true;
+      Logger.debug('RowManager', 'Created new row during setActiveRow', { rowId, rowIndex });
     }
 
     const previousActiveRowId = this.activeRowId;
-    this.activeRowId = rowId;
 
-    // Record activation timeline (Story 1.10)
-    const now = Date.now();
-    // Close previous activation entry if it exists
-    if (previousActiveRowId) {
+    // Deactivate previous active row
+    if (previousActiveRowId && previousActiveRowId !== rowId) {
+      const previousRow = this.getRow(previousActiveRowId);
+      if (previousRow) {
+        previousRow.isActive = false;
+      }
+
+      // Close previous activation entry in timeline
+      const now = Date.now();
       const prevEntry = this.activationTimeline.find(e => e.rowId === previousActiveRowId && !e.deactivatedAt);
       if (prevEntry) {
         prevEntry.deactivatedAt = now;
       }
     }
-    // Add new activation entry
+
+    // Activate new row
+    this.activeRowId = rowId;
+    row.isActive = true;
+    row.activatedAt = new Date();
+
+    // Record activation timeline (Story 1.4, AC #12)
+    const now = Date.now();
     this.activationTimeline.push({
       rowId,
       activatedAt: now,
@@ -287,10 +337,10 @@ export class RowManager {
     Logger.debug('RowManager', 'Active row changed', {
       previousActiveRowId,
       newActiveRowId: rowId,
-      rowBounds: { yStart: row.yStart, yEnd: row.yEnd }
+      rowBounds: { yStart: row.yStart, yEnd: row.yEnd },
+      timelineLength: this.activationTimeline.length,
+      isNewRow
     });
-
-    return true;
   }
 
   /**
@@ -308,12 +358,23 @@ export class RowManager {
 
   /**
    * Check if a specific row is currently active
-   * 
+   *
    * @param {string} rowId - ID of row to check
    * @returns {boolean} True if row is currently active
    */
   isRowActive(rowId) {
     return this.activeRowId === rowId;
+  }
+
+  /**
+   * Get the activation timeline history
+   * Story 1.4, AC #8: Returns chronological array of row activation events
+   *
+   * @returns {Array<ActivationEvent>} Activation timeline array (immutable copy)
+   */
+  getActivationTimeline() {
+    // Return a copy to prevent external modification of internal timeline
+    return [...this.activationTimeline];
   }
 
   /**
@@ -378,26 +439,31 @@ export class RowManager {
 
   /**
    * Serialize RowManager state for persistence
-   * 
+   * Story 1.4: Includes activeRowId and activationTimeline for complete state preservation
+   *
    * @returns {SerializedState} Serialized state object
    */
   serialize() {
     const serializedRows = this.getAllRows().map(row => ({
       ...row,
-      elementIds: Array.from(row.elementIds) // Convert Set to Array for JSON serialization
+      elementIds: Array.from(row.elementIds), // Convert Set to Array for JSON serialization
+      activatedAt: row.activatedAt ? row.activatedAt.toISOString() : null // Convert Date to string
     }));
 
     return {
       rowHeight: this.rowHeight,
       startY: this.startY,
       rows: serializedRows,
-      elementToRow: Object.fromEntries(this.elementToRow) // Convert Map to Object
+      elementToRow: Object.fromEntries(this.elementToRow), // Convert Map to Object
+      activeRowId: this.activeRowId, // Story 1.4, AC #11
+      activationTimeline: this.activationTimeline // Story 1.4, AC #12
     };
   }
 
   /**
    * Deserialize and restore RowManager state from persistence
-   * 
+   * Story 1.4: Restores activeRowId and activationTimeline for complete state recovery
+   *
    * @param {SerializedState} state - Serialized state object
    * @returns {void}
    */
@@ -421,7 +487,9 @@ export class RowManager {
         state.rows.forEach(rowData => {
           const row = {
             ...rowData,
-            elementIds: new Set(rowData.elementIds || []) // Convert Array back to Set
+            elementIds: new Set(rowData.elementIds || []), // Convert Array back to Set
+            activatedAt: rowData.activatedAt ? new Date(rowData.activatedAt) : null, // Convert string back to Date
+            isActive: rowData.isActive || false // Default to false if not present
           };
           this.rows.set(row.id, row);
         });
@@ -432,15 +500,23 @@ export class RowManager {
         this.elementToRow = new Map(Object.entries(state.elementToRow));
       }
 
+      // Restore active row ID (Story 1.4, AC #11)
+      this.activeRowId = state.activeRowId || null;
+
+      // Restore activation timeline (Story 1.4, AC #12)
+      this.activationTimeline = Array.isArray(state.activationTimeline) ? state.activationTimeline : [];
+
       Logger.info('RowManager', 'State deserialized successfully', {
         rowCount: this.rows.size,
         elementMappings: this.elementToRow.size,
         rowHeight: this.rowHeight,
-        startY: this.startY
+        startY: this.startY,
+        activeRowId: this.activeRowId,
+        timelineLength: this.activationTimeline.length
       });
     } catch (error) {
-      Logger.error('RowManager', 'Failed to deserialize state', { 
-        state, 
+      Logger.error('RowManager', 'Failed to deserialize state', {
+        state,
         error: error.message,
         stack: error.stack
       });
@@ -451,7 +527,8 @@ export class RowManager {
 
   /**
    * Create a new row object with default values
-   * 
+   * Story 1.4: Includes isActive and activatedAt fields
+   *
    * @private
    * @param {number} rowIndex - Index of the row
    * @returns {Row} New row object
@@ -464,12 +541,14 @@ export class RowManager {
       id: `row-${rowIndex}`,
       yStart,
       yEnd,
+      isActive: false, // Story 1.4, AC #9
       elementIds: new Set(),
       ocrStatus: 'pending',
       validationStatus: 'pending',
       transcribedLatex: null,
       validationResult: null,
       lastModified: Date.now(),
+      activatedAt: null, // Story 1.4, AC #9
       tileHash: null,
       errorMessage: null
     };
@@ -505,7 +584,7 @@ export class RowManager {
       if (previousRow) {
         previousRow.elementIds.delete(elementId);
         previousRow.lastModified = Date.now();
-        
+
         Logger.debug('RowManager', 'Removed element from previous row', {
           elementId,
           previousRowId,

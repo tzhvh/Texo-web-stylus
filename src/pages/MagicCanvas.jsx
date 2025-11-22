@@ -22,7 +22,7 @@ import ErrorBoundary from "../components/ErrorBoundary.jsx";
 const CANVAS_CONFIG = {
   MIN_Y: -50000,
   MAX_Y: 50000,
-  MAX_WIDTH: 2000,
+  MAX_WIDTH: 10000, // Increased width for better coverage on large screens/zooms (Story 1.3)
   BACKGROUND_COLOR: "#f5f5f5", // Light gray per design
 };
 
@@ -47,6 +47,31 @@ const createGuideLine = (y, id) => {
     },
   ]);
   return guideLine[0];
+};
+
+// Create active row highlight (Story 1.3, Task 3)
+const createActiveRowHighlight = (row) => {
+  if (!row) return null;
+
+  const highlight = convertToExcalidrawElements([
+    {
+      type: "rectangle",
+      x: 0,
+      y: row.yStart,
+      width: CANVAS_CONFIG.MAX_WIDTH,
+      height: row.yEnd - row.yStart,
+      strokeColor: "#3b82f6", // Blue highlight
+      backgroundColor: "transparent", // Transparent background
+      strokeWidth: 2, // Distinct border
+      strokeStyle: "solid",
+      roughness: 0,
+      opacity: 100,
+      locked: true, // Prevent interaction
+      isDeleted: false,
+      id: `highlight-${row.id}`,
+    },
+  ]);
+  return highlight[0];
 };
 
 // Generate guide lines with correct 384px spacing for OCR alignment (Story 1.3)
@@ -204,26 +229,34 @@ function MagicCanvasComponent() {
         guideLineSpacing,
       );
 
-      // Get existing user elements (exclude guide lines)
+      // Generate active row highlight (Story 1.3, Task 3)
+      const activeRow = rowManager.getActiveRow();
+      const activeRowHighlight = createActiveRowHighlight(activeRow);
+
+      const backgroundElements = activeRowHighlight
+        ? [activeRowHighlight, ...viewportGuideLines]
+        : viewportGuideLines;
+
+      // Get existing user elements (exclude guide lines and highlights)
       const allElements = excalidrawAPI.getSceneElements();
       const userElements = allElements.filter(
-        (el) => !el.id?.startsWith("guide-") && !el.isDeleted,
+        (el) => !el.id?.startsWith("guide-") && !el.id?.startsWith("highlight-") && !el.isDeleted,
       );
 
       // Update scene with user elements + viewport guide lines
       excalidrawAPI.updateScene({
-        elements: [...userElements, ...viewportGuideLines],
+        elements: [...userElements, ...backgroundElements],
       });
 
       // Cache for performance comparison
-      viewportGuideLinesRef.current = viewportGuideLines;
+      viewportGuideLinesRef.current = backgroundElements;
 
       // Performance measurement (Story 1.3, Task 4.3)
       const duration = performance.now() - startTime;
 
       if (debugMode) {
         console.log(
-          `Guide lines: Generated ${viewportGuideLines.length} for viewport Y=${Math.round(viewportY)}, height=${viewportHeight} in ${duration.toFixed(2)}ms`,
+          `Guide lines: Generated ${viewportGuideLines.length} lines + highlight for viewport Y=${Math.round(viewportY)}, height=${viewportHeight} in ${duration.toFixed(2)}ms`,
         );
 
         // Performance warning if >16ms (60fps target)
@@ -236,7 +269,7 @@ function MagicCanvasComponent() {
     } catch (error) {
       console.error("Failed to update viewport guide lines:", error);
     }
-  }, [excalidrawAPI, guideLineSpacing, debugMode]);
+  }, [excalidrawAPI, guideLineSpacing, debugMode, rowManager]);
 
   // Save canvas state to IndexedDB
   const saveCanvasState = useCallback(async () => {
