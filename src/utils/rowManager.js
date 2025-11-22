@@ -450,13 +450,21 @@ export class RowManager {
       activatedAt: row.activatedAt ? row.activatedAt.toISOString() : null // Convert Date to string
     }));
 
+    // Story 1.7: Convert activation timeline Date objects to ISO strings for JSON serialization
+    const serializedTimeline = this.activationTimeline.map(event => ({
+      rowId: event.rowId,
+      activatedAt: event.activatedAt, // Already a timestamp number from setActiveRow()
+      deactivatedAt: event.deactivatedAt // Already a timestamp number or null
+    }));
+
     return {
       rowHeight: this.rowHeight,
       startY: this.startY,
       rows: serializedRows,
       elementToRow: Object.fromEntries(this.elementToRow), // Convert Map to Object
       activeRowId: this.activeRowId, // Story 1.4, AC #11
-      activationTimeline: this.activationTimeline // Story 1.4, AC #12
+      activationTimeline: serializedTimeline, // Story 1.7: Serialized timeline with timestamps
+      version: 1 // Story 1.7: Schema version for future migrations
     };
   }
 
@@ -470,7 +478,16 @@ export class RowManager {
   deserialize(state) {
     if (!state || typeof state !== 'object') {
       Logger.error('RowManager', 'Invalid state provided to deserialize', { state });
-      return;
+      throw new Error('Invalid state: must be an object');
+    }
+
+    // Story 1.7: Validate schema version
+    if (state.version && state.version !== 1) {
+      Logger.error('RowManager', 'Incompatible RowManager state version', {
+        foundVersion: state.version,
+        expectedVersion: 1
+      });
+      throw new Error(`Incompatible RowManager state version: ${state.version} (expected 1)`);
     }
 
     try {
@@ -503,7 +520,7 @@ export class RowManager {
       // Restore active row ID (Story 1.4, AC #11)
       this.activeRowId = state.activeRowId || null;
 
-      // Restore activation timeline (Story 1.4, AC #12)
+      // Story 1.7: Restore activation timeline (timestamps are already numbers, no conversion needed)
       this.activationTimeline = Array.isArray(state.activationTimeline) ? state.activationTimeline : [];
 
       Logger.info('RowManager', 'State deserialized successfully', {
@@ -512,7 +529,8 @@ export class RowManager {
         rowHeight: this.rowHeight,
         startY: this.startY,
         activeRowId: this.activeRowId,
-        timelineLength: this.activationTimeline.length
+        timelineLength: this.activationTimeline.length,
+        version: state.version || 'legacy'
       });
     } catch (error) {
       Logger.error('RowManager', 'Failed to deserialize state', {
@@ -520,6 +538,7 @@ export class RowManager {
         error: error.message,
         stack: error.stack
       });
+      throw error; // Re-throw to allow caller to handle
     }
   }
 

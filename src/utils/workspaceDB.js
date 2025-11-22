@@ -9,7 +9,7 @@
  */
 
 const DB_NAME = 'texo-workspace-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // Incremented for Story 1.7: Magic Canvas state persistence
 const DEFAULT_WORKSPACE = 'default';
 
 // Store names
@@ -18,7 +18,8 @@ const STORES = {
   CAS_CACHE: 'cas-cache',
   SESSION_STATE: 'session-state',
   DIAGNOSTIC_LOGS: 'diagnostic-logs',
-  TRANSFORMERS_CACHE: 'transformers-cache'
+  TRANSFORMERS_CACHE: 'transformers-cache',
+  MAGIC_CANVAS_STATE: 'magic-canvas-state' // Story 1.7: Canvas and row state persistence
 };
 
 let db = null;
@@ -101,8 +102,13 @@ export async function initWorkspaceDB() {
         transformersStore.createIndex('timestamp', 'timestamp', { unique: false });
       }
 
-      // Future versions can add migration logic here
-      // if (oldVersion < 2) { ... }
+      // Version 2: Magic Canvas state persistence (Story 1.7)
+      if (oldVersion < 2) {
+        // Magic Canvas state store (single record per workspace, key: 'current')
+        const magicCanvasStore = db.createObjectStore(STORES.MAGIC_CANVAS_STATE);
+        // No indexes needed - keyed by workspace-specific string
+        console.log('[WorkspaceDB] Created magic-canvas-state store for Story 1.7');
+      }
     };
   });
 
@@ -819,6 +825,120 @@ export async function getStorageEstimate() {
     return await navigator.storage.estimate();
   }
   return null;
+}
+
+/**
+ * Save Magic Canvas state to IndexedDB (Story 1.7)
+ * Atomically saves both canvas state (Excalidraw elements + appState) and RowManager state
+ *
+ * @param {Object} canvasState - Excalidraw scene state {elements, appState}
+ * @param {Object} rowManagerState - Serialized RowManager state
+ * @returns {Promise<void>}
+ */
+export async function saveMagicCanvasState(canvasState, rowManagerState) {
+  if (!db) await initWorkspaceDB();
+
+  try {
+    const state = {
+      canvasState,
+      rowManagerState,
+      timestamp: new Date().toISOString(),
+      version: 1
+    };
+
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORES.MAGIC_CANVAS_STATE], 'readwrite');
+      const store = tx.objectStore(STORES.MAGIC_CANVAS_STATE);
+
+      // Use workspace-specific key for multi-workspace support
+      const key = `${currentWorkspace}-current`;
+      const request = store.put(state, key);
+
+      request.onsuccess = () => {
+        console.log('[WorkspaceDB] Magic Canvas state saved', {
+          workspace: currentWorkspace,
+          timestamp: state.timestamp,
+          elementCount: canvasState?.elements?.length || 0,
+          rowCount: rowManagerState?.rows?.length || 0
+        });
+        resolve();
+      };
+
+      request.onerror = () => {
+        console.error('[WorkspaceDB] Failed to save Magic Canvas state', request.error);
+        reject(request.error);
+      };
+    });
+  } catch (error) {
+    console.error('[WorkspaceDB] Exception saving Magic Canvas state', error);
+    throw error;
+  }
+}
+
+/**
+ * Load Magic Canvas state from IndexedDB (Story 1.7)
+ * Returns both canvas state and RowManager state, or null if not found
+ *
+ * @returns {Promise<{canvasState: Object, rowManagerState: Object} | null>}
+ */
+export async function loadMagicCanvasState() {
+  if (!db) await initWorkspaceDB();
+
+  try {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction([STORES.MAGIC_CANVAS_STATE], 'readonly');
+      const store = tx.objectStore(STORES.MAGIC_CANVAS_STATE);
+
+      // Use workspace-specific key
+      const key = `${currentWorkspace}-current`;
+      const request = store.get(key);
+
+      request.onsuccess = () => {
+        const state = request.result;
+
+        if (!state) {
+          console.log('[WorkspaceDB] No saved Magic Canvas state found (first load)', {
+            workspace: currentWorkspace
+          });
+          resolve(null);
+          return;
+        }
+
+        // Validate schema version
+        if (state.version !== 1) {
+          console.warn('[WorkspaceDB] Incompatible Magic Canvas state version', {
+            workspace: currentWorkspace,
+            foundVersion: state.version,
+            expectedVersion: 1
+          });
+          resolve(null);
+          return;
+        }
+
+        console.log('[WorkspaceDB] Magic Canvas state loaded', {
+          workspace: currentWorkspace,
+          timestamp: state.timestamp,
+          elementCount: state.canvasState?.elements?.length || 0,
+          rowCount: state.rowManagerState?.rows?.length || 0
+        });
+
+        resolve({
+          canvasState: state.canvasState,
+          rowManagerState: state.rowManagerState
+        });
+      };
+
+      request.onerror = () => {
+        console.error('[WorkspaceDB] Failed to load Magic Canvas state', request.error);
+        // Return null on error → fallback to empty canvas
+        resolve(null);
+      };
+    });
+  } catch (error) {
+    console.error('[WorkspaceDB] Exception loading Magic Canvas state', error);
+    // Return null on error → fallback to empty canvas
+    return null;
+  }
 }
 
 // Initialize on module load (but skip in test environment)
