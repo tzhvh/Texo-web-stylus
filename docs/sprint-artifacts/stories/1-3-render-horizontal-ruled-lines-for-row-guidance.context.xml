@@ -1,0 +1,119 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1.3</storyId>
+    <title>Render Horizontal Ruled Lines for Row Guidance</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-22</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/stories/1-3-render-horizontal-ruled-lines-for-row-guidance.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>to see horizontal ruled lines on the canvas</iWant>
+    <soThat>I know where each row boundary is located for organized writing</soThat>
+    <tasks>
+      - Task 1: Render horizontal ruled lines on canvas background (AC: #1, #2, #3, #4)
+      - Task 2: Implement zoom-aware line rendering (AC: #5, #6, #8)
+      - Task 3: Implement active row visual highlighting (AC: #7)
+      - Task 4: Implement configurable line spacing (AC: #9)
+      - Task 5: Performance optimization and viewport culling
+      - Task 6: Testing and validation
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">Given I am on the Magic Canvas page, When the canvas renders, Then I see horizontal ruled lines spaced at regular intervals (default 384px apart)</criterion>
+    <criterion id="2">And lines extend across the full width of the visible canvas</criterion>
+    <criterion id="3">And lines are subtle (light gray, ~1px stroke)</criterion>
+    <criterion id="4">And lines do not interfere with drawing (rendered as background layer)</criterion>
+    <criterion id="5">And lines remain visible during zoom operations (maintain constant spacing in canvas coordinates)</criterion>
+    <criterion id="6">And lines render performantly (60fps during zoom)</criterion>
+    <criterion id="7">And active row has distinct visual highlighting (border or background tint)</criterion>
+    <criterion id="8">And line spacing adjusts correctly when zoom level changes</criterion>
+    <criterion id="9">And line spacing is configurable (default 384px, adjustable in settings)</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <artifact path="docs/epic_1_complete_breakdown.md" title="Epic 1: Canvas Foundation &amp; Row Management" section="Story 1.3: Render Horizontal Ruled Lines for Row Guidance" snippet="Story 1.3 implements visual row guidance using horizontal ruled lines at 384px intervals. Lines should be subtle (light gray, ~1px stroke), render as background layer, remain visible during zoom, and support active row highlighting." />
+      <artifact path="docs/sprint-artifacts/tech-spec-epic-1.md" title="Epic 1 Technical Specification" section="Non-Functional Requirements - Performance" snippet="Canvas rendering: 60fps during drawing operations (16ms frame budget). Row switching animations: &lt;200ms transition time. Performance target: 60fps maintained during zoom operations using viewport culling." />
+      <artifact path="docs/architecture.md" title="Magic Canvas - Decision Architecture" section="ADR-001: Single-Active-Row Model" snippet="Only one row editable at any time. Active row visually highlighted to indicate current editing context. Row height: 384px fixed spacing (matches OCR tile height). Viewport culling optimizes rendering by showing only visible lines + buffer." />
+      <artifact path="docs/PRD.md" title="Texo-web-stylus - Product Requirements Document" section="Functional Requirements - Canvas &amp; Drawing" snippet="FR3: Canvas displays horizontal ruled lines as visual guides for row boundaries. FR11: Only the active row is editable; all other rows are read-only. FR15: Active row is visually distinct with highlighted border or background." />
+      <artifact path="docs/sprint-artifacts/stories/1-2-integrate-excalidraw-canvas-single-active-row-constraints.md" title="Story 1.2 Completion Notes" section="Implementation Summary" snippet="Story 1.2 already implemented ruled lines at 384px spacing in MagicCanvas.jsx (lines 29-92, 187-239). Existing implementation includes viewport culling, debouncing, and performance optimizations. Active row highlighting via CSS border implemented." />
+    </docs>
+    <code>
+      <artifact path="src/pages/MagicCanvas.jsx" kind="page-component" symbol="createGuideLine, generateGuideLines, generateViewportGuideLines" lines="29-92" reason="EXISTING IMPLEMENTATION: Ruled line rendering logic already present with 384px spacing, light gray styling (#d3d3d3), 1px stroke, locked=true for non-interference, and viewport culling optimization. Story 1.3 should verify and enhance this implementation." />
+      <artifact path="src/pages/MagicCanvas.jsx" kind="page-component" symbol="CANVAS_CONFIG" lines="21-27" reason="Canvas configuration constants including MAX_WIDTH (2000px for line extension), BACKGROUND_COLOR (#f5f5f5 light gray), and Y-axis bounds. Lines extend to MAX_WIDTH to meet AC #2." />
+      <artifact path="src/pages/MagicCanvas.jsx" kind="page-component" symbol="debounce" lines="82-92" reason="Debounce utility for performance optimization during zoom/pan operations. Used to prevent excessive guide line regeneration and maintain 60fps target (AC #6)." />
+      <artifact path="src/hooks/useRowSystem.js" kind="hook" symbol="useRowSystem" reason="React hook managing row activation state and read-only enforcement. Provides active row state needed for active row highlighting (AC #7)." />
+      <artifact path="src/utils/rowManager.js" kind="utility" symbol="RowManager" reason="RowManager class tracking active row with getActiveRow() method. Returns row metadata including isActive boolean for highlighting logic." />
+      <artifact path="src/components/RowHeader.jsx" kind="component" symbol="RowHeader" reason="Row status indicator component with visual highlighting. Already implements active row visual distinction, can be referenced for highlighting patterns." />
+      <artifact path="src/contexts/DebugContext.jsx" kind="context" symbol="useDebug" reason="Debug context providing debugMode flag. Can be used to toggle debug visualization of line rendering and performance metrics." />
+      <artifact path="src/utils/workspaceDB.js" kind="utility" symbol="saveSessionState, loadSessionState" reason="IndexedDB persistence utilities. Row line spacing configuration (384px default) may need persistence when configurable settings added (AC #9, Epic 6)." />
+    </code>
+    <dependencies>
+      <node>
+        <dependency name="@excalidraw/excalidraw" version="^0.18.0" reason="Canvas engine providing convertToExcalidrawElements() for creating locked guide lines" />
+        <dependency name="react" version="^18.3.1" reason="Component framework for MagicCanvas page and hooks" />
+        <dependency name="tailwindcss" version="^3.4.17" devDependency="true" reason="CSS framework for styling (light gray colors, transitions, active row highlighting)" />
+        <dependency name="vitest" version="^2.1.8" devDependency="true" reason="Testing framework for unit and integration tests" />
+      </node>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    - Row height MUST be 384px (matches OCR tile height from architecture.md:893 ADR-001)
+    - Lines MUST be light gray (#d3d3d3 or #e0e0e0), ~1px stroke width for subtlety (AC #3)
+    - Lines MUST be locked (locked:true) to prevent user interaction (AC #4)
+    - Lines MUST render as background layer below Excalidraw drawing elements (AC #4)
+    - Performance target: 60fps (16ms frame budget) during zoom operations (AC #6, NFR-P5)
+    - Active row highlight MUST use distinct visual styling (border or background tint, AC #7)
+    - Line spacing MUST maintain constant 384px in canvas coordinates during zoom (AC #5, #8)
+    - Viewport culling MUST be implemented: Only render visible lines + buffer for off-screen optimization (architecture.md:113-138)
+    - Line spacing MUST be configurable with 384px default (AC #9, prepare for Epic 6 Story 6.2)
+    - Use requestAnimationFrame for smooth rendering during zoom/pan (architecture.md:273-279)
+    - Follow existing patterns from Story 1.2 implementation (src/pages/MagicCanvas.jsx lines 29-92)
+    - Reuse existing RowManager for active row state (src/utils/rowManager.js)
+    - Active row highlighting should use CSS transitions (200ms duration) for smooth changes
+  </constraints>
+
+  <interfaces>
+    <interface name="RowManager.getActiveRow()" kind="class-method" signature="getActiveRow(): Row | null" path="src/utils/rowManager.js" reason="Returns currently active row with isActive=true, yStart, yEnd for highlighting determination" />
+    <interface name="createGuideLine(y, id)" kind="function" signature="createGuideLine(y: number, id?: string): ExcalidrawElement" path="src/pages/MagicCanvas.jsx:30-50" reason="EXISTING: Creates single locked guide line at Y position with light gray styling. Reuse or enhance for AC compliance." />
+    <interface name="generateGuideLines(spacing)" kind="function" signature="generateGuideLines(spacing?: number): ExcalidrawElement[]" path="src/pages/MagicCanvas.jsx:52-59" reason="EXISTING: Generates full set of guide lines with specified spacing (default 384px). May need enhancement for configurable spacing (AC #9)." />
+    <interface name="generateViewportGuideLines(viewportY, viewportHeight, spacing, buffer)" kind="function" signature="generateViewportGuideLines(viewportY: number, viewportHeight: number, spacing?: number, buffer?: number): ExcalidrawElement[]" path="src/pages/MagicCanvas.jsx:64-79" reason="EXISTING: Viewport culling optimization. Generates only visible guide lines + buffer. Performance optimization for AC #6." />
+    <interface name="debounce(func, wait)" kind="utility" signature="debounce(func: Function, wait: number): Function" path="src/pages/MagicCanvas.jsx:82-92" reason="EXISTING: Debounce utility for guide line regeneration during zoom/pan. Maintains 60fps performance target." />
+    <interface name="useRowSystem(excalidrawAPI)" kind="hook" signature="useRowSystem(excalidrawAPI: ExcalidrawAPI): {rowManager, activeRow, ...}" path="src/hooks/useRowSystem.js" reason="React hook providing row activation state. Returns activeRow for highlighting logic in AC #7." />
+  </interfaces>
+
+  <tests>
+    <standards>
+      Testing framework: Vitest (v2.1.8) with @testing-library/react for component tests.
+      Test locations: src/utils/__tests__/ for utilities, component tests co-located with components.
+      Existing test files: guideLines.test.js (line rendering), rowManager.test.js (row state), useRowSystem.integration.test.js (row switching).
+      Performance tests use performance.mark() and performance.measure() for profiling.
+      Target: 60fps (16ms frame budget) during zoom operations, verified via FPS measurement during continuous gestures.
+    </standards>
+    <locations>
+      - src/utils/__tests__/guideLines.test.js (existing - unit tests for line rendering)
+      - src/utils/__tests__/useRowSystem.integration.test.js (existing - integration tests for row switching)
+      - src/utils/__tests__/useRowSystem.performance.test.js (existing - performance benchmarks)
+      - Tests co-located with MagicCanvas.jsx component (if component tests added)
+    </locations>
+    <ideas>
+      <test criterion="1" type="unit">Test line position calculation: verify lines generated at exact 384px intervals from MIN_Y to MAX_Y</test>
+      <test criterion="2" type="unit">Test line width: verify lines extend to CANVAS_CONFIG.MAX_WIDTH (2000px)</test>
+      <test criterion="3" type="unit">Test line styling: verify strokeColor=#d3d3d3, strokeWidth=1, opacity=30</test>
+      <test criterion="4" type="unit">Test non-interference: verify lines have locked=true, are Excalidraw elements in background layer</test>
+      <test criterion="5" type="integration">Test zoom operations: render canvas at zoom 0.5x, 1x, 2x, 4x; verify 384px spacing maintained in canvas coords</test>
+      <test criterion="6" type="performance">Benchmark zoom performance: measure FPS during continuous zoom gesture (pinch or Ctrl+scroll), assert ≥60fps</test>
+      <test criterion="7" type="integration">Test active row highlighting: set active row to row 3, verify highlight styling distinct from other rows</test>
+      <test criterion="8" type="integration">Test line spacing on zoom change: zoom in/out, verify line positions recalculate correctly maintaining 384px</test>
+      <test criterion="9" type="unit">Test configurable spacing: call generateGuideLines(500), verify 500px spacing; prepare for settings integration</test>
+      <test criterion="6" type="performance">Viewport culling efficiency: render 20+ rows, verify only visible lines + buffer rendered (DOM element count check)</test>
+      <test criterion="all" type="visual">Manual visual test: verify line subtlety, active row highlight visibility, no drawing interference at multiple zoom levels</test>
+    </ideas>
+  </tests>
+</story-context>
