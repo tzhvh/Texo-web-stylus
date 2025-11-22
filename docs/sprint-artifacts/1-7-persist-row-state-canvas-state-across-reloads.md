@@ -1,6 +1,6 @@
 # Story 1.7: Persist Row State and Canvas State Across Reloads
 
-Status: in-progress
+Status: review
 
 ## Story
 
