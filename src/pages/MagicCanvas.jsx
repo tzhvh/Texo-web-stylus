@@ -167,7 +167,8 @@ function MagicCanvasComponent() {
     isSaving,
     isLoading,
     handleRowTap, // Story 1.5: Row tap activation
-    getActiveRow // Story 1.5: Get active row for highlighting
+    getActiveRow, // Story 1.5: Get active row for highlighting
+    activeRowId // Story 1.4: Reactive active row ID for UI updates
   } = useRowSystem({
     excalidrawAPI,
     rowManager,
@@ -282,7 +283,7 @@ function MagicCanvasComponent() {
     } catch (error) {
       console.error("Failed to update viewport guide lines:", error);
     }
-  }, [excalidrawAPI, guideLineSpacing, debugMode, rowManager]);
+  }, [excalidrawAPI, guideLineSpacing, debugMode, rowManager, activeRowId]); // Include activeRowId to trigger updates on row change
 
   // Story 1.7: Save complete Magic Canvas state (canvas + row state) atomically to IndexedDB
   const saveCanvasState = useCallback(async () => {
@@ -450,16 +451,17 @@ function MagicCanvasComponent() {
   );
 
   // Update guide lines when viewport changes significantly (Story 1.3, Task 5.1, 5.2, 5.3)
+  // Also update when active row changes (Story 1.4)
   useEffect(() => {
     if (!excalidrawAPI) return;
 
-    // Update guide lines when scroll position or zoom changes
+    // Update guide lines when scroll position, zoom, or active row changes
     // Zoom-invariant spacing: guide lines maintain 384px spacing in canvas coordinates
     debouncedUpdateGuideLines();
 
     if (debugMode) {
       console.log(
-        `Viewport changed: zoom=${Math.round(canvasState.zoomLevel * 100)}%, scrollY=${Math.round(canvasState.scrollY)}`,
+        `Viewport/Row update: zoom=${Math.round(canvasState.zoomLevel * 100)}%, scrollY=${Math.round(canvasState.scrollY)}, activeRow=${activeRowId}`,
       );
     }
   }, [
@@ -468,6 +470,7 @@ function MagicCanvasComponent() {
     excalidrawAPI,
     debouncedUpdateGuideLines,
     debugMode,
+    activeRowId // Trigger update when active row changes
   ]);
 
   // Handle canvas state changes (track zoom, pan, elements)

@@ -82,6 +82,48 @@ export class RowManager {
       startY,
       timestamp: Date.now()
     });
+
+    // Callback for OCR trigger on row deactivation
+    this.ocrTriggerCallback = null;
+
+    // Event listeners for state changes
+    this.listeners = new Set();
+  }
+
+  /**
+   * Subscribe to RowManager state changes
+   * @param {Function} callback - Function to call on state change
+   * @returns {Function} Unsubscribe function
+   */
+  subscribe(callback) {
+    this.listeners.add(callback);
+    return () => {
+      this.listeners.delete(callback);
+    };
+  }
+
+  /**
+   * Notify all listeners of a state change
+   * @private
+   * @param {string} eventType - Type of event (e.g., 'active-row-change', 'row-update')
+   * @param {Object} data - Event data
+   */
+  _notifyListeners(eventType, data) {
+    this.listeners.forEach(callback => {
+      try {
+        callback(eventType, data);
+      } catch (error) {
+        Logger.error('RowManager', 'Error in listener callback', { error: error.message });
+      }
+    });
+  }
+
+  /**
+   * Set OCR trigger callback (called when row is deactivated)
+   * @param {Function} callback - Function to call: (rowId, rowData) => void
+   */
+  setOCRTriggerCallback(callback) {
+    this.ocrTriggerCallback = callback;
   }
 
   /**
@@ -261,6 +303,9 @@ export class RowManager {
       previousState,
       newState: row
     });
+
+    // Notify listeners of row update
+    this._notifyListeners('row-update', { rowId, updates, row });
   }
 
   /**
@@ -319,6 +364,11 @@ export class RowManager {
       if (prevEntry) {
         prevEntry.deactivatedAt = now;
       }
+
+      // Trigger OCR for deactivated row
+      if (this.ocrTriggerCallback) {
+        this.ocrTriggerCallback(previousRow.id, previousRow);
+      }
     }
 
     // Activate new row
@@ -340,6 +390,13 @@ export class RowManager {
       rowBounds: { yStart: row.yStart, yEnd: row.yEnd },
       timelineLength: this.activationTimeline.length,
       isNewRow
+    });
+
+    // Notify listeners of active row change
+    this._notifyListeners('active-row-change', {
+      previousActiveRowId,
+      newActiveRowId: rowId,
+      row
     });
   }
 

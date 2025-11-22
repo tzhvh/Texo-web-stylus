@@ -1,0 +1,298 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1.8</storyId>
+    <title>Trigger OCR on Row Deactivation</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-22</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/stories/1-8-trigger-ocr-on-row-deactivation.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>OCR to automatically process a row when I finish working on it and switch to another</iWant>
+    <soThat>transcription happens seamlessly in the background</soThat>
+    <tasks>
+      <task id="1" acs="1,2,9">
+        <description>Add OCR trigger hook on row deactivation</description>
+        <subtasks>
+          <subtask>Hook into rowManager.setActiveRow() to detect row switches</subtask>
+          <subtask>Implement debounced OCR trigger function (1.5s delay)</subtask>
+          <subtask>Check if row has content before triggering OCR</subtask>
+          <subtask>Implement row content hash calculation to detect changes</subtask>
+          <subtask>Set deactivated row's ocrStatus = 'pending' if content exists and changed</subtask>
+          <subtask>Prevent OCR trigger if row content hash unchanged since last OCR</subtask>
+          <subtask>Unit test debounce logic and hash change detection</subtask>
+        </subtasks>
+      </task>
+      <task id="2" acs="4,5">
+        <description>Implement activation timeline logging</description>
+        <subtasks>
+          <subtask>Log new activation event when row becomes active</subtask>
+          <subtask>Update previous activation event with deactivatedAt timestamp</subtask>
+          <subtask>Store activation events in RowManager.activationTimeline array</subtask>
+          <subtask>Ensure timeline events include: {rowId, activatedAt, deactivatedAt}</subtask>
+          <subtask>Test timeline logging captures all row switches correctly</subtask>
+          <subtask>Verify timeline persists via Story 1.7's serialization</subtask>
+        </subtasks>
+      </task>
+      <task id="3" acs="1,2,8">
+        <description>Create OCR integration stub for Epic 2</description>
+        <subtasks>
+          <subtask>Create placeholder OCR trigger function: triggerOCRForRow(rowId)</subtask>
+          <subtask>Add TODO comments: "Epic 2: Implement actual OCR pipeline here"</subtask>
+          <subtask>Log OCR trigger events to existing logger.js for debugging</subtask>
+          <subtask>Ensure OCR trigger is non-blocking (async, doesn't block row switching)</subtask>
+          <subtask>Test that row switching remains smooth with stub OCR trigger</subtask>
+        </subtasks>
+      </task>
+      <task id="4" acs="6,7">
+        <description>Ensure read-only enforcement on deactivated rows</description>
+        <subtasks>
+          <subtask>Verify existing read-only constraints from Story 1.5 still apply</subtask>
+          <subtask>Test that deactivated row becomes visually dimmed</subtask>
+          <subtask>Verify new active row accepts drawing input immediately</subtask>
+          <subtask>Ensure no regression in active row highlighting from Story 1.6</subtask>
+          <subtask>Manual test: Switch rows, verify only new active row is editable</subtask>
+        </subtasks>
+      </task>
+      <task id="5" acs="8,9">
+        <description>Integration testing and performance validation</description>
+        <subtasks>
+          <subtask>End-to-end test: Draw in row 3, switch to row 4, verify OCR triggered</subtask>
+          <subtask>Test rapid row switching: Verify debounce prevents excessive triggers</subtask>
+          <subtask>Test background OCR: Verify drawing in new row not blocked by OCR stub</subtask>
+          <subtask>Test timeline logging: Switch rows multiple times, verify complete timeline</subtask>
+          <subtask>Performance test: Verify row switching latency remains &lt;200ms with OCR trigger</subtask>
+          <subtask>Test edge cases: Empty row (no OCR), unchanged row (skip OCR)</subtask>
+        </subtasks>
+      </task>
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    <criterion id="1">Given I have drawn content in row 3 and it is currently active, When I switch to a different row (row 4) using gestures, keyboard, or tap, Then row 3 is deactivated and marked for OCR processing</criterion>
+    <criterion id="2">And OCR triggers on row 3 after 1.5s debounce (if content changed since last OCR)</criterion>
+    <criterion id="3">And row 4 becomes the new active row with visual highlighting</criterion>
+    <criterion id="4">And the activation event is logged in the timeline: {rowId: 'row-4', activatedAt: Date.now(), deactivatedAt: null}</criterion>
+    <criterion id="5">And the previous activation event is updated: {rowId: 'row-3', ..., deactivatedAt: Date.now()}</criterion>
+    <criterion id="6">And I can now draw only in row 4</criterion>
+    <criterion id="7">And row 3 becomes read-only (dimmed, non-interactive)</criterion>
+    <criterion id="8">And OCR processing happens in the background without blocking row 4 drawing</criterion>
+    <criterion id="9">And rapid row switching is debounced to prevent excessive OCR triggers</criterion>
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <doc>
+        <path>docs/epic_1_complete_breakdown.md</path>
+        <title>Epic 1: Canvas Foundation &amp; Row Management</title>
+        <section>Story 1.8: Trigger OCR on Row Deactivation</section>
+        <snippet>Story 1.8 implements OCR trigger on row deactivation with 1.5s debounce. Hook into rowManager.setActiveRow() to detect row switches. Debounce OCR trigger allows rapid switching without waste. Timeline tracking provides clear attribution for OCR processing.</snippet>
+      </doc>
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Magic Canvas - Decision Architecture</title>
+        <section>Epic 1: Canvas Foundation &amp; Row System</section>
+        <snippet>Single-active-row architectural model. OCR trigger: On row deactivation (lines 135, 313-319). Debounce timing: 1.5s for OCR (line 45). Timeline-based attribution for OCR processing (lines 39, 152).</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/tech-spec-epic-1.md</path>
+        <title>Epic Technical Specification: Canvas Foundation &amp; Row Management</title>
+        <section>Data Models and Contracts</section>
+        <snippet>RowManager manages activation timeline with activatedAt and deactivatedAt timestamps. Activation events logged as: {rowId, activatedAt, deactivatedAt}. Row interface includes ocrStatus: 'pending' | 'processing' | 'complete' | 'error'.</snippet>
+      </doc>
+      <doc>
+        <path>docs/sprint-artifacts/stories/1-7-persist-row-state-canvas-state-across-reloads.md</path>
+        <title>Story 1.7: Persist Row State and Canvas State Across Reloads</title>
+        <section>Learnings from Previous Story</section>
+        <snippet>Story 1.7 established RowManager serialization with activation timeline persistence. Atomic state persistence working. All row metadata (ocrStatus, validationStatus) persisted correctly. Timeline already serialized and restored.</snippet>
+      </doc>
+    </docs>
+    <code>
+      <artifact>
+        <path>src/utils/rowManager.js</path>
+        <kind>utility</kind>
+        <symbol>RowManager</symbol>
+        <lines>219-264</lines>
+        <reason>setActiveRow() method must be extended with OCR trigger hook. This is the core method where row deactivation is detected.</reason>
+      </artifact>
+      <artifact>
+        <path>src/utils/rowManager.js</path>
+        <kind>utility</kind>
+        <symbol>RowManager.getActivationTimeline</symbol>
+        <lines>358-367</lines>
+        <reason>Provides activation timeline data for OCR attribution. Timeline events include activatedAt and deactivatedAt timestamps.</reason>
+      </artifact>
+      <artifact>
+        <path>src/hooks/useRowSystem.js</path>
+        <kind>hook</kind>
+        <symbol>useRowSystem</symbol>
+        <lines>174-191</lines>
+        <reason>handleSceneChange manages canvas updates. Will need to add OCR trigger callback on row deactivation and row content hash tracking.</reason>
+      </artifact>
+      <artifact>
+        <path>src/utils/logger.js</path>
+        <kind>utility</kind>
+        <symbol>logger</symbol>
+        <lines>*</lines>
+        <reason>Existing logging infrastructure for OCR event tracking. Reuse for logging OCR triggers and timeline events.</reason>
+      </artifact>
+      <artifact>
+        <path>src/utils/workspaceDB.js</path>
+        <kind>utility</kind>
+        <symbol>saveMagicCanvasState, loadMagicCanvasState</symbol>
+        <lines>*</lines>
+        <reason>Existing persistence methods from Story 1.7. Activation timeline already persisted via RowManager.serialize().</reason>
+      </artifact>
+      <artifact>
+        <path>src/pages/MagicCanvas.jsx</path>
+        <kind>component</kind>
+        <symbol>MagicCanvas</symbol>
+        <lines>*</lines>
+        <reason>Main page component where OCR trigger stub function will be integrated.</reason>
+      </artifact>
+    </code>
+    <dependencies>
+      <node>
+        <package name="react" version="19.2.0" />
+        <package name="react-dom" version="19.2.0" />
+        <package name="@excalidraw/excalidraw" version="0.18.0" />
+        <package name="katex" version="^0.16.25" />
+        <package name="algebrite" version="^1.4.0" />
+        <package name="@huggingface/transformers" version="^3.8.0" />
+      </node>
+      <devDependencies>
+        <package name="vitest" />
+        <package name="@testing-library/react" version="16.3.0" />
+        <package name="@testing-library/jest-dom" version="^6.9.1" />
+        <package name="jsdom" version="27.2.0" />
+      </devDependencies>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <constraint>
+      <type>architectural</type>
+      <description>OCR trigger must happen on row deactivation, not activation. Trigger occurs when user switches AWAY from a row.</description>
+      <source>docs/architecture.md:135,313-319</source>
+    </constraint>
+    <constraint>
+      <type>performance</type>
+      <description>Debounce OCR trigger by 1.5s after deactivation to allow rapid row switching without wasted processing.</description>
+      <source>docs/architecture.md:45</source>
+    </constraint>
+    <constraint>
+      <type>architectural</type>
+      <description>Timeline-based attribution: Activation timeline provides clear OCR attribution for future features. Timeline must be logged and persisted.</description>
+      <source>docs/architecture.md:39,152</source>
+    </constraint>
+    <constraint>
+      <type>performance</type>
+      <description>OCR trigger must be non-blocking. Row switching latency must remain &lt;200ms (Story 1.9 requirement).</description>
+      <source>docs/sprint-artifacts/tech-spec-epic-1.md</source>
+    </constraint>
+    <constraint>
+      <type>implementation</type>
+      <description>Check if row content hash changed before triggering OCR to avoid redundant processing on unchanged content.</description>
+      <source>docs/epic_1_complete_breakdown.md:313-319</source>
+    </constraint>
+    <constraint>
+      <type>implementation</type>
+      <description>This story creates stub integration point for Epic 2 OCR pipeline. Use TODO comments to mark where Epic 2 implementation will go.</description>
+      <source>docs/epic_1_complete_breakdown.md:287-320</source>
+    </constraint>
+    <constraint>
+      <type>state-management</type>
+      <description>Only one row can be active at a time (single-active-row architectural model). Deactivation of previous row and activation of new row must be atomic.</description>
+      <source>docs/architecture.md</source>
+    </constraint>
+  </constraints>
+
+  <interfaces>
+    <interface>
+      <name>RowManager.setActiveRow</name>
+      <kind>method</kind>
+      <signature>setActiveRow(rowId: string): void</signature>
+      <path>src/utils/rowManager.js:219-264</path>
+      <description>Core method for row activation. Must be extended with OCR trigger hook that fires when previous row is deactivated.</description>
+    </interface>
+    <interface>
+      <name>RowManager.setOCRTriggerCallback</name>
+      <kind>method</kind>
+      <signature>setOCRTriggerCallback(callback: Function): void</signature>
+      <path>NEW - to be added to src/utils/rowManager.js</path>
+      <description>New method to register OCR trigger callback function. Called when row is deactivated: callback(rowId, rowData).</description>
+    </interface>
+    <interface>
+      <name>RowManager.updateRow</name>
+      <kind>method</kind>
+      <signature>updateRow(rowId: string, updates: Partial&lt;Row&gt;): void</signature>
+      <path>src/utils/rowManager.js</path>
+      <description>Used to update row.ocrStatus to 'pending' when OCR is triggered for deactivated row.</description>
+    </interface>
+    <interface>
+      <name>RowManager.getActivationTimeline</name>
+      <kind>method</kind>
+      <signature>getActivationTimeline(): Array&lt;ActivationEvent&gt;</signature>
+      <path>src/utils/rowManager.js:358-367</path>
+      <description>Returns activation timeline with {rowId, activatedAt, deactivatedAt} events for OCR attribution.</description>
+    </interface>
+    <interface>
+      <name>calculateRowContentHash</name>
+      <kind>function</kind>
+      <signature>calculateRowContentHash(elements: ExcalidrawElement[]): string</signature>
+      <path>NEW - to be added to src/utils/contentHash.js</path>
+      <description>Calculate hash of row content for change detection. Returns hash string. Empty array returns empty string.</description>
+    </interface>
+    <interface>
+      <name>triggerOCRForRow</name>
+      <kind>function</kind>
+      <signature>triggerOCRForRow(rowId: string, elements: ExcalidrawElement[]): void</signature>
+      <path>NEW - stub to be added (src/pages/MagicCanvas.jsx or src/utils/ocrTrigger.js)</path>
+      <description>OCR trigger stub function for Epic 2 integration. Logs event and simulates async processing. Non-blocking.</description>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Testing uses Vitest with jsdom for unit tests and manual browser testing for integration. Follow Story 1.7's comprehensive test pattern: unit tests for utilities, integration tests for workflows, performance tests for latency requirements. Test files co-located with source in __tests__ directories. Story 1.7 achieved 65/85 tests passing with all story-specific tests passing.
+    </standards>
+    <locations>
+      <location>src/utils/__tests__/</location>
+      <location>src/hooks/__tests__/</location>
+      <location>src/components/__tests__/</location>
+    </locations>
+    <ideas>
+      <idea ac="1,2,9">
+        <description>Unit test: calculateRowContentHash produces consistent hashes for same elements, hash changes when elements added/removed/moved</description>
+        <file>src/utils/__tests__/contentHash.test.js</file>
+      </idea>
+      <idea ac="1,2,9">
+        <description>Unit test: Debounce logic prevents rapid OCR triggers (test with fake timers), OCR trigger skipped for empty rows and unchanged row content</description>
+        <file>src/hooks/__tests__/useRowSystem.test.js</file>
+      </idea>
+      <idea ac="4,5">
+        <description>Unit test: Activation timeline logging captures deactivation timestamps correctly, timeline events have correct structure</description>
+        <file>src/utils/__tests__/rowManager.test.js</file>
+      </idea>
+      <idea ac="1,2,8">
+        <description>Integration test: Draw in row 3, switch to row 4, verify OCR triggered after 1.5s, verify timeline logged</description>
+        <file>Manual browser test</file>
+      </idea>
+      <idea ac="8,9">
+        <description>Performance test: Row switching latency remains &lt;200ms with OCR trigger hook, verify non-blocking behavior</description>
+        <file>Manual browser test with performance.now() measurements</file>
+      </idea>
+      <idea ac="6,7">
+        <description>Regression test: Verify read-only enforcement from Story 1.5 still works, verify active row highlighting from Story 1.6 not broken</description>
+        <file>Manual browser test</file>
+      </idea>
+      <idea ac="8,9">
+        <description>Edge case test: Rapid row switching (switch 5 times in 2 seconds), verify debounce prevents excessive triggers, verify only final row gets OCR</description>
+        <file>Manual browser test</file>
+      </idea>
+    </ideas>
+  </tests>
+</story-context>
