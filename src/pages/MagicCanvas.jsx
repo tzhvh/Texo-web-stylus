@@ -113,32 +113,32 @@ function MagicCanvasComponent() {
 
   // Initialize RowManager for element-to-row assignments (Story 1.5)
   const [rowManager] = useState(() => {
-    const manager = new RowManager({ 
-      rowHeight: 384, 
-      startY: 0 
+    const manager = new RowManager({
+      rowHeight: 384,
+      startY: 0
     });
-    
+
     // Story 1.2: Initialize with row 0 as active (single-active-row model)
     manager.setActiveRow('row-0');
-    
+
     return manager;
   });
 
   // Initialize useRowSystem hook for canvas-row synchronization (Story 1.5)
-  const { 
-    elementToRow, 
-    handleCanvasChange: handleRowSystemChange, 
-    getElementRow, 
+  const {
+    elementToRow,
+    handleCanvasChange: handleRowSystemChange,
+    getElementRow,
     getRowCount,
     stats: rowStats,
     saveState,
     loadState,
     isSaving,
     isLoading
-  } = useRowSystem({ 
-    excalidrawAPI, 
-    rowManager, 
-    debounceMs: 50, 
+  } = useRowSystem({
+    excalidrawAPI,
+    rowManager,
+    debounceMs: 50,
     debugMode,
     workspaceId: 'magic-canvas-default',
     autoSaveMs: 2000
@@ -407,9 +407,9 @@ function MagicCanvasComponent() {
         // Check if element is within active row bounds
         const elementTop = element.y;
         const elementBottom = element.y + (element.height || 0);
-        
+
         const isInBounds = elementBottom > activeRow.yStart && elementTop < activeRow.yEnd;
-        
+
         if (!isInBounds && debugMode) {
           console.log("MagicCanvas: Element constrained outside active row", {
             elementId: element.id,
@@ -417,7 +417,7 @@ function MagicCanvasComponent() {
             activeRowBounds: { yStart: activeRow.yStart, yEnd: activeRow.yEnd }
           });
         }
-        
+
         return isInBounds;
       });
 
@@ -425,22 +425,22 @@ function MagicCanvasComponent() {
       if (constrainedElements.length !== elements.length) {
         // Get current elements from API to avoid infinite loops
         const currentElements = excalidrawAPI.getSceneElements();
-        const elementsToRemove = currentElements.filter(el => 
+        const elementsToRemove = currentElements.filter(el =>
           !constrainedElements.some(kept => kept.id === el.id) &&
-          !el.id?.startsWith("guide-") && 
+          !el.id?.startsWith("guide-") &&
           !el.isDeleted
         );
 
         if (elementsToRemove.length > 0) {
           // Mark constrained elements as deleted
-          const updatedElements = constrainedElements.map(el => 
-            elementsToRemove.some(removed => removed.id === el.id) 
+          const updatedElements = constrainedElements.map(el =>
+            elementsToRemove.some(removed => removed.id === el.id)
               ? { ...el, isDeleted: true }
               : el
           );
-          
+
           excalidrawAPI.updateScene({ elements: updatedElements });
-          
+
           if (debugMode) {
             console.log("MagicCanvas: Removed constrained elements", {
               constrainedCount: elementsToRemove.length,
@@ -496,7 +496,7 @@ function MagicCanvasComponent() {
         elements: viewportGuideLines,
       });
       setElementCount(0);
-      
+
       // Save cleared state
       saveCanvasState();
     }
@@ -559,11 +559,11 @@ function MagicCanvasComponent() {
   const openSettings = useCallback(() => {
     alert(
       "Settings panel coming in Story 1.6\n\n" +
-        "Future features:\n" +
-        "- Background color preferences\n" +
-        "- Guide line spacing\n" +
-        "- Toolbar visibility\n" +
-        "- Zoom/pan presets",
+      "Future features:\n" +
+      "- Background color preferences\n" +
+      "- Guide line spacing\n" +
+      "- Toolbar visibility\n" +
+      "- Zoom/pan presets",
     );
   }, []);
 
@@ -585,7 +585,7 @@ function MagicCanvasComponent() {
       const appState = excalidrawAPI.getAppState();
       const viewportHeight = window.innerHeight * 0.6; // Approximate canvas viewport height
       const targetScrollY = targetRow.yStart - (viewportHeight / 2) + (rowManager.rowHeight / 2);
-      
+
       excalidrawAPI.updateScene({
         appState: {
           ...appState,
@@ -614,14 +614,14 @@ function MagicCanvasComponent() {
 
     const handleTouchStart = (event) => {
       if (event.touches.length !== 1) return; // Only handle single finger touches
-      
+
       touchStartY = event.touches[0].clientY;
       touchStartTime = Date.now();
     };
 
     const handleTouchEnd = (event) => {
       if (!touchStartY || !touchStartTime) return;
-      
+
       const touchEndY = event.changedTouches[0].clientY;
       const deltaY = touchStartY - touchEndY;
       const deltaTime = Date.now() - touchStartTime;
@@ -643,10 +643,13 @@ function MagicCanvasComponent() {
           // Swipe down - go to next row
           const nextRowIndex = parseInt(activeRow.id.replace('row-', '')) + 1;
           targetRowId = `row-${nextRowIndex}`;
-          
-          // Ensure the target row exists
+
+          // Ensure the target row exists – use explicit creation per Story 1.10
           if (!rowManager.getRow(targetRowId)) {
-            rowManager.getRowForY(nextRowIndex * rowManager.rowHeight);
+            // Create a new row via the explicit API
+            const createdRowId = rowManager.createNewRow();
+            // Use the newly created ID (should match targetRowId)
+            targetRowId = createdRowId;
           }
         }
 
@@ -699,20 +702,21 @@ function MagicCanvasComponent() {
             targetRowId = `row-${currentRowIndex - 1}`;
           }
           break;
-        
+
         case 'ArrowDown':
           event.preventDefault();
           // Switch to next row (create if needed)
           const nextRowIndex = parseInt(activeRow.id.replace('row-', '')) + 1;
           targetRowId = `row-${nextRowIndex}`;
-          
+
           // Ensure the target row exists
           if (!rowManager.getRow(targetRowId)) {
-            // Create new row by getting it (will auto-create)
-            rowManager.getRowForY(nextRowIndex * rowManager.rowHeight);
+            // Create a new row via explicit API (Story 1.10)
+            const createdRowId = rowManager.createNewRow();
+            targetRowId = createdRowId;
           }
           break;
-        
+
         default:
           return; // Don't prevent default for other keys
       }
@@ -808,7 +812,7 @@ function MagicCanvasComponent() {
               },
             }}
           />
-          
+
           {/* RowHeader Components */}
           <div className="absolute inset-0">
             <div className="relative w-full h-full pointer-events-none">
@@ -887,7 +891,7 @@ function MagicCanvasComponent() {
                 Canvas range: Y [{CANVAS_CONFIG.MIN_Y}, {CANVAS_CONFIG.MAX_Y}]
               </p>
               <p>Max width: {CANVAS_CONFIG.MAX_WIDTH}px</p>
-              
+
               {/* Row System Debug Info (Story 1.5) */}
               <div className="border-t border-gray-300 pt-2 mt-2">
                 <p className="font-bold text-blue-600 mb-1">Row System</p>
@@ -898,7 +902,7 @@ function MagicCanvasComponent() {
                 <p>Avg assignment time: {rowStats.averageAssignmentTime.toFixed(2)}ms</p>
                 <p>Last assignment: {rowStats.lastAssignmentTime > 0 ? new Date(rowStats.lastAssignmentTime).toLocaleTimeString() : 'Never'}</p>
                 <p>Assignment errors: {rowStats.errorCount}</p>
-                
+
                 {/* Active Row Bounds (Story 1.2, Task 2) */}
                 {rowManager.getActiveRow() && (
                   <div className="border-t border-gray-300 pt-1 mt-1">
@@ -907,7 +911,7 @@ function MagicCanvasComponent() {
                     <p>Height: {rowManager.getActiveRow().yEnd - rowManager.getActiveRow().yStart}px</p>
                   </div>
                 )}
-                
+
                 {/* Row Switching Info (Story 1.2, Task 5) */}
                 <div className="border-t border-gray-300 pt-1 mt-1">
                   <p className="font-bold text-purple-600 mb-1">Row Switching</p>
@@ -925,7 +929,7 @@ function MagicCanvasComponent() {
 
 // Wrap with ErrorBoundary for graceful error handling
 export default function MagicCanvas() {
- return (
+  return (
     <ErrorBoundary componentName="MagicCanvas">
       <MagicCanvasComponent />
     </ErrorBoundary>
