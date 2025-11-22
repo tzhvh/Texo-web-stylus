@@ -92,8 +92,8 @@ so that **I don't lose my work if I close the browser tab**.
 This story implements the **state persistence layer** for the single-active-row architectural model, ensuring canvas and row state survive browser sessions. Persistence uses IndexedDB for client-side storage following Texo's privacy-first philosophy.
 
 **Key Architectural Decisions:**
-- **Unidirectional state sync**: RowManager is truth source → IndexedDB (architecture.md:1045-1052)
-- **Debounced saves**: 2s delay after last change prevents excessive writes (architecture.md:1054)
+- **Unidirectional state sync**: RowManager is truth source → IndexedDB (architecture.md:400-410)
+- **Debounced saves**: 2s delay after last change prevents excessive writes (architecture.md:45,137,410)
 - **Atomic writes**: Complete state saved together prevents partial corruption
 - **Schema versioning**: v1 schema supports future migrations
 - **Corruption resilience**: Graceful degradation to empty canvas if data corrupted
@@ -467,11 +467,12 @@ function MagicCanvas() {
 
 ### References
 
-- [Source: docs/epic_1_complete_breakdown.md:245-284] - Story 1.7 detailed requirements
-- [Source: docs/sprint-artifacts/tech-spec-epic-1.md:112-123] - IndexedDB schema design
-- [Source: docs/architecture.md:1045-1052] - State sync architecture (unidirectional)
-- [Source: docs/architecture.md:1054] - Debounce timing (2s for saves)
-- [Source: docs/PRD.md:502-530] - Row System persistence requirements
+- [Source: docs/epic_1_complete_breakdown.md:245-266] - Story 1.7 detailed requirements and acceptance criteria
+- [Source: docs/sprint-artifacts/tech-spec-epic-1.md:115-124] - IndexedDB schema design for Magic Canvas state
+- [Source: docs/architecture.md:400-410] - State sync architecture (unidirectional RowManager → IndexedDB)
+- [Source: docs/architecture.md:45,137,410] - Debounce timing (2s for saves, 1.5s for OCR)
+- [Source: docs/PRD.md:502-530] - Row System persistence requirements (FR11-FR23)
+- [Source: docs/epics.md] - Epic 1: Canvas Foundation & Row Management overview
 - [Source: stories/1-6-display-row-status-indicators-active-row-highlight.md] - Previous story learnings
 - [Source: src/utils/workspaceDB.js] - Existing IndexedDB patterns to reuse
 
@@ -493,4 +494,6 @@ Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 
 ## Change Log
 
+- 2025-11-22 12:10:43: Story validated via validate-workflow (PASS with issues: 0 critical, 3 major, 1 minor)
+- 2025-11-22 12:10:43: Auto-fix applied - corrected architecture.md citation line numbers (YOLO mode)
 - 2025-11-22: Story drafted by SM agent (BMad) via create-story workflow
