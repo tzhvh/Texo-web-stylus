@@ -17,36 +17,43 @@
   },
   "dependencies": {
     "@benrbray/prosemirror-math": "^1.0.0",
-    "@excalidraw/excalidraw": "^0.18.0",
-    "@huggingface/transformers": "^3.2.3",
+    "@excalidraw/excalidraw": "0.18.0",
+    "@huggingface/transformers": "^3.8.0",
     "algebrite": "^1.4.0",
-    "image-js": "^0.35.6",
-    "katex": "^0.16.11",
+    "esbuild": "0.27.0",
+    "image-js": "1.2.0",
+    "katex": "^0.16.25",
     "prosemirror-commands": "^1.7.1",
-    "prosemirror-history": "^1.4.1",
+    "prosemirror-history": "^1.5.0",
     "prosemirror-inputrules": "^1.5.1",
     "prosemirror-keymap": "^1.2.3",
     "prosemirror-model": "^1.25.4",
     "prosemirror-state": "^1.4.4",
     "prosemirror-view": "^1.41.3",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-helmet-async": "^2.0.5",
-    "react-katex": "^3.0.1",
-    "react-router-dom": "^7.1.1"
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-helmet-async": "2.0.5",
+    "react-katex": "3.1.0",
+    "react-router-dom": "7.9.6"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.0",
+    "@testing-library/react": "16.3.0",
     "@testing-library/user-event": "^14.6.1",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
-    "@vitejs/plugin-react": "^4.3.4",
-    "autoprefixer": "^10.4.20",
-    "jsdom": "^25.0.1",
-    "postcss": "^8.4.49",
-    "tailwindcss": "^3.4.17",
-    "vite": "^6.0.7",
-    "vitest": "^2.1.8"
+    "@types/react": "19.2.6",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "5.1.1",
+    "autoprefixer": "^10.4.22",
+    "jsdom": "27.2.0",
+    "postcss": "^8.5.6",
+    "tailwindcss": "4.1.17",
+    "@tailwindcss/postcss": "4.1.17",
+    "vite": "7.2.4",
+    "vitest": "4.0.13"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "0.27.0"
+    }
   }
 }

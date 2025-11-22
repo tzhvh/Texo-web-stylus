@@ -47,28 +47,11 @@ export default function RowHeader({
     return null;
   }
 
-  // Story 1.5: Active row highlighting - distinct visual style
-  // Story 1.6: Enhanced with 200ms transition for smooth visual feedback
-  const highlightStyle = row.isActive
-    ? "border-2 border-blue-500 bg-blue-50 bg-opacity-10"
-    : "opacity-0"; // Hide highlight for inactive rows
+
 
   return (
     <>
-      {/* Story 1.5: Active row highlight background */}
-      {row.isActive && (
-        <div
-          className={`absolute ${highlightStyle} transition-all duration-200 pointer-events-none`}
-          style={{
-            left: 0,
-            top: row.yStart,
-            width: canvasWidth,
-            height: row.yEnd - row.yStart,
-            zIndex: 5 // Below status icons
-          }}
-          data-testid={`row-highlight-${row.id}`}
-        />
-      )}
+
 
       {/* Story 1.6: Enhanced status icon with SVG rendering */}
       <StatusIcon

@@ -9,6 +9,7 @@ import { Helmet } from "react-helmet-async";
 import {
   Excalidraw,
   convertToExcalidrawElements,
+  getSceneVersion,
 } from "@excalidraw/excalidraw";
 import "@excalidraw/excalidraw/index.css";
 import { useDebug } from "../contexts/DebugContext";
@@ -174,6 +175,10 @@ function MagicCanvasComponent() {
   // Safeguard: Track render count to detect infinite loops
   const renderCountRef = useRef(0);
   const lastOnChangeTimeRef = useRef(0);
+  const updateLoopCounterRef = useRef(0);
+  const lastLoopResetTimeRef = useRef(0);
+  const lastSceneVersionRef = useRef(0);
+  const lastAppStateRef = useRef({});
   const canvasSaveTimeoutRef = useRef(null);
 
   // Track render count in useEffect, not during render
@@ -246,8 +251,9 @@ function MagicCanvasComponent() {
       );
 
       // Update scene with user elements + viewport guide lines
+      // Story 1.6 Fix: Put background elements FIRST so they are behind user elements
       excalidrawAPI.updateScene({
-        elements: [...userElements, ...backgroundElements],
+        elements: [...backgroundElements, ...userElements],
       });
 
       // Cache for performance comparison
@@ -421,6 +427,45 @@ function MagicCanvasComponent() {
 
     // Update last call time
     lastOnChangeTimeRef.current = now;
+
+    // Loop Detection: Prevent infinite update loops
+    if (now - lastLoopResetTimeRef.current > 1000) {
+      // Reset counter if more than 1 second has passed
+      updateLoopCounterRef.current = 0;
+      lastLoopResetTimeRef.current = now;
+    } else {
+      updateLoopCounterRef.current += 1;
+      if (updateLoopCounterRef.current > 50) {
+        if (debugMode && updateLoopCounterRef.current === 51) {
+          console.warn("MagicCanvas: Infinite loop detected in onChange! Throttling updates.");
+        }
+        return; // Stop processing to break the loop
+      }
+    }
+
+    // Story 1.6 Fix: Prevent unnecessary updates on mouse move
+    // Check if scene content or relevant app state has actually changed
+    const sceneVersion = getSceneVersion(elements);
+    const relevantAppState = {
+      zoom: appState.zoom?.value,
+      scrollX: appState.scrollX,
+      scrollY: appState.scrollY
+    };
+
+    // Deep compare relevant app state
+    const isAppStateSame =
+      lastAppStateRef.current.zoom === relevantAppState.zoom &&
+      lastAppStateRef.current.scrollX === relevantAppState.scrollX &&
+      lastAppStateRef.current.scrollY === relevantAppState.scrollY;
+
+    if (sceneVersion === lastSceneVersionRef.current && isAppStateSame) {
+      // No meaningful change, skip update
+      return;
+    }
+
+    // Update refs for next comparison
+    lastSceneVersionRef.current = sceneVersion;
+    lastAppStateRef.current = relevantAppState;
 
     // Log warning for debug mode if calls are too frequent
     if (debugMode) {
