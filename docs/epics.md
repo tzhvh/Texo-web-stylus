@@ -300,10 +300,10 @@ So that **I can write mathematical expressions without space constraints**.
 **Then** I see an Excalidraw canvas that fills the viewport
 
 **And** I can draw strokes with mouse or stylus
-**And** I can pan vertically by dragging with touch or mouse wheel
-**And** I can zoom in/out using pinch gestures or Ctrl+scroll
-**And** the canvas extends infinitely in the vertical direction
-**And** horizontal extent is limited to reasonable width (e.g., 2000px)
+**And** I can zoom in/out using pinch gestures or Ctrl+scroll (zoom only, no vertical panning)
+**And** I can switch between rows using swipe gestures (up/down) or arrow keys
+**And** the canvas displays multiple rows vertically, with one row active at a time
+**And** each row is limited to width of viewport (no horizontal scroll needed)
 **And** canvas background is white or light gray
 **And** Excalidraw toolbar is minimal or hidden by default
 
@@ -362,25 +362,26 @@ So that **row state can be managed consistently throughout the application**.
 **When** RowManager is instantiated with configuration (row height, starting Y position)
 **Then** it provides methods to:
 
-**And** `getRowForY(y: number): Row` - returns row containing given Y coordinate
-**And** `assignElement(element: ExcalidrawElement): rowId` - assigns element to appropriate row
+**And** `setActiveRow(rowId: string): void` - activates specified row for editing
+**And** `getActiveRow(): Row | null` - returns currently active row
+**And** `createNewRow(): string` - creates new row below active row, returns rowId
 **And** `getRow(rowId: string): Row` - retrieves row metadata by ID
 **And** `updateRow(rowId: string, updates: Partial<Row>): void` - updates row metadata
 **And** `getAllRows(): Row[]` - returns all tracked rows
-**And** `getRowsInViewport(viewport: Viewport): Row[]` - returns visible rows for given viewport
+**And** `getActivationTimeline(): ActivationEvent[]` - returns row activation history
 
 **And** each Row object includes:
-- `id`: string (stable unique identifier)
+- `id`: string (stable unique identifier, e.g., "row-0", "row-1")
 - `yStart`: number (top Y coordinate)
 - `yEnd`: number (bottom Y coordinate)
-- `elementIds`: string[] (IDs of Excalidraw elements in this row)
+- `isActive`: boolean (true if this is the active row)
 - `ocrStatus`: 'pending' | 'processing' | 'complete' | 'error'
 - `validationStatus`: 'pending' | 'processing' | 'validated' | 'invalid' | 'error'
 - `transcribedLatex`: string | null
-- `lastModified`: Date
+- `activatedAt`: Date | null (when row was last activated)
 
 **And** row IDs remain stable across pan/zoom/reload operations
-**And** RowManager handles edge cases (elements spanning multiple rows → assign to primary row based on center Y)
+**And** RowManager tracks activation events in timeline for OCR attribution
 
 **Prerequisites:** Story 1.3
 
@@ -393,34 +394,34 @@ So that **row state can be managed consistently throughout the application**.
 
 ---
 
-### Story 1.5: Automatically Assign Drawn Elements to Rows
+### Story 1.5: Enforce Active Row Editing and Read-Only Rows
 
 As a **user**,
-I want **my drawn strokes to automatically belong to the correct row**,
-So that **OCR processes the right content for each line**.
+I want **to draw only in the active row while other rows are read-only**,
+So that **I have clear control over which mathematical expression I'm editing**.
 
 **Acceptance Criteria:**
 
-**Given** I draw on the Magic Canvas
-**When** I create a new stroke element
-**Then** the system automatically assigns it to the appropriate row based on its Y coordinate
+**Given** I am on the Magic Canvas with row 3 active
+**When** I draw a stroke
+**Then** the stroke is created only within the active row's bounds (Y: rowStart to rowEnd)
 
-**And** assignment happens within 100ms of stroke completion
-**And** elements are assigned based on their center Y coordinate
-**And** assignment updates if element is moved to different row
-**And** assignment persists through pan/zoom operations
-**And** erased elements are removed from their row's element list
-**And** undo/redo operations correctly update row assignments
+**And** strokes outside the active row bounds are prevented (or moved to active row)
+**And** I see visual feedback indicating the active row (highlighted border or background)
+**And** all other rows display their content in a read-only state (dimmed, non-interactive)
+**And** tapping/clicking a non-active row switches it to active
+**And** undo/redo operations only affect the active row's content
+**And** erase operations only affect strokes in the currently active row
 
 **Prerequisites:** Story 1.2, Story 1.4
 
 **Technical Notes:**
 - Hook into Excalidraw's `onChange` event to detect scene changes
-- Filter for new/modified/deleted elements since last change
-- Call `rowManager.assignElement(element)` for each new/modified element
-- Handle element deletion by updating row's `elementIds` array
-- Debounce row assignment updates (50ms) to avoid excessive computation during rapid drawing
-- Store row assignments in component state: `Map<elementId, rowId>`
+- Filter strokes based on Y-coordinate bounds of active row
+- Use Excalidraw's `locked` property to make inactive rows read-only
+- Call `rowManager.setActiveRow(rowId)` on row tap/click
+- Visual highlighting via custom SVG overlay or Excalidraw's selection API
+- Implement row tap detection via bounding box click handling
 
 ---
 
@@ -499,60 +500,134 @@ So that **I don't lose my work if I close the browser tab**.
 
 ---
 
-### Story 1.8: Handle Row Updates When Elements Are Modified or Moved
+### Story 1.8: Trigger OCR on Row Deactivation
 
 As a **user**,
-I want **row assignments to update automatically when I move or edit strokes**,
-So that **OCR and validation always process the current content**.
+I want **OCR to automatically trigger when I finish working on a row and switch to another**,
+So that **my handwritten expressions are transcribed without manual action**.
 
 **Acceptance Criteria:**
 
-**Given** I have drawn elements assigned to rows
-**When** I move an element from Row A to Row B (by dragging vertically)
-**Then** the element is removed from Row A's element list and added to Row B's
+**Given** I have drawn content in row 3 and it is currently active
+**When** I switch to a different row (row 4) using gestures, keyboard, or tap
+**Then** row 3 is deactivated and marked for OCR processing
 
-**And** both rows' `lastModified` timestamps are updated
-**And** moved row's OCR status resets to 'pending' (requires re-transcription)
-**And** target row's OCR status resets to 'pending'
-
-**And** when I modify an element (change stroke, resize, edit text)
-**Then** its row's `lastModified` updates and OCR status resets to 'pending'
-
-**And** when I delete an element
-**Then** it's removed from its row's element list and row updates accordingly
-
-**And** updates happen within 100ms of modification
-**And** rapid modifications are debounced to avoid excessive processing
+**And** OCR triggers on row 3 after 1.5s debounce (if content changed since last OCR)
+**And** row 4 becomes the new active row
+**And** the activation event is logged in the timeline: {rowId: 'row-4', activatedAt: Date.now()}
+**And** I can now draw only in row 4
+**And** row 3's OCR processing happens in the background without blocking row 4 drawing
+**And** rapid row switching is debounced to prevent excessive OCR triggers
 
 **Prerequisites:** Story 1.5, Story 1.7
 
 **Technical Notes:**
-- Excalidraw `onChange` callback provides: `elements`, `appState`, `files`
-- Diff previous and current element arrays to detect moves/modifications
-- For moves: Check if element's center Y crossed row boundary
-- On modification: Set `row.ocrStatus = 'pending'` and `row.transcribedLatex = null`
-- Debounce: 500ms after last modification before triggering OCR (Story 2.1)
-- This story ensures row metadata stays synchronized with canvas state
+- Hook into `rowManager.setActiveRow()` to detect row switches
+- On deactivation: Set previous row's `ocrStatus = 'pending'` if content exists
+- Debounce OCR trigger 1.5s after deactivation (allows rapid switching without waste)
+- Log activation timeline event: `{rowId, activatedAt: Date.now(), deactivatedAt: Date.now()}`
+- Check if row content hash changed before triggering OCR (avoid redundant processing)
+- This sets up integration point for Epic 2 (OCR pipeline)
+
+---
+
+### Story 1.9: Implement Row Switching via Gestures and Keyboard
+
+As a **user**,
+I want **to switch between rows using intuitive gestures or keyboard shortcuts**,
+So that **I can navigate my mathematical work efficiently**.
+
+**Acceptance Criteria:**
+
+**Given** I am on the Magic Canvas
+**When** I use arrow keys (Up/Down) or swipe gestures (swipe up/down on touch device)
+**Then** the active row changes to the adjacent row in the swipe/key direction
+
+**And** Up arrow / swipe up activates the previous row (row N-1)
+**And** Down arrow / swipe down activates the next row (row N+1)
+**And** if swiping/pressing up from row 0, no action occurs (already at top)
+**And** if swiping/pressing down from last row, a new row is created and activated (Story 1.10)
+**And** row switching animation is smooth (200ms transition)
+**And** tapping/clicking any row also activates it
+**And** viewport automatically scrolls to center active row when switching to off-screen rows
+**And** screen readers announce "Row {N} of {total} active" on row switch (accessibility)
+
+**Prerequisites:** Story 1.5
+
+**Technical Notes:**
+- Create `RowNavigator.jsx` component for gesture detection
+- Use `react-swipeable` library for touch event handling (threshold: 50px vertical movement)
+- Keyboard event listener for arrow keys (attach to canvas container)
+- Call `rowManager.setActiveRow(newRowId)` on navigation
+- Implement viewport auto-scroll with smooth scroll animation
+- Add ARIA live region for screen reader announcements
+
+---
+
+### Story 1.10: Implement Row Creation Workflow
+
+As a **user**,
+I want **to create new rows below my current work**,
+So that **I can continue my mathematical derivation**.
+
+**Acceptance Criteria:**
+
+**Given** I am on the Magic Canvas
+**When** I press Down arrow or swipe down while on the last row
+**Then** a new row is created immediately below the current row
+
+**And** the new row becomes the active row
+**And** the new row has a unique sequential ID (e.g., "row-5" if previous was "row-4")
+**And** the new row is positioned 384px below the previous row (default spacing)
+**And** I can immediately start drawing in the new row
+**And** viewport auto-scrolls to show new row if created off-screen
+
+**Alternative Trigger:**
+**When** I click a "New Row" button in the toolbar
+**Then** a new row is created below the active row and activated
+
+**And** new row metadata initialized: `{ocrStatus: 'pending', validationStatus: 'pending', isActive: true}`
+**And** previous active row is deactivated (triggers OCR per Story 1.8)
+
+**Prerequisites:** Story 1.9
+
+**Technical Notes:**
+- Implement `rowManager.createNewRow()` method
+- Generate sequential IDs: `row-${rows.size}` or consider UUID for future mid-canvas insertion
+- Auto-scroll viewport using `element.scrollIntoView({behavior: 'smooth', block: 'center'})`
+- Initialize new row with Y-position: `lastRow.yEnd + 0` (no gap)
+- Add "New Row" button to MagicCanvasToolbar (minimalist icon, auto-hide)
 
 ---
 
 ### Epic 1 Summary
 
-**Stories:** 8
+**Stories:** 10 (updated from 8 - added Stories 1.9 and 1.10)
 **Estimated Complexity:** Medium (brownfield advantage - Excalidraw already integrated, IndexedDB utils exist)
+**Architectural Model:** Single-active-row with activation timeline (simplified from auto-assignment)
+
 **Key Deliverables:**
 - Magic Canvas page accessible via navigation
-- Infinite vertical canvas with ruled lines
-- RowManager class tracking row metadata
-- Automatic element-to-row assignment
-- Visual status indicators
-- Full state persistence
+- Multi-row canvas with one active row at a time
+- RowManager class tracking active row and activation timeline
+- Row switching via gestures (swipe) and keyboard (arrows)
+- Row creation workflow
+- Visual status indicators with active row highlighting
+- Full state persistence with timeline tracking
+- OCR triggers on row deactivation
 
 **Testing Notes:**
-- Unit tests: RowManager class methods (getRowForY, assignElement, etc.)
-- Integration tests: Manual browser testing for drawing, pan/zoom, persistence
-- Performance tests: Canvas with 500+ elements, pan/zoom at 60fps
-- Edge cases: Elements spanning rows, rapid drawing, undo/redo
+- Unit tests: RowManager class methods (setActiveRow, getActiveRow, createNewRow, getActivationTimeline)
+- Integration tests: Manual browser testing for row switching, active row enforcement, viewport scrolling
+- Performance tests: Canvas with 20+ rows, smooth row switching animations
+- Edge cases: Rapid row switching, boundary conditions (first/last row), undo/redo in active row
+- Accessibility: Screen reader announcements, keyboard-only navigation
+
+**Architectural Changes (2025-11-21):**
+- Removed auto-assignment complexity (no element tracking)
+- Added activation timeline for OCR attribution
+- Simplified state sync (active row pointer instead of element-to-row mappings)
+- Added RowNavigator component for gesture handling
 
 ---
 

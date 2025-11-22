@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 .vite/deps/*
-.bmad/*
+#.bmad/*
 .claude/*
 .crush/*
 .gemini/*

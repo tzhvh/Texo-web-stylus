@@ -51,9 +51,10 @@ All components will be developed as part of the existing Texo codebase without i
 | Service/Module | Responsibility | Inputs | Outputs |
 |----------------|----------------|--------|---------|
 | MagicCanvas Component | Main page component, integrates Excalidraw and RowManager | Excalidraw events, user interactions | Updates to RowManager, canvas rendering |
-| RowManager Class | Maintains row state and element assignments | Element changes, canvas state | Row metadata, element-row mappings |
-| useRowSystem Hook | Synchronizes Excalidraw state with RowManager | Canvas state changes | Row state updates |
-| RowHeader Component | Displays status icons for each row | Row status, user interactions | Visual feedback icons |
+| RowManager Class | Manages active row selection and activation timeline | Row activation events | Active row state, timeline events |
+| useRowSystem Hook | Enforces active row editing and read-only rows | Canvas state changes, row switches | Active row updates, OCR triggers |
+| RowNavigator Component | Handles gestures and keyboard for row switching | Touch events, keyboard events | Row activation commands |
+| RowHeader Component | Displays status icons for each row with active row highlight | Row status, active status, user interactions | Visual feedback icons, active row highlight |
 | IndexedDB Persistence Layer | Stores canvas and row state | State changes to persist | Saved state on reload |
 
 ### Data Models and Contracts
@@ -123,13 +124,13 @@ class RowManager {
 4. Initialize Excalidraw with loaded state
 5. Synchronize RowManager with canvas state
 
-**Element Assignment Flow:**
-1. User draws/creates element → Excalidraw onChange event fires
-2. Detect new/modified elements
-3. For each element, call `rowManager.assignElement(element)`
-4. RowManager determines appropriate row based on element's center Y coordinate
-5. Update element-to-row mapping
-6. Set row's `lastModified` and reset OCR status to 'pending'
+**Row Activation Flow:**
+1. User switches row (gesture/keyboard/tap) → RowNavigator detects action
+2. Call `rowManager.setActiveRow(newRowId)`
+3. Previous active row is deactivated → OCR trigger (debounced 1.5s)
+4. New row becomes active → visual highlight updates
+5. Excalidraw constrained to active row bounds (read-only enforcement on inactive rows)
+6. Timeline event logged: {rowId: newRowId, activatedAt: Date.now()}
 7. Debounce IndexedDB save (2s after last change)
 
 **State Persistence Flow:**

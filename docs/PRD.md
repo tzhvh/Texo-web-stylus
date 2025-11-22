@@ -486,9 +486,9 @@ Magic Canvas follows a **minimalist, flow-preserving** design approach where the
 
 **FR4:** Users can customize row line spacing (default 100px, adjustable in settings)
 
-**FR5:** Users can pan vertically through canvas with touch/mouse
+**FR5:** Users can switch between rows using gestures (swipe up/down) or keyboard (arrow keys)
 
-**FR6:** Users can zoom in/out on canvas
+**FR6:** Users can zoom in/out on canvas (zoom only, no pan)
 
 **FR7:** Canvas state (zoom level, pan position) persists across page reloads
 
@@ -502,232 +502,247 @@ Magic Canvas follows a **minimalist, flow-preserving** design approach where the
 
 ### Row System Capabilities
 
-**FR11:** System automatically assigns drawn elements to rows based on Y-coordinate
+**FR11:** Only the active row is editable; all other rows are read-only
 
 **FR12:** Each row has a stable unique ID that persists across pan/zoom/reload
 
-**FR13:** System maintains row metadata including Y-position, element IDs, OCR status, validation status, and transcribed LaTeX
+**FR13:** System maintains row metadata including Y-position, active status, OCR status, validation status, and transcribed LaTeX
 
 **FR14:** Row height for OCR processing is configurable (default 384px)
 
-**FR15:** Users can see which row an element belongs to through visual indicators
+**FR15:** Active row is visually distinct with highlighted border or background
 
 **FR16:** Empty rows (no content) are tracked but skipped during validation
 
-**FR17:** Rows maintain stable IDs and assignments through canvas transformations
+**FR17:** System tracks row activation timeline for OCR attribution and erase operations
 
-**FR18:** System detects when elements are added to or removed from a row
+**FR18:** Users can activate a different row by tapping it, swiping vertically, or using arrow keys
+
+**FR19:** When row activation changes, OCR is triggered on the previously active row (debounced 1.5s)
+
+**FR20:** Users can create new rows below the current active row via button or gesture
+
+**FR21:** Read-only rows display strokes in a dimmed or locked visual state
+
+**FR22:** Erase operations only affect strokes in the currently active row
+
+**FR23:** Viewport automatically scrolls to center active row when switching to off-screen rows
 
 ---
 
 ### OCR & Transcription Capabilities
 
-**FR19:** System automatically triggers OCR transcription 1.5 seconds after last stroke in a row
+**FR24:** System automatically triggers OCR transcription when row is deactivated (user switches to different row)
 
-**FR20:** System extracts tiles from rows for OCR processing
+**FR25:** OCR trigger is debounced 1.5 seconds after row deactivation
 
-**FR21:** Tile extraction creates overlapping 384x384 tiles with 10-20% overlap
+**FR26:** System extracts tiles from rows for OCR processing
 
-**FR22:** Multiple tiles from single row are processed in parallel via worker pool
+**FR27:** Tile extraction creates overlapping 384x384 tiles with 10-20% overlap
 
-**FR23:** System displays per-tile progress indicators during OCR processing
+**FR28:** Multiple tiles from single row are processed in parallel via worker pool
 
-**FR24:** System caches OCR results per tile using content hash to avoid re-processing unchanged tiles
+**FR29:** System displays per-tile progress indicators during OCR processing
 
-**FR25:** OCR processing respects FormulaNet model input requirements (384x384 grayscale images)
+**FR30:** System caches OCR results per tile using content hash to avoid re-processing unchanged tiles
 
-**FR26:** System handles OCR failures gracefully and reports errors to user
+**FR31:** OCR processing respects FormulaNet model input requirements (384x384 grayscale images)
 
-**FR27:** Users can see OCR processing status per row (pending, processing, complete, error)
+**FR32:** System handles OCR failures gracefully and reports errors to user
+
+**FR33:** Users can see OCR processing status per row (pending, processing, complete, error)
 
 ---
 
 ### LaTeX Assembly Capabilities
 
-**FR28:** System merges LaTeX fragments from multiple tiles into single expression per row
+**FR34:** System merges LaTeX fragments from multiple tiles into single expression per row
 
-**FR29:** Merging algorithm measures visual gaps between tile boundaries
+**FR35:** Merging algorithm measures visual gaps between tile boundaries
 
-**FR30:** System inserts appropriate spacing in merged LaTeX based on gap size
+**FR36:** System inserts appropriate spacing in merged LaTeX based on gap size
 
-**FR31:** System removes duplicate operators at tile seams (e.g., "+ +" becomes "+")
+**FR37:** System removes duplicate operators at tile seams (e.g., "+ +" becomes "+")
 
-**FR32:** Merged LaTeX undergoes post-processing cleanup for common OCR artifacts
+**FR38:** Merged LaTeX undergoes post-processing cleanup for common OCR artifacts
 
-**FR33:** System produces valid, parseable LaTeX from merged fragments
+**FR39:** System produces valid, parseable LaTeX from merged fragments
 
-**FR34:** Each row contains exactly one LaTeX expression after merging (even if sourced from multiple tiles)
+**FR40:** Each row contains exactly one LaTeX expression after merging (even if sourced from multiple tiles)
 
-**FR35:** System handles multi-line expressions that span tiles (rare edge cases)
+**FR41:** System handles multi-line expressions that span tiles (rare edge cases)
 
 ---
 
 ### Validation Capabilities
 
-**FR36:** System validates each row's LaTeX expression against the previous non-empty row
+**FR42:** System validates each row's LaTeX expression against the previous non-empty row
 
-**FR37:** Validation uses existing CAS equivalence checker (`checkEquivalence()`)
+**FR43:** Validation uses existing CAS equivalence checker (`checkEquivalence()`)
 
-**FR38:** First row in canvas automatically validates as correct (no previous row to compare)
+**FR44:** First row in canvas automatically validates as correct (no previous row to compare)
 
-**FR39:** Validation skips empty rows when finding previous row for comparison
+**FR45:** Validation skips empty rows when finding previous row for comparison
 
-**FR40:** Validation respects user's debugMode setting from existing DebugContext
+**FR46:** Validation respects user's debugMode setting from existing DebugContext
 
-**FR41:** Validation respects user's forceAlgebrite setting from existing DebugContext
+**FR47:** Validation respects user's forceAlgebrite setting from existing DebugContext
 
-**FR42:** Validation results are cached using key `row:${prevId}:${currId}` to avoid redundant checks
+**FR48:** Validation results are cached using key `row:${prevId}:${currId}` to avoid redundant checks
 
-**FR43:** System handles LaTeX parse failures during validation and marks row as error state
+**FR49:** System handles LaTeX parse failures during validation and marks row as error state
 
-**FR44:** Validation indicates which method was used (canonicalization, algebrite-difference, algebrite-simplify)
+**FR50:** Validation indicates which method was used (canonicalization, algebrite-difference, algebrite-simplify)
 
-**FR45:** Validation reports timing information for performance monitoring
+**FR51:** Validation reports timing information for performance monitoring
 
-**FR46:** Users can manually trigger validation for specific row via gesture (double-tap row header)
+**FR52:** Users can manually trigger validation for specific row via gesture (double-tap row header)
 
 ---
 
 ### Visual Feedback Capabilities
 
-**FR47:** System displays colored status icons at right edge of each row after processing
+**FR53:** System displays colored status icons at right edge of each row after processing
 
-**FR48:** Green ✓ icon indicates row is mathematically equivalent to previous row
+**FR54:** Green ✓ icon indicates row is mathematically equivalent to previous row
 
-**FR49:** Red ✗ icon indicates row is NOT equivalent to previous row (error detected)
+**FR55:** Red ✗ icon indicates row is NOT equivalent to previous row (error detected)
 
-**FR50:** Yellow ⚠️ icon indicates LaTeX could not be parsed (rewrite needed)
+**FR56:** Yellow ⚠️ icon indicates LaTeX could not be parsed (rewrite needed)
 
-**FR51:** Orange ⟳ (spinning) icon indicates processing in progress (OCR or validation)
+**FR57:** Orange ⟳ (spinning) icon indicates processing in progress (OCR or validation)
 
-**FR52:** Gray ∅ icon indicates row is empty or pending processing
+**FR58:** Gray ∅ icon indicates row is empty or pending processing
 
-**FR53:** Icons are positioned at row edge, vertically centered, with minimum 44x44px tap target
+**FR59:** Icons are positioned at row edge, vertically centered, with minimum 44x44px tap target
 
-**FR54:** Users can tap status icon to inspect detailed information
+**FR60:** Users can tap status icon to inspect detailed information
 
-**FR55:** Processing indicators appear smoothly with fade-in animations
+**FR61:** Processing indicators appear smoothly with fade-in animations
 
-**FR56:** Feedback updates happen without disrupting user's current drawing
+**FR62:** Feedback updates happen without disrupting user's current drawing
 
-**FR57:** System never displays modal dialogs or alerts during normal validation operation
+**FR63:** System never displays modal dialogs or alerts during normal validation operation
 
 ---
 
 ### Inspection & Debug Capabilities
 
-**FR58:** Users can tap row status icon to view transcribed LaTeX for that row
+**FR64:** Users can tap row status icon to view transcribed LaTeX for that row
 
-**FR59:** Inspection panel shows detected LaTeX and previous row's LaTeX (if applicable)
+**FR65:** Inspection panel shows detected LaTeX and previous row's LaTeX (if applicable)
 
-**FR60:** Users can enable Debug Mode via toggle to see extended diagnostic information
+**FR66:** Users can enable Debug Mode via toggle to see extended diagnostic information
 
-**FR61:** Debug Mode reveals tile boundaries as overlay on canvas
+**FR67:** Debug Mode reveals tile boundaries as overlay on canvas
 
-**FR62:** Debug Mode shows validation method, timing, and canonical forms for each row
+**FR68:** Debug Mode shows validation method, timing, and canonical forms for each row
 
-**FR63:** Debug Mode displays cache hit/miss information
+**FR69:** Debug Mode displays cache hit/miss information
 
-**FR64:** Users can view OCR processing logs via existing diagnostic logging system
+**FR70:** Users can view OCR processing logs via existing diagnostic logging system
 
-**FR65:** Users can view validation logs via existing diagnostic logging system
+**FR71:** Users can view validation logs via existing diagnostic logging system
 
-**FR66:** Inspection panel is dismissible and non-modal (doesn't block other actions)
+**FR72:** Inspection panel is dismissible and non-modal (doesn't block other actions)
 
 ---
 
 ### Persistence & Workspace Capabilities
 
-**FR67:** Row state automatically saves to IndexedDB on changes
+**FR73:** Row state automatically saves to IndexedDB on changes
 
-**FR68:** Row state includes vector stroke data and transcribed LaTeX
+**FR74:** Row state includes active row ID, activation timeline, and transcribed LaTeX per row
 
-**FR69:** Canvas state loads from IndexedDB on page reload
+**FR75:** Canvas state loads from IndexedDB on page reload
 
-**FR70:** Users can export Magic Canvas document to workspace manager
+**FR76:** Users can export Magic Canvas document to workspace manager
 
-**FR71:** Exported documents include both vector data and transcribed LaTeX
+**FR77:** Exported documents include both vector data and transcribed LaTeX
 
-**FR72:** Users can load previously saved Magic Canvas documents from workspace manager
+**FR78:** Users can load previously saved Magic Canvas documents from workspace manager
 
-**FR73:** System tracks storage quota usage and warns at 80% capacity
+**FR79:** System tracks storage quota usage and warns at 80% capacity
 
-**FR74:** Row data persists across browser sessions
+**FR80:** Row data persists across browser sessions
 
-**FR75:** Users can manually clear row data for specific canvas
+**FR81:** Users can manually clear row data for specific canvas
 
 ---
 
 ### Settings & Configuration Capabilities
 
-**FR76:** Users can adjust row line spacing in settings
+**FR82:** Users can adjust row line spacing in settings
 
-**FR77:** Users can adjust OCR debounce time (default 1.5s, range 1-5s)
+**FR83:** Users can adjust OCR debounce time (default 1.5s, range 1-5s)
 
-**FR78:** Users can toggle auto-validation on/off
+**FR84:** Users can toggle auto-validation on/off
 
-**FR79:** Users can configure row height for OCR processing
+**FR85:** Users can configure row height for OCR processing
 
-**FR80:** User preferences persist in localStorage across sessions
+**FR86:** User preferences persist in localStorage across sessions
 
-**FR81:** Users can access settings via minimalist floating toolbar
+**FR87:** Users can access settings via minimalist floating toolbar
 
-**FR82:** Settings panel is dismissible and doesn't interrupt flow
+**FR88:** Settings panel is dismissible and doesn't interrupt flow
 
 ---
 
 ### Export & Integration Capabilities
 
-**FR83:** Users can export canvas as JSON with vector paths and LaTeX
+**FR89:** Users can export canvas as JSON with vector paths and LaTeX
 
-**FR84:** Users can copy transcribed LaTeX for specific row to clipboard
+**FR90:** Users can copy transcribed LaTeX for specific row to clipboard
 
-**FR85:** Exported documents are compatible with existing Texo workspace manager
+**FR91:** Exported documents are compatible with existing Texo workspace manager
 
-**FR86:** Users can clear all rows while keeping canvas structure intact
+**FR92:** Users can clear all rows while keeping canvas structure intact
 
-**FR87:** System integrates with existing IndexedDB infrastructure (reuses stores where applicable)
+**FR93:** System integrates with existing IndexedDB infrastructure (reuses stores where applicable)
 
-**FR88:** System reuses existing OCR worker infrastructure
+**FR94:** System reuses existing OCR worker infrastructure
 
-**FR89:** System reuses existing CAS and validation infrastructure
+**FR95:** System reuses existing CAS and validation infrastructure
 
-**FR90:** System reuses existing debug context and logging infrastructure
+**FR96:** System reuses existing debug context and logging infrastructure
 
 ---
 
 ### User Control & Management Capabilities
 
-**FR91:** Users can access floating toolbar with common actions (Validate All, Clear All, Settings)
+**FR97:** Users can access floating toolbar with common actions (Validate All, Clear All, Settings)
 
-**FR92:** Toolbar auto-hides after 3 seconds of inactivity to preserve clean canvas
+**FR98:** Toolbar auto-hides after 3 seconds of inactivity to preserve clean canvas
 
-**FR93:** Users can manually show/hide toolbar via gesture or button
+**FR99:** Users can manually show/hide toolbar via gesture or button
 
-**FR94:** Users can trigger "Validate All Rows" action to force validation of entire canvas
+**FR100:** Users can trigger "Validate All Rows" action to force validation of entire canvas
 
-**FR95:** Users can clear entire canvas with confirmation dialog (destructive action)
+**FR101:** Users can clear entire canvas with confirmation dialog (destructive action)
 
-**FR96:** Users receive clear visual indication when system is processing (not frozen)
+**FR102:** Users receive clear visual indication when system is processing (not frozen)
 
-**FR97:** Users can cancel long-running OCR operations if needed
+**FR103:** Users can cancel long-running OCR operations if needed
 
-**FR98:** System handles rapid stroke input gracefully without dropping strokes or validation requests
+**FR104:** System handles rapid row switching gracefully without dropping OCR or validation requests
 
 ---
 
 **Functional Requirements Summary:**
-- **Total FRs:** 98
+- **Total FRs:** 104 (updated from 98)
 - **Capability Areas:** 10
-- **Coverage:** Canvas interaction, row management, OCR pipeline, validation integration, visual feedback, debugging, persistence, settings, export, user control
+- **Coverage:** Canvas interaction, row management (single-active-row model), OCR pipeline, validation integration, visual feedback, debugging, persistence, settings, export, user control
+- **Architectural Model:** Single-active-row with activation timeline (simplified from auto-assignment)
 
 **Self-Validation Checklist:**
 ✓ Covered all MVP capabilities from scope section
 ✓ Covered integration with existing Texo infrastructure
-✓ Covered user control and error handling
+✓ Covered single-active-row interaction model
+✓ Covered row switching, activation timeline, and read-only enforcement
 ✓ Each FR is testable and implementation-agnostic
 ✓ Each FR describes WHAT, not HOW
 ✓ All capability areas from user's detailed specification are represented
+✓ Updated to reflect architectural pivot approved 2025-11-21
 
 ---
 

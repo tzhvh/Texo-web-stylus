@@ -36,7 +36,7 @@ This architecture defines the technical design for **Magic Canvas**, a major fea
 | **OCR Model** | FormulaNet (Transformers.js) | ~150MB cached | Epic 2 | PROVIDED BY EXISTING CODEBASE |
 | **CAS** | KaTeX + Algebrite | katex v0.x, algebrite v1.x | Epic 3 | PROVIDED BY EXISTING CODEBASE |
 | **Logging** | Centralized logger.js | Custom (existing) | All | PROVIDED BY EXISTING CODEBASE |
-| **Row Manager** | Class-based with Map storage | New implementation | Epic 1 | Fast O(1) lookups, serializable, simple |
+| **Row Manager** | Stateless active-row selector with timeline tracker | New implementation | Epic 1 | Single locus of control, simple state, timeline-based attribution |
 | **Tile Extraction** | Fixed 64px overlap | 384x384 tiles, 16.7% overlap | Epic 2 | Balances context vs redundancy, tested in IM2LATEX papers |
 | **Worker Pool** | Fixed pool of 3 workers | FIFO queue, 10s timeout/tile | Epic 2 | Sweet spot for browser concurrency, fair scheduling |
 | **LaTeX Merging** | Gap-based spacing + regex cleanup | Heuristic: <10px=no space, 10-30px=space | Epic 2 | Handles 95% of cases, fast, validated by KaTeX |
@@ -115,20 +115,25 @@ Texo-web-stylus/
 ### Epic 1: Canvas Foundation & Row System
 
 **Architectural Components:**
-- `MagicCanvas.jsx` - Main page, embeds Excalidraw, hosts row lines overlay
-- `rowManager.js` - RowManager class (Map-based storage)
-- `useRowSystem.js` - React hook for state sync (Excalidraw ↔ RowManager ↔ IndexedDB)
-- `RowHeader.jsx` - Status icon component
+- `MagicCanvas.jsx` - Main page, embeds Excalidraw, hosts row lines overlay, manages active row
+- `rowManager.js` - RowManager class (active row selector + activation timeline tracker)
+- `useRowSystem.js` - React hook for row activation and read-only enforcement
+- `RowHeader.jsx` - Status icon component with active row highlight
+- `RowNavigator.jsx` - Gesture and keyboard handler for row switching
 - IndexedDB store: `magic-canvas-state`
 
 **Integration Points:**
-- Excalidraw API: `onChange`, `updateScene`, `getSceneElements`
+- Excalidraw API: `onChange`, `updateScene`, `getSceneElements`, spatial bounds constraints
 - Existing `workspaceDB.js`: Add `saveMagicCanvasState`, `loadMagicCanvasState`
+- Gesture library: `react-swipeable` for touch navigation
 
 **Key Decisions:**
-- Row ID: `"row-${Math.floor(y / rowHeight)}"` (deterministic)
+- Row ID: `"row-${index}"` (sequential, deterministic)
 - Row height: 384px (matches OCR tile height)
-- State sync: Unidirectional (Excalidraw → RowManager → IndexedDB)
+- Active row: Only one row editable at a time, rest are read-only overlays
+- Row switching: Gestures (swipe) or keyboard (arrow keys) change active row
+- OCR trigger: On row deactivation (when switching away from a row)
+- State sync: Simple unidirectional (Active row content → Timeline → IndexedDB)
 - Persistence: Debounced 2s after last change
 
 ---
@@ -591,7 +596,8 @@ logger.info('OCR complete', {
 ```javascript
 class RowManager {
   rows: Map<string, Row>
-  elementToRow: Map<string, string>
+  activeRowId: string | null
+  activationTimeline: Array<{rowId: string, activatedAt: Date, deactivatedAt: Date | null}>
   rowHeight: number
   startY: number
 }
@@ -600,7 +606,7 @@ interface Row {
   id: string
   yStart: number
   yEnd: number
-  elementIds: Set<string>
+  isActive: boolean
   ocrStatus: 'pending' | 'processing' | 'complete' | 'error'
   validationStatus: 'pending' | 'processing' | 'validated' | 'invalid' | 'error'
   transcribedLatex: string | null
@@ -610,8 +616,7 @@ interface Row {
     time: number
     ...
   } | null
-  lastModified: Date
-  tileHash: string | null
+  activatedAt: Date | null
   errorMessage: string | null
 }
 ```
@@ -666,13 +671,13 @@ interface ValidationResult {
 class RowManager {
   constructor({ rowHeight = 384, startY = 0 })
 
-  getRowForY(y: number): Row
-  assignElement(element: ExcalidrawElement): string // returns rowId
+  setActiveRow(rowId: string): void
+  getActiveRow(): Row | null
+  createNewRow(): string // returns new rowId
   getRow(rowId: string): Row | undefined
   updateRow(rowId: string, updates: Partial<Row>): void
   getAllRows(): Row[]
-  getRowsInViewport(viewport: Viewport): Row[]
-  removeElement(elementId: string): void
+  getActivationTimeline(): ActivationEvent[]
   serialize(): SerializedState
   deserialize(state: SerializedState): void
 }
