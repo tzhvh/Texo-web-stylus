@@ -1,0 +1,427 @@
+<story-context id=".bmad/bmm/workflows/4-implementation/story-context/template" v="1.0">
+  <metadata>
+    <epicId>1</epicId>
+    <storyId>1.6</storyId>
+    <title>Display Row Status Indicators with Active Row Highlight</title>
+    <status>ready-for-dev</status>
+    <generatedAt>2025-11-22</generatedAt>
+    <generator>BMAD Story Context Workflow</generator>
+    <sourceStoryPath>docs/sprint-artifacts/stories/1-6-display-row-status-indicators-active-row-highlight.md</sourceStoryPath>
+  </metadata>
+
+  <story>
+    <asA>user</asA>
+    <iWant>to see visual indicators showing each row's status and which row is active</iWant>
+    <soThat>I know the current state and can identify the active editing area</soThat>
+    <tasks>
+      - Task 1: Design and implement status icon component (AC: #1, #5)
+      - Task 2: Implement icon positioning logic (AC: #2, #8)
+      - Task 3: Implement active row visual highlighting (AC: #4)
+      - Task 4: Integrate icon rendering with Excalidraw canvas (AC: #7)
+      - Task 5: Implement status-driven icon display (AC: #5)
+      - Task 6: Implement smooth fade-in transitions (AC: #6)
+      - Task 7: Add tap/click target preparation (AC: #9)
+      - Task 8: Integration testing and performance validation
+    </tasks>
+  </story>
+
+  <acceptanceCriteria>
+    1. Given rows have various statuses (pending, processing, validated, etc.) and one is active, When I view the canvas, Then I see a status icon at the right edge of each row, vertically centered
+    2. And icons are positioned at: (canvasWidth - 60px, rowCenterY)
+    3. And icons are 48x48px (exceeds 44x44px WCAG touch target minimum)
+    4. And active row has distinct visual highlighting (border or background color)
+    5. And icons use clear, intuitive symbols: Gray ∅ (pending), Orange ⟳ (processing), Green ✓ (validated), Red ✗ (invalid), Yellow ⚠️ (warning)
+    6. And icons fade in smoothly when status changes (200ms transition)
+    7. And icons don't interfere with drawing (rendered on separate layer)
+    8. And icons remain visible during zoom (scale with canvas)
+    9. And icons are tappable/clickable (44x44px tap target, will open inspection panel in Epic 4)
+  </acceptanceCriteria>
+
+  <artifacts>
+    <docs>
+      <!-- Architecture Documentation -->
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Magic Canvas - Decision Architecture</title>
+        <section>Epic 3: Validation &amp; Feedback Pipeline</section>
+        <snippet>Icon Mapping: Green ✓ (validated), Red ✗ (invalid), Yellow ⚠️ (error/parse failure), Orange ⟳ (processing), Gray ∅ (pending or empty). Icons provide ambient awareness of OCR/validation state and serve as touch targets for future inspection panel.</snippet>
+      </doc>
+
+      <doc>
+        <path>docs/architecture.md</path>
+        <title>Magic Canvas - Decision Architecture</title>
+        <section>Visual Feedback System</section>
+        <snippet>Visual feedback layer: Icons rendered on separate layer from drawing elements to prevent interference. Single-active-row highlighting: Only one row visually distinguished at a time. Status icon positioning at right edge of rows for consistent placement.</snippet>
+      </doc>
+
+      <!-- Epic 1 Complete Breakdown -->
+      <doc>
+        <path>docs/epic_1_complete_breakdown.md</path>
+        <title>Epic 1: Canvas Foundation &amp; Row Management</title>
+        <section>Story 1.6: Display Row Status Indicators</section>
+        <snippet>Story 1.6 implements visual feedback system for single-active-row architectural model. Status icons serve dual purposes: ambient awareness of OCR/validation state and touch targets for future inspection panel (Epic 4). Icons positioned at right edge with 48x48px size for WCAG 2.1 AA compliance.</snippet>
+      </doc>
+
+      <!-- Previous Story Learnings -->
+      <doc>
+        <path>docs/sprint-artifacts/stories/1-5-enforce-active-row-editing-read-only-rows.md</path>
+        <title>Story 1.5: Enforce Active Row Editing</title>
+        <section>Key Files and Patterns</section>
+        <snippet>RowHeader.jsx already implements active row highlighting with border-2 border-blue-500 bg-blue-50 classes (lines 221-224). Row header positioning and styling structure established (lines 226-240). Story 1.6 should extend RowHeader by integrating StatusIcon component for status display.</snippet>
+      </doc>
+    </docs>
+
+    <code>
+      <!-- Core Component Files -->
+      <artifact>
+        <path>src/components/RowHeader.jsx</path>
+        <kind>component</kind>
+        <symbol>RowHeader</symbol>
+        <lines>99-167</lines>
+        <reason>Existing RowHeader component implements basic status indicators and active row highlighting. Story 1.6 extends this with enhanced status icon rendering, positioning logic, and fade transitions. Lines 115-118 show current active row styling approach to build upon.</reason>
+      </artifact>
+
+      <artifact>
+        <path>src/components/RowHeader.jsx</path>
+        <kind>component</kind>
+        <symbol>getStatusIcon</symbol>
+        <lines>33-91</lines>
+        <reason>Current status icon logic maps ocrStatus and validationStatus to visual symbols. Story 1.6 enhances this with proper icon SVGs, positioning at (canvasWidth - 60px, rowCenterY), and 200ms fade transitions per AC #6.</reason>
+      </artifact>
+
+      <!-- State Management -->
+      <artifact>
+        <path>src/utils/rowManager.js</path>
+        <kind>class</kind>
+        <symbol>RowManager</symbol>
+        <lines>56-597</lines>
+        <reason>RowManager provides single-active-row model and row status data. Row.ocrStatus and Row.validationStatus fields (lines 19-20) drive status icon display. getActiveRow() method (lines 350-357) determines which row receives active highlighting.</reason>
+      </artifact>
+
+      <artifact>
+        <path>src/utils/rowManager.js</path>
+        <kind>class</kind>
+        <symbol>setActiveRow</symbol>
+        <lines>283-344</lines>
+        <reason>Row activation method triggers active row highlighting changes. Story 1.6 should respond to activation events to update visual highlighting with 200ms transitions (AC #4, #6).</reason>
+      </artifact>
+
+      <!-- Canvas Integration -->
+      <artifact>
+        <path>src/hooks/useRowSystem.js</path>
+        <kind>hook</kind>
+        <symbol>useRowSystem</symbol>
+        <lines>47-638</lines>
+        <reason>useRowSystem hook provides row state management and canvas synchronization. getActiveRow() method (line 637) exposes active row for visual highlighting. handleRowTap() method (lines 446-467) handles row activation via tap/click interactions.</reason>
+      </artifact>
+
+      <artifact>
+        <path>src/pages/MagicCanvas.jsx</path>
+        <kind>component</kind>
+        <symbol>MagicCanvas</symbol>
+        <lines>119-1023</lines>
+        <reason>Main canvas page integrates RowHeader components. renderRowHeaders() method (lines 846-862) shows how to pass row state and active status to RowHeader components. CANVAS_CONFIG.MAX_WIDTH (line 25) provides canvasWidth for icon positioning calculations.</reason>
+      </artifact>
+
+      <artifact>
+        <path>src/pages/MagicCanvas.jsx</path>
+        <kind>function</kind>
+        <symbol>createActiveRowHighlight</symbol>
+        <lines>53-75</lines>
+        <reason>Current active row highlighting implementation uses blue border (strokeColor: #3b82f6, strokeWidth: 2). Story 1.6 should maintain this visual style for consistency while adding status icons at right edge.</reason>
+      </artifact>
+    </code>
+
+    <dependencies>
+      <!-- React Ecosystem -->
+      <npm>
+        <package>react</package>
+        <version>^18.3.1</version>
+        <usage>Core UI framework for StatusIcon component rendering and state management</usage>
+      </npm>
+
+      <npm>
+        <package>react-dom</package>
+        <version>^18.3.1</version>
+        <usage>DOM rendering for React components</usage>
+      </npm>
+
+      <!-- Canvas Framework -->
+      <npm>
+        <package>@excalidraw/excalidraw</package>
+        <version>^0.18.0</version>
+        <usage>Canvas framework integration - status icons must not interfere with drawing (AC #7)</usage>
+      </npm>
+
+      <!-- Styling -->
+      <npm>
+        <package>tailwindcss</package>
+        <version>^3.4.17</version>
+        <usage>CSS framework for status icon styling (colors, transitions, positioning). Use border-blue-500, bg-blue-50 for active row highlighting consistency.</usage>
+      </npm>
+
+      <!-- Testing -->
+      <npm>
+        <package>vitest</package>
+        <version>^2.1.8</version>
+        <usage>Test framework for unit and integration tests of status icon rendering and transitions</usage>
+      </npm>
+
+      <npm>
+        <package>@testing-library/react</package>
+        <version>^16.3.0</version>
+        <usage>React testing utilities for component testing</usage>
+      </npm>
+
+      <npm>
+        <package>@testing-library/jest-dom</package>
+        <version>^6.9.1</version>
+        <usage>DOM matchers for testing visual elements</usage>
+      </npm>
+    </dependencies>
+  </artifacts>
+
+  <constraints>
+    <!-- Architectural Constraints -->
+    <constraint type="architecture">
+      <rule>Single-active-row model: Only one row can be active at a time (ADR-001)</rule>
+      <source>docs/architecture.md:893</source>
+      <impact>Active row highlighting must update immediately when row activation changes. Only one row should display active state visual styling.</impact>
+    </constraint>
+
+    <constraint type="architecture">
+      <rule>Visual feedback layer: Icons rendered on separate layer from drawing elements</rule>
+      <source>docs/architecture.md:233-242</source>
+      <impact>Status icons must not interfere with Excalidraw canvas operations. Use React portal or custom SVG overlay for icon rendering (AC #7).</impact>
+    </constraint>
+
+    <constraint type="performance">
+      <rule>60fps rendering target during zoom/pan operations</rule>
+      <source>docs/epic_1_complete_breakdown.md:Story 1.3</source>
+      <impact>Icon rendering and transitions must not degrade canvas performance. Test with 20+ rows displaying status icons (Task 8).</impact>
+    </constraint>
+
+    <!-- Accessibility Constraints -->
+    <constraint type="accessibility">
+      <rule>44x44px minimum touch target size (WCAG 2.1 AA)</rule>
+      <source>WCAG 2.1 AA Guidelines</source>
+      <impact>Status icons must be 48x48px (AC #3) to meet and exceed minimum touch target requirements. Ensure tap targets are accessible on touch devices.</impact>
+    </constraint>
+
+    <constraint type="accessibility">
+      <rule>Screen reader support for status changes</rule>
+      <source>Story 1.6 Dev Notes - Testing Strategy</source>
+      <impact>Status icons must include aria-label attributes describing row status. Status changes should be announced to assistive technologies.</impact>
+    </constraint>
+
+    <!-- UI/UX Constraints -->
+    <constraint type="ui">
+      <rule>Status icon positioning: (canvasWidth - 60px, rowCenterY)</rule>
+      <source>Story 1.6 AC #2</source>
+      <impact>Icons must be positioned consistently at right edge of rows. Calculate rowCenterY as (row.yStart + row.yEnd) / 2.</impact>
+    </constraint>
+
+    <constraint type="ui">
+      <rule>200ms transition duration for smooth visual feedback</rule>
+      <source>Story 1.6 AC #6, Story 1.5 learnings</source>
+      <impact>Icon opacity and state changes must use 200ms ease transitions. Follow established pattern from RowHeader active row highlighting (transition-all duration-200).</impact>
+    </constraint>
+
+    <!-- Integration Constraints -->
+    <constraint type="integration">
+      <rule>Extend existing RowHeader component rather than creating new component</rule>
+      <source>Story 1.5 learnings - src/components/RowHeader.jsx</source>
+      <impact>RowHeader.jsx already has active row highlighting base styles (lines 221-224). Story 1.6 should extend this component to add status icon rendering, not replace it.</impact>
+    </constraint>
+
+    <constraint type="integration">
+      <rule>Status icons serve as future touch targets for Epic 4 inspection panel</rule>
+      <source>docs/architecture.md:239, Story 1.6 AC #9</source>
+      <impact>Icon onClick handlers should be prepared for Epic 4 integration. Use console.log placeholder for now, structure for easy extension.</impact>
+    </constraint>
+  </constraints>
+
+  <interfaces>
+    <!-- Row Status Interface -->
+    <interface>
+      <name>Row</name>
+      <kind>TypeScript Interface</kind>
+      <signature>
+        {
+          id: string,                    // "row-{index}"
+          yStart: number,                 // Top Y coordinate
+          yEnd: number,                   // Bottom Y coordinate
+          isActive: boolean,              // True if active row
+          ocrStatus: 'pending' | 'processing' | 'completed' | 'error',
+          validationStatus: 'pending' | 'processing' | 'validated' | 'invalid' | 'error',
+          transcribedLatex: string | null,
+          errorMessage: string | null,
+          elementIds: Set&lt;string&gt;,
+          lastModified: number
+        }
+      </signature>
+      <path>src/utils/rowManager.js:13-27</path>
+      <usage>Row.ocrStatus and Row.validationStatus drive status icon display. Row.isActive determines active row highlighting.</usage>
+    </interface>
+
+    <!-- RowHeader Props Interface -->
+    <interface>
+      <name>RowHeaderProps</name>
+      <kind>React Component Props</kind>
+      <signature>
+        {
+          row: Row,                       // Row object with status info
+          y: number,                      // Y coordinate for positioning
+          canvasWidth: number,            // Canvas width for icon positioning
+          debugMode?: boolean             // Enable debug info display
+        }
+      </signature>
+      <path>src/components/RowHeader.jsx:14-24</path>
+      <usage>Props interface for RowHeader component. Story 1.6 extends this component with enhanced status icon rendering.</usage>
+    </interface>
+
+    <!-- useRowSystem Hook Interface -->
+    <interface>
+      <name>useRowSystem</name>
+      <kind>React Hook</kind>
+      <signature>
+        function useRowSystem({
+          excalidrawAPI,
+          rowManager,
+          debounceMs = 50,
+          debugMode = false,
+          workspaceId = 'default',
+          autoSaveMs = 2000
+        }): {
+          elementToRow: Map&lt;string, string&gt;,
+          handleCanvasChange: Function,
+          getActiveRow: () =&gt; Row | null,    // Get active row for highlighting
+          handleRowTap: (clickY: number) =&gt; boolean,  // Row tap activation
+          ...
+        }
+      </signature>
+      <path>src/hooks/useRowSystem.js:47-638</path>
+      <usage>Hook provides getActiveRow() for determining which row receives active highlighting. handleRowTap() enables row activation via click/tap on status icons.</usage>
+    </interface>
+
+    <!-- RowManager Methods -->
+    <interface>
+      <name>RowManager.getActiveRow</name>
+      <kind>Method</kind>
+      <signature>getActiveRow(): Row | null</signature>
+      <path>src/utils/rowManager.js:350-357</path>
+      <usage>Returns currently active row for visual highlighting. Used to determine which row displays active state styling (AC #4).</usage>
+    </interface>
+
+    <interface>
+      <name>RowManager.setActiveRow</name>
+      <kind>Method</kind>
+      <signature>setActiveRow(rowId: string): void</signature>
+      <path>src/utils/rowManager.js:283-344</path>
+      <usage>Activates specified row and deactivates previous active row. Triggers visual highlighting updates with 200ms transitions (AC #6).</usage>
+    </interface>
+  </interfaces>
+
+  <tests>
+    <standards>
+      Testing framework: Vitest with @testing-library/react for component testing. Follow established patterns from Story 1.5 tests (src/hooks/__tests__/useRowSystem.story-1-5.test.js). Unit tests should cover status icon rendering for all 5 status types (pending, processing, validated, invalid, error). Integration tests should verify icon positioning, active row highlighting, and 200ms fade transitions. Performance tests should validate 60fps with 20+ rows. Accessibility tests should verify screen reader support and 44x44px touch targets.
+    </standards>
+
+    <locations>
+      src/components/__tests__/RowHeader.test.js
+      src/components/__tests__/StatusIcon.test.js
+      src/hooks/__tests__/useRowSystem.story-1-6.test.js
+      src/utils/__tests__/rowManager.test.js (extend existing)
+    </locations>
+
+    <ideas>
+      <!-- Task 1: Status Icon Component Tests (AC #1, #5) -->
+      <test id="1.1" maps-to="AC-1,AC-5">
+        <name>StatusIcon renders correct icon for each status type</name>
+        <approach>Unit test rendering StatusIcon component with different row.ocrStatus and row.validationStatus values. Verify correct icon symbols: ∅ (pending), ⟳ (processing), ✓ (validated), ✗ (invalid), ⚠️ (error).</approach>
+      </test>
+
+      <test id="1.2" maps-to="AC-3">
+        <name>Status icons meet 48x48px size requirement</name>
+        <approach>Test icon dimensions. Verify SVG viewBox is 48x48px and exceeds 44x44px WCAG minimum.</approach>
+      </test>
+
+      <test id="1.3" maps-to="AC-5">
+        <name>Icon color variants match status types</name>
+        <approach>Verify color mapping: gray (pending), orange (processing), green (validated), red (invalid), yellow (error). Test CSS classes or inline styles.</approach>
+      </test>
+
+      <!-- Task 2: Icon Positioning Tests (AC #2, #8) -->
+      <test id="2.1" maps-to="AC-2">
+        <name>Icons positioned at (canvasWidth - 60px, rowCenterY)</name>
+        <approach>Test icon positioning calculation. Given row.yStart=0, row.yEnd=384, canvasWidth=1000, verify icon position: x=940, y=192.</approach>
+      </test>
+
+      <test id="2.2" maps-to="AC-8">
+        <name>Icons remain visible during zoom operations</name>
+        <approach>Integration test with MagicCanvas. Zoom canvas to 50%, 100%, 200%. Verify icons scale correctly and remain aligned with rows.</approach>
+      </test>
+
+      <!-- Task 3: Active Row Highlighting Tests (AC #4) -->
+      <test id="3.1" maps-to="AC-4">
+        <name>Active row displays distinct visual highlighting</name>
+        <approach>Test RowHeader with row.isActive=true vs false. Verify active row has border-2 border-blue-500 styling. Verify inactive rows use different styling.</approach>
+      </test>
+
+      <test id="3.2" maps-to="AC-4">
+        <name>Highlighting updates when active row changes</name>
+        <approach>Integration test. Activate row-0, verify highlighting. Switch to row-1, verify highlighting moves. Ensure only one row highlighted at a time.</approach>
+      </test>
+
+      <!-- Task 4: Canvas Integration Tests (AC #7) -->
+      <test id="4.1" maps-to="AC-7">
+        <name>Icons don't interfere with drawing operations</name>
+        <approach>Integration test. Draw strokes in active row while status icons visible. Verify strokes created successfully. Verify icons don't capture pointer events during drawing.</approach>
+      </test>
+
+      <!-- Task 5: Status-Driven Icon Display Tests (AC #5) -->
+      <test id="5.1" maps-to="AC-5">
+        <name>Icon updates when row.ocrStatus changes</name>
+        <approach>Update row.ocrStatus from 'pending' to 'processing' to 'completed'. Verify icon changes: ∅ → ⟳ → ○.</approach>
+      </test>
+
+      <test id="5.2" maps-to="AC-5">
+        <name>Icon priority when multiple statuses present</name>
+        <approach>Test status priority logic. If row.ocrStatus='error', icon shows ⚠️ regardless of validationStatus. If ocrStatus='processing', icon shows ⟳.</approach>
+      </test>
+
+      <!-- Task 6: Fade Transition Tests (AC #6) -->
+      <test id="6.1" maps-to="AC-6">
+        <name>Icons fade in smoothly with 200ms transition</name>
+        <approach>Test CSS transition property. Verify transition: opacity 200ms ease applied to icon elements. Visual regression test for smooth appearance.</approach>
+      </test>
+
+      <!-- Task 7: Tap Target Tests (AC #9) -->
+      <test id="7.1" maps-to="AC-9">
+        <name>Icons have 44x44px minimum tap target</name>
+        <approach>Test tap target size. Verify clickable area meets WCAG 2.1 AA standards. Test on simulated touch device.</approach>
+      </test>
+
+      <test id="7.2" maps-to="AC-9">
+        <name>Icon onClick handler prepared for Epic 4 integration</name>
+        <approach>Test icon click handler exists. Verify console.log output for now. Structure should allow easy Epic 4 inspection panel integration.</approach>
+      </test>
+
+      <!-- Task 8: Integration and Performance Tests -->
+      <test id="8.1" maps-to="Performance">
+        <name>60fps maintained with 20+ rows and status icons</name>
+        <approach>Performance test. Create 20 rows with status icons. Measure frame rate during zoom/pan operations. Target: &gt;=60fps (16.67ms per frame).</approach>
+      </test>
+
+      <test id="8.2" maps-to="Accessibility">
+        <name>Screen reader announces status changes</name>
+        <approach>Accessibility test. Update row status. Verify aria-label updates. Test with screen reader simulation or manual testing.</approach>
+      </test>
+
+      <test id="8.3" maps-to="Integration">
+        <name>End-to-end: Create rows, verify icons appear with correct status</name>
+        <approach>Integration test. Create 3 rows. Set different statuses: row-0=pending, row-1=processing, row-2=validated. Verify correct icons displayed at correct positions.</approach>
+      </test>
+    </ideas>
+  </tests>
+</story-context>

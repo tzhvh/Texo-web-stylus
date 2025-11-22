@@ -23,15 +23,30 @@ const STORES = {
 
 let db = null;
 let currentWorkspace = DEFAULT_WORKSPACE;
+let initPromise = null; // Guard against concurrent initialization
 
 /**
  * Initialize the database with versioned schema
  */
 export async function initWorkspaceDB() {
-  return new Promise((resolve, reject) => {
+  // Return existing initialization promise if already in progress
+  if (initPromise) {
+    return initPromise;
+  }
+
+  // If already initialized, return immediately
+  if (db) {
+    return Promise.resolve(db);
+  }
+
+  initPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onerror = () => reject(request.error);
+    request.onerror = () => {
+      initPromise = null; // Clear guard on error
+      reject(request.error);
+    };
+
     request.onsuccess = () => {
       db = request.result;
 
@@ -42,7 +57,11 @@ export async function initWorkspaceDB() {
         if (saved) {
           currentWorkspace = saved;
         }
+        initPromise = null; // Clear guard on success
         resolve(db);
+      }).catch((err) => {
+        initPromise = null; // Clear guard on error
+        reject(err);
       });
     };
 
@@ -86,6 +105,8 @@ export async function initWorkspaceDB() {
       // if (oldVersion < 2) { ... }
     };
   });
+
+  return initPromise;
 }
 
 /**
@@ -126,10 +147,13 @@ async function ensureDefaultWorkspace() {
       }
     });
 
-    // Initialize default session state values
+    // Initialize default session state values (only if they don't exist)
     console.log('[WorkspaceDB] Initializing default session state with preset values');
     for (const [key, value] of Object.entries(DEFAULT_SESSION_STATE)) {
-      await saveSessionState(key, value);
+      const existing = await loadSessionState(key);
+      if (existing === null) {
+        await saveSessionState(key, value);
+      }
     }
 
     // Log initialization
